@@ -1,7 +1,9 @@
 package config
 
 import (
+	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/theinventorylib/aegis/db"
@@ -13,6 +15,9 @@ type Config struct {
 	// Core dependencies
 	DB     db.DBProvider
 	Router server.Router
+
+	// Internal error tracking (not exported)
+	dbError error
 
 	// Security
 	JWTSecret      []byte
@@ -65,6 +70,9 @@ func Default() *Config {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
+	if c.dbError != nil {
+		return c.dbError
+	}
 	if c.DB == nil {
 		return errors.New("database provider is required")
 	}
@@ -84,16 +92,85 @@ func (c *Config) Validate() error {
 // Option is a functional option for configuring Aegis
 type Option func(*Config)
 
-// WithDB sets the database provider
-func WithDB(db db.DBProvider) Option {
+// WithDB sets the database provider from a standard *sql.DB connection
+// db: a *sql.DB connection from any driver (pgx, lib/pq, mysql, sqlite, etc.)
+// dialect: the SQL dialect for query syntax (db.PostgreSQL, db.MySQL, db.SQLite)
+//
+// Example:
+//
+//	import "database/sql"
+//	import _ "github.com/lib/pq"
+//
+//	sqlDB, _ := sql.Open("postgres", connString)
+//	aegis.New(config.WithDB(sqlDB, db.PostgreSQL), ...)
+func WithDB(sqlDB interface{}, dialect db.Dialect) Option {
 	return func(c *Config) {
-		c.DB = db
+		// Support both *sql.DB and db.DBProvider for flexibility
+		switch v := sqlDB.(type) {
+		case *sql.DB:
+			c.DB = db.NewSQLProvider(v, dialect)
+		case db.DBProvider:
+			// Allow passing DBProvider directly for advanced use cases
+			c.DB = v
+		}
 	}
 }
 
-// WithPostgres is an alias for WithDB to match the user's desired API
-func WithPostgres(db db.DBProvider) Option {
-	return WithDB(db)
+// WithPostgres creates a PostgreSQL database provider from a connection string
+// This is a convenience helper that uses the lib/pq driver
+//
+// Example:
+//
+//	aegis.New(
+//	    config.WithPostgres("postgres://user:pass@localhost:5432/db?sslmode=disable"),
+//	    ...
+//	)
+//
+// For more control over the connection, use WithDB with your own *sql.DB
+func WithPostgres(connString string) Option {
+	return func(c *Config) {
+		sqlDB, err := sql.Open("postgres", connString)
+		if err != nil {
+			// Store error to be caught during Validate()
+			c.dbError = fmt.Errorf("failed to open postgres connection: %w", err)
+			return
+		}
+		// Test the connection
+		if err := sqlDB.Ping(); err != nil {
+			c.dbError = fmt.Errorf("failed to ping postgres database: %w", err)
+			_ = sqlDB.Close() // Ignore close error, ping already failed
+			return
+		}
+		c.DB = db.NewSQLProvider(sqlDB, db.PostgreSQL)
+	}
+}
+
+// WithMySQL creates a MySQL database provider from a connection string
+// This is a convenience helper that uses the go-sql-driver/mysql driver
+//
+// Example:
+//
+//	aegis.New(
+//	    config.WithMySQL("user:password@tcp(127.0.0.1:3306)/dbname?parseTime=true"),
+//	    ...
+//	)
+//
+// For more control over the connection, use WithDB with your own *sql.DB
+func WithMySQL(connString string) Option {
+	return func(c *Config) {
+		sqlDB, err := sql.Open("mysql", connString)
+		if err != nil {
+			c.dbError = fmt.Errorf("failed to open mysql connection: %w", err)
+			return
+		}
+		// Test the connection
+		if err := sqlDB.Ping(); err != nil {
+			c.dbError = fmt.Errorf("failed to ping mysql database: %w", err)
+			_ = sqlDB.Close() // Ignore close error, ping already failed
+			return
+		}
+		c.DB = db.NewSQLProvider(sqlDB, db.MySQL)
+	}
 }
 
 // WithRouter sets the router

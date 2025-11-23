@@ -37,13 +37,13 @@ func (h *Handlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if token != "" {
-		h.auth.Logout(r.Context(), token)
+		_ = h.auth.Logout(r.Context(), token) // Ignore error, logout is best-effort
 	}
 
 	// Clear session cookie
 	core.ClearSessionCookie(w, h.session.GetConfig())
 
-	core.WriteJSON(w, http.StatusOK, &core.Response{
+	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Logged out successfully",
 	})
@@ -53,7 +53,7 @@ func (h *Handlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) UserHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Not authenticated",
 		})
@@ -61,7 +61,7 @@ func (h *Handlers) UserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"user":    user,
 	})
@@ -83,7 +83,7 @@ func (h *Handlers) RefreshSessionHandler(w http.ResponseWriter, r *http.Request)
 	// Refresh the session
 	newSession, err := h.session.RefreshSession(r.Context(), req.RefreshToken)
 	if err != nil {
-		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Invalid or expired refresh token",
 		})
@@ -94,7 +94,7 @@ func (h *Handlers) RefreshSessionHandler(w http.ResponseWriter, r *http.Request)
 	core.SetSessionCookie(w, newSession.Token, h.session.GetConfig())
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Session refreshed",
 		"session": map[string]interface{}{
@@ -109,7 +109,7 @@ func (h *Handlers) RefreshSessionHandler(w http.ResponseWriter, r *http.Request)
 func (h *Handlers) ValidateSessionHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Invalid session",
 		})
@@ -117,7 +117,7 @@ func (h *Handlers) ValidateSessionHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Session valid",
 		"user":    user,
@@ -128,7 +128,7 @@ func (h *Handlers) ValidateSessionHandler(w http.ResponseWriter, r *http.Request
 func (h *Handlers) ListSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Not authenticated",
 		})
@@ -137,7 +137,7 @@ func (h *Handlers) ListSessionsHandler(w http.ResponseWriter, r *http.Request) {
 
 	sessions, err := h.session.GetDB().GetUserSessions(r.Context(), user.ID)
 	if err != nil {
-		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+		_ = core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   "Failed to retrieve sessions",
 		})
@@ -145,7 +145,7 @@ func (h *Handlers) ListSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":  true,
 		"sessions": sessions,
 	})
@@ -155,7 +155,7 @@ func (h *Handlers) ListSessionsHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) RevokeSessionHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Not authenticated",
 		})
@@ -170,7 +170,7 @@ func (h *Handlers) RevokeSessionHandler(w http.ResponseWriter, r *http.Request) 
 
 	// Delete session by token (treating ID as token)
 	if err := h.session.DeleteSession(r.Context(), sessionID); err != nil {
-		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+		_ = core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Failed to revoke session",
 		})
@@ -178,7 +178,7 @@ func (h *Handlers) RevokeSessionHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	_ = user
-	core.WriteJSON(w, http.StatusOK, &core.Response{
+	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Session revoked",
 	})
@@ -188,7 +188,7 @@ func (h *Handlers) RevokeSessionHandler(w http.ResponseWriter, r *http.Request) 
 func (h *Handlers) RevokeAllSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Not authenticated",
 		})
@@ -196,7 +196,7 @@ func (h *Handlers) RevokeAllSessionsHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := h.session.GetDB().DeleteUserSessions(r.Context(), user.ID); err != nil {
-		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+		_ = core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   "Failed to revoke sessions",
 		})

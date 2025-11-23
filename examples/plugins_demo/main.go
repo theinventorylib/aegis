@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,6 +18,9 @@ import (
 	"github.com/theinventorylib/aegis/plugins/password"
 	"github.com/theinventorylib/aegis/plugins/sms"
 	"github.com/theinventorylib/aegis/server"
+
+	// Import PostgreSQL driver
+	_ "github.com/lib/pq"
 )
 
 // MockEmailProvider implements email.Provider for testing
@@ -51,11 +55,19 @@ func main() {
 	// 1. Initialize Database
 	// In production, use environment variables
 	connString := "postgres://user:password@localhost:5432/aegis_db?sslmode=disable"
-	database, err := db.NewPostgresProvider(connString)
+	sqlDB, err := sql.Open("postgres", connString)
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Fatal("Failed to open database:", err)
 	}
-	defer database.Close()
+	defer sqlDB.Close()
+
+	// Test connection
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatal("Failed to ping database:", err)
+	}
+
+	// Create database provider
+	database := db.NewSQLProvider(sqlDB, db.PostgreSQL)
 
 	// 2. Initialize Router
 	r := chi.NewRouter()
@@ -94,7 +106,7 @@ func main() {
 
 	// 4. Initialize Aegis Core
 	auth, err := aegis.New(
-		config.WithPostgres(database),
+		config.WithDB(sqlDB, db.PostgreSQL),
 		config.WithRouter(aegisRouter),
 		config.WithJWTSecret([]byte("demo-secret-key-do-not-use-in-prod")),
 	)

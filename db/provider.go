@@ -6,12 +6,12 @@ import (
 	"github.com/theinventorylib/aegis/models"
 )
 
-// Row represents a single row from a query result
+// Row represents a single row from a query result.
 type Row interface {
 	Scan(dest ...interface{}) error
 }
 
-// Rows represents multiple rows from a query result
+// Rows represents multiple rows from a query result.
 type Rows interface {
 	Next() bool
 	Scan(dest ...interface{}) error
@@ -19,7 +19,7 @@ type Rows interface {
 	Err() error
 }
 
-// Result represents the result of an Exec operation
+// Result represents the result of an Exec operation.
 type Result interface {
 	RowsAffected() (int64, error)
 	LastInsertId() (int64, error)

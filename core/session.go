@@ -235,7 +235,9 @@ func (s *SessionService) generateRefreshToken() (string, error) {
 // generateSessionID generates a random ID for sessions
 func generateSessionID() string {
 	bytes := make([]byte, 16)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		panic(fmt.Sprintf("failed to generate session ID: %v", err))
+	}
 	return base64.URLEncoding.EncodeToString(bytes)
 }
 

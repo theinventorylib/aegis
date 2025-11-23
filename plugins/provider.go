@@ -6,11 +6,11 @@ import (
 	"github.com/theinventorylib/aegis/server"
 )
 
-// Aegis is a forward declaration to avoid import cycles
-// The actual type is defined in the main aegis package
+// Aegis is a forward declaration to avoid import cycles.
+// The actual type is defined in the main aegis package.
 type Aegis interface{}
 
-// Migration represents a database migration for a plugin
+// Migration represents a database migration for a plugin.
 type Migration struct {
 	Version     string // Migration version (e.g., "001", "002")
 	Description string // Human-readable description
@@ -18,7 +18,7 @@ type Migration struct {
 	Down        string // SQL for reverting migration
 }
 
-// Dependency represents an external package dependency
+// Dependency represents an external package dependency.
 type Dependency struct {
 	Package string // Go package import path
 	Version string // Required version (e.g., "v1.2.3" or "latest")

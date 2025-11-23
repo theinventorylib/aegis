@@ -53,7 +53,10 @@ func exportCmd() {
 	pluginsStr := exportFlags.String("plugins", "all", "Comma-separated list of plugins (all, or e.g., sms,email,oauth)")
 	coreOnly := exportFlags.Bool("core-only", false, "Export only core schema (no plugins)")
 
-	exportFlags.Parse(os.Args[2:])
+	if err := exportFlags.Parse(os.Args[2:]); err != nil {
+		fmt.Printf("Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Validate format
 	var exportFormat migrations.ExportFormat

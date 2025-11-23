@@ -1,0 +1,5 @@
+theme: jekyll-theme-slate
+title: Aegis
+description: A lightweight, production-ready authentication framework for Go.
+show_downloads: true
+google_analytics:

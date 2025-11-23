@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,17 +12,27 @@ import (
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/db"
 	"github.com/theinventorylib/aegis/server"
+
+	// Import PostgreSQL driver (users choose their preferred driver)
+	_ "github.com/lib/pq"
 )
 
 func main() {
-	// Initialize PostgreSQL connection
-	// In production, use environment variables
+	// Initialize database connection using standard database/sql
+	// Users choose their own driver - here we use lib/pq for PostgreSQL
 	connString := "postgres://user:password@localhost:5432/aegis_db?sslmode=disable"
-	database, err := db.NewPostgresProvider(connString)
+
+	// Standard Go database setup - works with any SQL driver
+	sqlDB, err := sql.Open("postgres", connString)
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Fatal("Failed to open database connection:", err)
 	}
-	defer database.Close()
+	defer sqlDB.Close()
+
+	// Test the connection
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatal("Failed to ping database:", err)
+	}
 
 	// Create Chi router
 	r := chi.NewRouter()
@@ -31,9 +42,10 @@ func main() {
 	// Create Aegis router adapter
 	aegisRouter := server.NewChiRouter(r)
 
-	// Initialize Aegis
+	// Initialize Aegis with database/sql connection
+	// Specify the dialect so Aegis knows the SQL syntax to use
 	auth, err := aegis.New(
-		config.WithPostgres(database),
+		config.WithDB(sqlDB, db.PostgreSQL),
 		config.WithRouter(aegisRouter),
 		config.WithJWTSecret([]byte("your-secret-key-change-in-production")),
 		config.WithCSRFSecret([]byte("your-csrf-secret-change-in-production")),

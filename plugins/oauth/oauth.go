@@ -2,7 +2,6 @@ package oauth
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"net/http"
 	"time"
@@ -100,7 +99,9 @@ func (p *Plugin) ProvidesAuthMethods() []string {
 // This uses Goth's gothic package as the default/recommended implementation
 func (p *Plugin) BeginAuth(w http.ResponseWriter, r *http.Request, provider string) {
 	// Set the provider in the URL for gothic
-	r.URL.Query().Set("provider", provider)
+	q := r.URL.Query()
+	q.Set("provider", provider)
+	r.URL.RawQuery = q.Encode()
 
 	// Use gothic to begin auth
 	gothic.BeginAuthHandler(w, r)
@@ -157,7 +158,7 @@ func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser
 		// This would require access to core user DB
 		// For demo purposes, create a new user
 		user = &models.User{
-			ID:        generateID(),
+			ID:        core.GenerateID(),
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -166,7 +167,7 @@ func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser
 	} else {
 		// No email provided, create user with provider-based email
 		user = &models.User{
-			ID:        generateID(),
+			ID:        core.GenerateID(),
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -174,7 +175,7 @@ func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser
 
 	// Save OAuth connection
 	conn := &OAuthConnection{
-		ID:             generateID(),
+		ID:             core.GenerateID(),
 		UserID:         user.ID,
 		Provider:       provider,
 		ProviderUserID: oauthUser.ID,
@@ -202,7 +203,7 @@ func (p *Plugin) LinkAccount(ctx context.Context, userID string, oauthUser *OAut
 	}
 
 	conn := &OAuthConnection{
-		ID:             generateID(),
+		ID:             core.GenerateID(),
 		UserID:         userID,
 		Provider:       provider,
 		ProviderUserID: oauthUser.ID,
@@ -233,11 +234,4 @@ func (p *Plugin) UnlinkAccount(ctx context.Context, userID, provider string) err
 		return fmt.Errorf("database not configured")
 	}
 	return p.db.DeleteConnection(ctx, provider, userID)
-}
-
-// generateID generates a random ID
-func generateID() string {
-	bytes := make([]byte, 16)
-	rand.Read(bytes)
-	return fmt.Sprintf("%x", bytes)
 }

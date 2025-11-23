@@ -2,7 +2,7 @@ package models
 
 import "time"
 
-// Session represents an active user session
+// Session represents an active user session.
 type Session struct {
 	ID           string                 `json:"id"`
 	UserID       string                 `json:"userId"`

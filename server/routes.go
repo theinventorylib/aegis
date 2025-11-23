@@ -9,9 +9,8 @@ func MountRoutes(router Router, auth *core.AuthService, session *core.SessionSer
 	handlers := NewHandlers(auth, session)
 
 	// Auth routes
-
-	router.POST("/auth/logout", handlers.LogoutHandler)
-	router.GET("/auth/user", handlers.UserHandler)
+	router.POST(prefix+"/auth/logout", handlers.LogoutHandler)
+	router.GET(prefix+"/auth/user", handlers.UserHandler)
 
 	// Session management routes
 	router.POST(prefix+"/auth/session/refresh", handlers.RefreshSessionHandler)

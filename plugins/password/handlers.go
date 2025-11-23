@@ -28,7 +28,7 @@ func (h *Handlers) ChangePasswordHandler(w http.ResponseWriter, r *http.Request)
 	// Get current user
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Not authenticated",
 		})
@@ -43,14 +43,14 @@ func (h *Handlers) ChangePasswordHandler(w http.ResponseWriter, r *http.Request)
 
 	// Change password
 	if err := h.plugin.ChangePassword(r.Context(), user.ID, req.CurrentPassword, req.NewPassword); err != nil {
-		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+		_ = core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   err.Error(),
 		})
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.Response{
+	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Password changed successfully",
 	})

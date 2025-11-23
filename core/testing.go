@@ -50,7 +50,7 @@ func (m *MockDB) DeleteUser(ctx context.Context, id string) error {
 }
 
 func (m *MockDB) ListUsers(ctx context.Context, offset, limit int) ([]*models.User, error) {
-	var users []*models.User
+	users := make([]*models.User, 0, len(m.users))
 	for _, u := range m.users {
 		users = append(users, u)
 	}

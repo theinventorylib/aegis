@@ -81,7 +81,13 @@ func New(opts ...config.Option) (*Aegis, error) {
 
 // MountRoutes mounts all authentication routes to the router with the given prefix
 func (a *Aegis) MountRoutes(prefix string) {
+	// Mount core routes
 	server.MountRoutes(a.router, a.auth, a.session, prefix)
+
+	// Mount plugin routes
+	for _, plugin := range a.plugins {
+		plugin.MountRoutes(a.router, prefix)
+	}
 }
 
 // Use registers a plugin with the Aegis instance
@@ -91,11 +97,6 @@ func (a *Aegis) Use(plugin plugins.Plugin) error {
 	// Initialize plugin with context
 	if err := plugin.Init(ctx, a); err != nil {
 		return fmt.Errorf("failed to initialize plugin %s: %w", plugin.Name(), err)
-	}
-
-	// Auto-mount plugin routes if router is available
-	if a.router != nil {
-		plugin.MountRoutes(a.router, "/api")
 	}
 
 	a.plugins = append(a.plugins, plugin)

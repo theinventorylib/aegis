@@ -208,7 +208,7 @@ func (p *Plugin) addOrganization(ctx context.Context, name, slug, ownerID string
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }() // Ignore rollback error
 
 	// Insert org
 	_, err = tx.Exec(ctx, `

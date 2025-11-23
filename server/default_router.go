@@ -8,9 +8,9 @@ type DefaultRouter struct {
 }
 
 // NewDefaultRouter creates a new default router using net/http
-func NewDefaultRouter() *DefaultRouter {
+func NewDefaultRouter(mux *http.ServeMux) *DefaultRouter {
 	return &DefaultRouter{
-		mux: http.NewServeMux(),
+		mux: mux,
 	}
 }
 

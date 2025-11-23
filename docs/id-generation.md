@@ -51,34 +51,39 @@ By default, Aegis uses **sequential IDs** - no configuration needed!
 id := core.GenerateID()
 ```
 
-### Opt-in to UUID Strategy
+### Custom ID Generation (e.g., UUID)
 
-To use UUIDs instead (recommended for distributed systems):
+To use a custom ID generation strategy (like UUIDs), use the `config.WithIDGenerator` option when initializing Aegis:
 
 ```go
 package main
 
 import (
-    "github.com/theinventorylib/aegis/core"
+    "github.com/google/uuid"
+    "github.com/theinventorylib/aegis"
+    "github.com/theinventorylib/aegis/config"
 )
 
 func main() {
-    // Enable UUID strategy
-    core.SetIDStrategy(core.IDStrategyUUID)
-    
-    // Rest of your initialization...
+    // Initialize Aegis with a custom ID generator
+    auth, _ := aegis.New(
+        config.WithIDGenerator(func() string {
+            return uuid.NewString()
+        }),
+        // ... other options
+    )
 }
 ```
 
 ### Force Specific ID Type
 
-If your strategy is UUID but you need a sequential ID for a specific use case:
+If you need to generate a specific type of ID manually within your application code:
 
 ```go
-// Always get UUID regardless of strategy
+// Always get UUID
 id := core.GenerateUUID()
 
-// Always get sequence regardless of strategy  
+// Always get sequence ID
 id := core.GenerateSequenceID()
 ```
 

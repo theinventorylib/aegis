@@ -2,7 +2,7 @@ package models
 
 import "time"
 
-// User represents a user in the system
+// User represents a user in the system.
 type User struct {
 	ID        string                 `json:"id"`
 	CreatedAt time.Time              `json:"createdAt"`

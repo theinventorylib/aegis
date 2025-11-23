@@ -53,7 +53,7 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 	// Get user by phone number
 	user, err := h.plugin.GetUserByPhone(r.Context(), req.PhoneNumber)
 	if err != nil {
-		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Invalid credentials",
 		})
@@ -63,7 +63,7 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 	// Verify password via password plugin
 	valid, err := h.plugin.passwordPlugin.VerifyPassword(r.Context(), user.ID, req.Password)
 	if err != nil || !valid {
-		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Invalid credentials",
 		})
@@ -74,7 +74,7 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 	if h.plugin.sessionService != nil {
 		session, err := h.plugin.sessionService.CreateSession(r.Context(), user, r.RemoteAddr, r.UserAgent())
 		if err != nil {
-			core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			_ = core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 				Success: false,
 				Error:   "Failed to create session",
 			})

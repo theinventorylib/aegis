@@ -2,7 +2,7 @@ package models
 
 import "time"
 
-// JWK represents a JSON Web Key for JWT signing/verification
+// JWK represents a JSON Web Key for JWT signing/verification.
 type JWK struct {
 	Kid       string                 `json:"kid"` // Key ID
 	KeyData   map[string]interface{} `json:"keyData"`
