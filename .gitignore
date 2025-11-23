@@ -27,8 +27,13 @@ dist/
 *.zip
 
 # CLI binary
-cmd/aegis/aegis
 aegis
+!aegis/
+
+# cmd/aegis/aegis
+# !cmd/
+# !cmd/aegis/main.go
+# !cmd/aegis/README.md
 
 # IDE and editor files
 .vscode/
