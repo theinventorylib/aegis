@@ -2,9 +2,9 @@ package password
 
 import "time"
 
-// PasswordAccount represents a password-based authentication account
+// Account represents a password-based authentication account
 // Stored in auth.accounts table with provider = "password"
-type PasswordAccount struct {
+type Account struct {
 	ID           string    `json:"id"`
 	UserID       string    `json:"userId"`
 	Provider     string    `json:"provider"` // Always "password"

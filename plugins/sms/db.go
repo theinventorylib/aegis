@@ -1,3 +1,4 @@
+// Package sms provides SMS-based authentication and verification.
 package sms
 
 import (
@@ -10,16 +11,16 @@ import (
 // DB provides database operations for SMS plugin
 // This uses the core auth.verification table
 type DB struct {
-	provider db.DBProvider
+	provider db.Provider
 }
 
 // NewDB creates a new SMS plugin database instance
-func NewDB(provider db.DBProvider) *DB {
+func NewDB(provider db.Provider) *DB {
 	return &DB{provider: provider}
 }
 
 // CreateVerification creates a new SMS verification record in auth.verification
-func (d *DB) CreateVerification(ctx context.Context, verification *SMSVerification) error {
+func (d *DB) CreateVerification(ctx context.Context, verification *Verification) error {
 	_, err := d.provider.Exec(ctx, `
 		INSERT INTO auth.verification (id, identifier, token, type, expires_at, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
@@ -32,8 +33,8 @@ func (d *DB) CreateVerification(ctx context.Context, verification *SMSVerificati
 }
 
 // GetVerification retrieves the most recent valid verification for a phone/type
-func (d *DB) GetVerification(ctx context.Context, phoneNumber, verificationType string) (*SMSVerification, error) {
-	verification := &SMSVerification{}
+func (d *DB) GetVerification(ctx context.Context, phoneNumber, verificationType string) (*Verification, error) {
+	verification := &Verification{}
 
 	err := d.provider.QueryRow(ctx, `
 		SELECT id, identifier, token, type, expires_at, created_at

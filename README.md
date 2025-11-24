@@ -23,7 +23,7 @@
 
 ## ✨ Features
 
-- **Minimal Core Schema**: Only 5 essential tables.
+- **Minimal Core Schema**: Only 4 essential tables.
 - **Database Agnostic**: Works with PostgreSQL, MySQL, SQLite.
 - **Plugin System**: Email, SMS, OAuth, Password, and more.
 - **Secure**: Argon2id hashing, JWT sessions, CSRF protection.

@@ -26,7 +26,7 @@ type Plugin struct {
 type Config struct {
 	DBPool         *pgxpool.Pool
 	SessionService *core.SessionService
-	UserDB         interface{} // db.DBProvider for user operations
+	UserDB         interface{} // db.Provider for user operations
 }
 
 // New creates a new OAuth plugin
@@ -59,8 +59,8 @@ func (p *Plugin) Description() string {
 	return "OAuth authentication plugin supporting multiple providers (Google, GitHub, Apple, etc.)"
 }
 
-// Init initializes the plugin
-func (p *Plugin) Init(ctx context.Context, a plugins.Aegis) error {
+// Init initializes the plugin.
+func (p *Plugin) Init(_ context.Context, _ plugins.Aegis) error {
 	// Plugin initialization logic
 	return nil
 }
@@ -116,7 +116,7 @@ func (p *Plugin) CompleteAuth(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 
 	// Convert Goth user to our abstraction
-	oauthUser := GothUserToOAuthUser(gothUser)
+	oauthUser := GothUserToUser(gothUser)
 
 	// Get or create Aegis user
 	user, err := p.getOrCreateUser(ctx, gothUser.Provider, oauthUser)
@@ -136,7 +136,7 @@ func (p *Plugin) CompleteAuth(ctx context.Context, w http.ResponseWriter, r *htt
 }
 
 // getOrCreateUser gets an existing user or creates a new one from OAuth data
-func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser *OAuthUser) (*models.User, error) {
+func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser *User) (*models.User, error) {
 	if p.db == nil {
 		return nil, fmt.Errorf("database not configured")
 	}
@@ -174,7 +174,7 @@ func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser
 	}
 
 	// Save OAuth connection
-	conn := &OAuthConnection{
+	conn := &Connection{
 		ID:             core.GenerateID(),
 		UserID:         user.ID,
 		Provider:       provider,
@@ -197,12 +197,12 @@ func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser
 }
 
 // LinkAccount links an OAuth provider to an existing user account
-func (p *Plugin) LinkAccount(ctx context.Context, userID string, oauthUser *OAuthUser, provider string) error {
+func (p *Plugin) LinkAccount(ctx context.Context, userID string, oauthUser *User, provider string) error {
 	if p.db == nil {
 		return fmt.Errorf("database not configured")
 	}
 
-	conn := &OAuthConnection{
+	conn := &Connection{
 		ID:             core.GenerateID(),
 		UserID:         userID,
 		Provider:       provider,
@@ -221,7 +221,7 @@ func (p *Plugin) LinkAccount(ctx context.Context, userID string, oauthUser *OAut
 }
 
 // GetUserConnections retrieves all OAuth connections for a user
-func (p *Plugin) GetUserConnections(ctx context.Context, userID string) ([]*OAuthConnection, error) {
+func (p *Plugin) GetUserConnections(ctx context.Context, userID string) ([]*Connection, error) {
 	if p.db == nil {
 		return nil, fmt.Errorf("database not configured")
 	}

@@ -36,7 +36,6 @@ Aegis maintains a **minimal core schema** to avoid bloating your database. It co
 2. **`auth.accounts`**: Links authentication methods (like a password or OAuth provider) to a user.
 3. **`auth.verification`**: Stores temporary verification tokens (for email verification, password reset, etc.).
 4. **`auth.session`**: Manages active user sessions and refresh tokens.
-5. **`auth.jwks`**: Stores JSON Web Key Sets for rotating JWT signing keys.
 
 ### Schema Diagram
 
@@ -77,6 +76,25 @@ erDiagram
         timestamp expires_at
         jsonb metadata
     }
+```
+
+## Route Protection
+
+Aegis uses a consistent middleware pattern to protect routes that require authentication.
+
+### `RequireAuthMiddleware`
+
+The `core.RequireAuthMiddleware` ensures that a request is authenticated before it reaches your handler. It checks for:
+
+1.  **Session Cookie**: A valid `aegis_session` cookie.
+2.  **Bearer Token**: A valid `Authorization: Bearer <token>` header.
+
+If neither is present or valid, it returns `401 Unauthorized`.
+
+```go
+// Protect a route
+requireAuth := core.RequireAuthMiddleware(sessionService)
+router.POST("/protected-route", requireAuth(http.HandlerFunc(myHandler)).ServeHTTP)
 ```
 
 ## Plugins

@@ -1,3 +1,4 @@
+// Package migrations handles database schema migrations for Aegis core and plugins.
 package migrations
 
 import (
@@ -5,17 +6,19 @@ import (
 )
 
 //go:embed schema.sql
+
+// CoreSchemaSQL contains the embedded SQL schema for the core Aegis tables.
 var CoreSchemaSQL string
 
 // CoreMigration represents the core Aegis schema migration
 var CoreMigration = MigrationInfo{
 	Namespace:   "core",
 	Version:     "001",
-	Description: "Aegis core schema - user, accounts, verification, session, jwks",
+	Description: "Aegis core schema - user, accounts, verification, session",
 	Up:          CoreSchemaSQL,
 	Down: `
-DROP TABLE IF EXISTS auth.jwks;
-DROP TABLE IF EXISTS auth.session CASCADE;
+-- Core schema cleanup
+DROP TABLE IF EXISTS auth.session;
 DROP TABLE IF EXISTS auth.verification;
 DROP TABLE IF EXISTS auth.accounts CASCADE;
 DROP TABLE IF EXISTS auth.user CASCADE;

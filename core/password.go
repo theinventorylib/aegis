@@ -106,7 +106,12 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 	}
 
 	// Generate hash from the provided password
-	keyLen := uint32(len(hash))
+	// Check hash length to prevent overflow when converting to uint32
+	hashLen := len(hash)
+	if hashLen > int(^uint32(0)) {
+		return false, fmt.Errorf("hash length too large")
+	}
+	keyLen := uint32(hashLen)
 	computedHash := argon2.IDKey([]byte(password), salt, time, memory, threads, keyLen)
 
 	// Compare hashes

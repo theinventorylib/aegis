@@ -7,13 +7,13 @@ import (
 	"github.com/theinventorylib/aegis/core"
 )
 
-// Handlers struct contains dependencies for HTTP handlers
+// Handlers struct contains dependencies for HTTP handlers.
 type Handlers struct {
 	auth    *core.AuthService
 	session *core.SessionService
 }
 
-// NewHandlers creates a new Handlers instance
+// NewHandlers creates a new Handlers instance.
 func NewHandlers(auth *core.AuthService, session *core.SessionService) *Handlers {
 	return &Handlers{
 		auth:    auth,
@@ -21,9 +21,9 @@ func NewHandlers(auth *core.AuthService, session *core.SessionService) *Handlers
 	}
 }
 
-// LogoutHandler handles user logout
+// LogoutHandler handles user logout.
 func (h *Handlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
-	// Get session token from cookie or header
+	// Get session token from cookie or header.
 	var token string
 
 	cookie, err := r.Cookie("aegis_session")
@@ -40,7 +40,7 @@ func (h *Handlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		_ = h.auth.Logout(r.Context(), token) // Ignore error, logout is best-effort
 	}
 
-	// Clear session cookie
+	// Clear session cookie.
 	core.ClearSessionCookie(w, h.session.GetConfig())
 
 	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
@@ -49,7 +49,7 @@ func (h *Handlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// UserHandler returns the current user
+// UserHandler returns the current user.
 func (h *Handlers) UserHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
@@ -69,7 +69,7 @@ func (h *Handlers) UserHandler(w http.ResponseWriter, r *http.Request) {
 
 // ========== SESSION MANAGEMENT HANDLERS ==========
 
-// RefreshSessionHandler refreshes a session using refresh token
+// RefreshSessionHandler refreshes a session using refresh token.
 func (h *Handlers) RefreshSessionHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RefreshToken string `json:"refreshToken"`
@@ -80,7 +80,7 @@ func (h *Handlers) RefreshSessionHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Refresh the session
+	// Refresh the session.
 	newSession, err := h.session.RefreshSession(r.Context(), req.RefreshToken)
 	if err != nil {
 		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
@@ -90,7 +90,7 @@ func (h *Handlers) RefreshSessionHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Set new session cookie
+	// Set new session cookie.
 	core.SetSessionCookie(w, newSession.Token, h.session.GetConfig())
 
 	w.Header().Set("Content-Type", "application/json")
@@ -105,7 +105,7 @@ func (h *Handlers) RefreshSessionHandler(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// ValidateSessionHandler validates the current session
+// ValidateSessionHandler validates the current session.
 func (h *Handlers) ValidateSessionHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
@@ -124,7 +124,7 @@ func (h *Handlers) ValidateSessionHandler(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// ListSessionsHandler lists all active sessions for the current user
+// ListSessionsHandler lists all active sessions for the current user.
 func (h *Handlers) ListSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
@@ -151,7 +151,7 @@ func (h *Handlers) ListSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// RevokeSessionHandler revokes a specific session
+// RevokeSessionHandler revokes a specific session.
 func (h *Handlers) RevokeSessionHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
@@ -168,7 +168,7 @@ func (h *Handlers) RevokeSessionHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Delete session by token (treating ID as token)
+	// Delete session by token (treating ID as token).
 	if err := h.session.DeleteSession(r.Context(), sessionID); err != nil {
 		_ = core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -184,7 +184,7 @@ func (h *Handlers) RevokeSessionHandler(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// RevokeAllSessionsHandler revokes all sessions for the current user
+// RevokeAllSessionsHandler revokes all sessions for the current user.
 func (h *Handlers) RevokeAllSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
@@ -203,7 +203,7 @@ func (h *Handlers) RevokeAllSessionsHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.Response{
+	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "All sessions revoked successfully",
 	})

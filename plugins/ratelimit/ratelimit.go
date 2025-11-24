@@ -1,3 +1,4 @@
+// Package ratelimit provides rate limiting functionality.
 package ratelimit
 
 import (

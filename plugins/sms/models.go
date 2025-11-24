@@ -2,8 +2,8 @@ package sms
 
 import "time"
 
-// SMSVerification represents a phone number verification record
-type SMSVerification struct {
+// Verification represents a phone number verification record
+type Verification struct {
 	ID          string    `json:"id"`
 	UserID      string    `json:"userId,omitempty"`
 	PhoneNumber string    `json:"phoneNumber"`

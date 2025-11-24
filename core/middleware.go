@@ -41,8 +41,8 @@ func AuthMiddleware(sessionService *SessionService) func(http.Handler) http.Hand
 	}
 }
 
-// RequireAuthMiddleware returns middleware that requires authentication
-func RequireAuthMiddleware(sessionService *SessionService) func(http.Handler) http.Handler {
+// RequireAuthMiddleware returns middleware that requires authentication.
+func RequireAuthMiddleware(_ *SessionService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !Authenticated(r.Context()) {

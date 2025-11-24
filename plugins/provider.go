@@ -1,14 +1,19 @@
+// Package plugins defines the plugin interface and core plugin types for Aegis.
 package plugins
 
 import (
 	"context"
 
+	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/server"
 )
 
-// Aegis is a forward declaration to avoid import cycles.
-// The actual type is defined in the main aegis package.
-type Aegis interface{}
+// Aegis is the interface that plugins use to interact with the Aegis framework.
+// This is a forward declaration to avoid import cycles.
+// The actual implementation is in the main aegis package.
+type Aegis interface {
+	GetSessionService() *core.SessionService // Returns the session service for plugin integration
+}
 
 // Migration represents a database migration for a plugin.
 type Migration struct {

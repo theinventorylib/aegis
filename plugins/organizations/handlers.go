@@ -9,6 +9,28 @@ import (
 
 // ========== ORGANIZATION HANDLERS ==========
 
+// validateOrgAccess validates user authentication and organization membership.
+func (p *Plugin) validateOrgAccess(w http.ResponseWriter, r *http.Request) (orgID string, ok bool) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return "", false
+	}
+
+	orgID = r.URL.Query().Get("id")
+	if orgID == "" {
+		http.Error(w, "Organization ID required", http.StatusBadRequest)
+		return "", false
+	}
+
+	if !p.isOrganizationMember(r.Context(), user.ID, orgID) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return "", false
+	}
+
+	return orgID, true
+}
+
 // CreateOrganizationHandler creates a new organization
 func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
@@ -59,22 +81,10 @@ func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// GetOrganizationHandler gets a specific organization
+// GetOrganizationHandler gets a specific organization.
 func (p *Plugin) GetOrganizationHandler(w http.ResponseWriter, r *http.Request) {
-	user, err := core.GetUser(r.Context())
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	orgID := r.URL.Query().Get("id")
-	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
-		return
-	}
-
-	if !p.isOrganizationMember(r.Context(), user.ID, orgID) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+	orgID, ok := p.validateOrgAccess(w, r)
+	if !ok {
 		return
 	}
 
@@ -207,22 +217,10 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 	})
 }
 
-// ListOrganizationMembersHandler lists organization members
+// ListOrganizationMembersHandler lists organization members.
 func (p *Plugin) ListOrganizationMembersHandler(w http.ResponseWriter, r *http.Request) {
-	user, err := core.GetUser(r.Context())
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	orgID := r.URL.Query().Get("id")
-	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
-		return
-	}
-
-	if !p.isOrganizationMember(r.Context(), user.ID, orgID) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+	orgID, ok := p.validateOrgAccess(w, r)
+	if !ok {
 		return
 	}
 
@@ -364,22 +362,10 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ListTeamsHandler lists teams in an organization
+// ListTeamsHandler lists teams in an organization.
 func (p *Plugin) ListTeamsHandler(w http.ResponseWriter, r *http.Request) {
-	user, err := core.GetUser(r.Context())
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	orgID := r.URL.Query().Get("id")
-	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
-		return
-	}
-
-	if !p.isOrganizationMember(r.Context(), user.ID, orgID) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+	orgID, ok := p.validateOrgAccess(w, r)
+	if !ok {
 		return
 	}
 

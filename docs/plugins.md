@@ -10,7 +10,9 @@ Aegis uses a modular plugin system to provide authentication features. This allo
 | [**SMS**](./plugins/sms.md) | Phone number verification via OTP. |
 | [**OAuth**](./plugins/oauth.md) | Social login (Google, GitHub, Apple, etc.). |
 | [**Password**](./plugins/password.md) | Secure password authentication with Argon2id. |
-| **Organizations** | Multi-tenant organization support (Coming Soon). |
+| [**JWT**](./plugins/jwt.md) | JWT token generation, validation, and rotation. |
+| [**Admin**](./plugins/admin.md) | Administrative endpoints for user/org management. |
+| [**Organizations**](./plugins/organizations.md) | Multi-tenant organization and team support. |
 
 ## Using Plugins
 

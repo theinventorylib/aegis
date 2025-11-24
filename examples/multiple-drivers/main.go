@@ -1,3 +1,4 @@
+// Package main demonstrates multiple database driver usage with Aegis.
 package main
 
 import (
@@ -48,7 +49,7 @@ func postgresExample() {
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	// Test connection
 	if err := sqlDB.Ping(); err != nil {
@@ -59,8 +60,7 @@ func postgresExample() {
 	// Initialize Aegis with the database connection
 	auth, err := aegis.New(
 		config.WithDB(sqlDB, db.PostgreSQL),
-		config.WithJWTSecret([]byte("your-secret-key")),
-		config.WithAPIMode(true), // Skip CSRF for this example
+		config.WithAPIOnlyMode(true), // Skip CSRF for this example
 	)
 	if err != nil {
 		log.Fatal("Failed to initialize Aegis:", err)
@@ -94,8 +94,7 @@ func pgxExample() {
 	// Same Aegis initialization - it's driver-agnostic!
 	auth, err := aegis.New(
 		config.WithDB(sqlDB, db.PostgreSQL),
-		config.WithJWTSecret([]byte("your-secret-key")),
-		config.WithAPIMode(true),
+		config.WithAPIOnlyMode(true),
 	)
 	if err != nil {
 		log.Fatal("Failed to initialize Aegis:", err)
@@ -128,8 +127,7 @@ func mysqlExample() {
 	// Just change the dialect - everything else stays the same!
 	auth, err := aegis.New(
 		config.WithDB(sqlDB, db.MySQL),
-		config.WithJWTSecret([]byte("your-secret-key")),
-		config.WithAPIMode(true),
+		config.WithAPIOnlyMode(true),
 	)
 	if err != nil {
 		log.Fatal("Failed to initialize Aegis:", err)
@@ -157,8 +155,7 @@ func sqliteExample() {
 
 	auth, err := aegis.New(
 		config.WithDB(sqlDB, db.SQLite),
-		config.WithJWTSecret([]byte("your-secret-key")),
-		config.WithAPIMode(true),
+		config.WithAPIOnlyMode(true),
 	)
 	if err != nil {
 		log.Fatal("Failed to initialize Aegis:", err)

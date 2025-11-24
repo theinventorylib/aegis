@@ -3,6 +3,7 @@ package password
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/db"
@@ -12,15 +13,16 @@ import (
 
 // Plugin implements password authentication via auth.accounts table
 type Plugin struct {
-	db     *DB
-	userDB db.DBProvider
-	hasher *core.PasswordHasherConfig
+	db             *DB
+	userDB         db.Provider
+	hasher         *core.PasswordHasherConfig
+	sessionService *core.SessionService
 }
 
 // Config for password plugin
 type Config struct {
-	DB     db.DBProvider
-	UserDB db.DBProvider
+	DB     db.Provider
+	UserDB db.Provider
 	Hasher *core.PasswordHasherConfig // Optional, uses defaults if nil
 }
 
@@ -39,43 +41,56 @@ func New(cfg *Config) *Plugin {
 
 // Plugin interface implementation
 
+// Name returns the plugin identifier.
 func (p *Plugin) Name() string {
 	return "password"
 }
 
+// Version returns the plugin version.
 func (p *Plugin) Version() string {
 	return "1.0.0"
 }
 
+// Description returns a human-readable description.
 func (p *Plugin) Description() string {
 	return "Password authentication using auth.accounts table"
 }
 
-func (p *Plugin) Init(ctx context.Context, a plugins.Aegis) error {
-	// No initialization needed - uses core auth.accounts table
+// Init initializes the plugin.
+func (p *Plugin) Init(_ context.Context, aegis plugins.Aegis) error {
+	// Store session service for auth middleware
+	p.sessionService = aegis.GetSessionService()
 	return nil
 }
 
+// GetMigrations returns the plugin migrations.
 func (p *Plugin) GetMigrations() []plugins.Migration {
 	// No migrations needed - uses core auth.accounts table
 	return []plugins.Migration{}
 }
 
+// MountRoutes registers HTTP routes for the plugin.
 func (p *Plugin) MountRoutes(router server.Router, prefix string) {
 	handlers := NewHandlers(p)
 
-	// Password management routes
-	router.POST(prefix+"/password/change", handlers.ChangePasswordHandler)
+	// Create auth middleware - password changes require authentication
+	requireAuth := core.RequireAuthMiddleware(p.sessionService)
+
+	// Protected password management routes
+	router.POST(prefix+"/password/change", requireAuth(http.HandlerFunc(handlers.ChangePasswordHandler)).ServeHTTP)
 }
 
+// RequiresTables returns required database tables.
 func (p *Plugin) RequiresTables() []string {
 	return []string{"auth.user", "auth.accounts"}
 }
 
+// ProvidesAuthMethods returns authentication methods provided.
 func (p *Plugin) ProvidesAuthMethods() []string {
 	return []string{"password"}
 }
 
+// Dependencies returns plugin dependencies.
 func (p *Plugin) Dependencies() []plugins.Dependency {
 	return []plugins.Dependency{}
 }
@@ -97,13 +112,13 @@ func (p *Plugin) CreateAccount(ctx context.Context, userID, password string) err
 	}
 
 	// Create password account
-	return p.db.CreatePasswordAccount(ctx, userID, passwordHash)
+	return p.db.CreateAccount(ctx, userID, passwordHash)
 }
 
 // VerifyPassword verifies a password for a user ID
 func (p *Plugin) VerifyPassword(ctx context.Context, userID, password string) (bool, error) {
 	// Get password account
-	account, err := p.db.GetPasswordAccount(ctx, userID)
+	account, err := p.db.GetAccount(ctx, userID)
 	if err != nil {
 		return false, fmt.Errorf("invalid credentials")
 	}
@@ -117,15 +132,15 @@ func (p *Plugin) VerifyPassword(ctx context.Context, userID, password string) (b
 	return true, nil
 }
 
-// GetPasswordAccount retrieves a password account by user ID (public for other plugins)
-func (p *Plugin) GetPasswordAccount(ctx context.Context, userID string) (*PasswordAccount, error) {
-	return p.db.GetPasswordAccount(ctx, userID)
+// GetAccount retrieves a password account by user ID (public for other plugins)
+func (p *Plugin) GetAccount(ctx context.Context, userID string) (*Account, error) {
+	return p.db.GetAccount(ctx, userID)
 }
 
 // ChangePassword changes a user's password after verifying the old one
 func (p *Plugin) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
 	// Get password account
-	account, err := p.db.GetPasswordAccount(ctx, userID)
+	account, err := p.db.GetAccount(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("password account not found")
 	}
@@ -172,10 +187,10 @@ func (p *Plugin) ResetPassword(ctx context.Context, userID, newPassword string) 
 
 // HasPassword checks if a user has a password account
 func (p *Plugin) HasPassword(ctx context.Context, userID string) (bool, error) {
-	return p.db.HasPasswordAccount(ctx, userID)
+	return p.db.HasAccount(ctx, userID)
 }
 
 // DeleteAccount deletes a user's password account
 func (p *Plugin) DeleteAccount(ctx context.Context, userID string) error {
-	return p.db.DeletePasswordAccount(ctx, userID)
+	return p.db.DeleteAccount(ctx, userID)
 }

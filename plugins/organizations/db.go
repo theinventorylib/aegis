@@ -1,3 +1,4 @@
+// Package organizations provides team and organization management functionality.
 package organizations
 
 import (

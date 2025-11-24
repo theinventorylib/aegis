@@ -7,27 +7,25 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/redis/go-redis/v9"
 	"github.com/theinventorylib/aegis/db"
+	"github.com/theinventorylib/aegis/models"
 )
 
 // SessionService handles session management
 type SessionService struct {
-	db          db.DBProvider
-	config      *SessionConfig
-	keyManager  KeyManager
-	redisClient *redis.Client
+	db            db.Provider
+	config        *SessionConfig
+	redisClient   *redis.Client
+	tokenProvider TokenProvider // Optional: can be nil
 }
 
 // NewSessionService creates a new session service
-func NewSessionService(database db.DBProvider, cfg *SessionConfig) *SessionService {
+func NewSessionService(database db.Provider, cfg *SessionConfig) *SessionService {
 	if cfg == nil {
 		cfg = DefaultSessionConfig()
 	}
 
-	var keyManager KeyManager
 	var redisClient *redis.Client
 
 	// Initialize Redis if configured
@@ -37,45 +35,53 @@ func NewSessionService(database db.DBProvider, cfg *SessionConfig) *SessionServi
 			Password: cfg.Redis.Password,
 			DB:       cfg.Redis.DB,
 		})
-		keyManager = NewRedisKeyManager(redisClient)
-	} else {
-		// Fallback to static keys
-		km, err := NewStaticKeyManager()
-		if err != nil {
-			// In production this should probably panic or return error, but signature is fixed
-			panic(fmt.Sprintf("failed to initialize static key manager: %v", err))
-		}
-		keyManager = km
 	}
 
 	return &SessionService{
 		db:          database,
 		config:      cfg,
-		keyManager:  keyManager,
 		redisClient: redisClient,
+		// tokenProvider will be set by plugin if registered
 	}
 }
 
+// SetTokenProvider allows a plugin to register as the token provider
+func (s *SessionService) SetTokenProvider(provider TokenProvider) {
+	s.tokenProvider = provider
+}
+
+// GetRedisClient returns the Redis client (if configured)
+func (s *SessionService) GetRedisClient() *redis.Client {
+	return s.redisClient
+}
+
 // CreateSession creates a new session for a user
-func (s *SessionService) CreateSession(ctx context.Context, user *User, ipAddress, userAgent string) (*Session, error) {
-	// Generate access token (JWT)
-	token, err := s.generateJWT(user.ID, s.config.SessionExpiry)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate access token: %w", err)
+func (s *SessionService) CreateSession(ctx context.Context, user *models.User, ipAddress, userAgent string) (*models.Session, error) {
+	var token, refreshToken string
+	var expiresAt time.Time
+
+	if s.tokenProvider != nil {
+		// Use plugin-provided token generation
+		tokenPair, err := s.tokenProvider.GenerateTokenPair(user.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate token pair: %w", err)
+		}
+		token = tokenPair.AccessToken
+		refreshToken = tokenPair.RefreshToken
+		expiresAt = tokenPair.AccessExpiry
+	} else {
+		// Fallback to simple random token generation
+		token = generateRandomToken()
+		refreshToken = generateRandomToken()
+		expiresAt = time.Now().Add(s.config.SessionExpiry)
 	}
 
-	// Generate refresh token
-	refreshToken, err := s.generateRefreshToken()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
-	}
-
-	session := &Session{
-		ID:           generateSessionID(),
+	session := &models.Session{
+		ID:           GenerateSessionID(),
 		UserID:       user.ID,
 		Token:        token,
 		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(s.config.SessionExpiry),
+		ExpiresAt:    expiresAt,
 		CreatedAt:    time.Now(),
 		IPAddress:    ipAddress,
 		UserAgent:    userAgent,
@@ -89,57 +95,38 @@ func (s *SessionService) CreateSession(ctx context.Context, user *User, ipAddres
 }
 
 // ValidateSession validates a session token
-func (s *SessionService) ValidateSession(ctx context.Context, tokenString string) (*Session, *User, error) {
-	// 1. Check Redis cache first (if enabled)
-	if s.redisClient != nil {
-		// Check blacklist
-		if exists, _ := s.redisClient.Exists(ctx, "auth:blacklist:"+tokenString).Result(); exists > 0 {
-			return nil, nil, fmt.Errorf("token revoked")
+func (s *SessionService) ValidateSession(ctx context.Context, tokenString string) (*models.Session, *models.User, error) {
+	var userID string
+
+	if s.tokenProvider != nil {
+		// Use plugin-provided token validation
+		claims, err := s.tokenProvider.ValidateToken(tokenString)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid token: %w", err)
 		}
+		userID = claims.UserID
+	} else {
+		// Fallback: validate by database lookup only
+		session, err := s.db.GetSession(ctx, tokenString)
+		if err != nil {
+			return nil, nil, fmt.Errorf("session not found: %w", err)
+		}
+
+		// Check if session is expired
+		if time.Now().After(session.ExpiresAt) {
+			return nil, nil, fmt.Errorf("session expired")
+		}
+
+		userID = session.UserID
 	}
 
-	// 2. Parse and verify JWT signature
-	// We need to find the right key. For now, we just use the current access key or validate against all.
-	// In a real rotation scenario, we'd look up key by ID (kid) header.
-	// jwx/v3 Parse can handle key sets or providers.
-	// For simplicity with our KeyManager, we'll fetch the current key.
-	// Ideally, we should fetch the key based on the token's kid.
-
-	// Let's try to parse insecurely first to get kid? No, jwx allows providing a key provider.
-	// But our KeyManager isn't exactly a jwx KeyProvider.
-	// We'll use the current access key for verification as a baseline.
-	// If rotation happened, we might need to check previous keys (not implemented in simple KeyManager yet).
-
-	key, err := s.keyManager.GetAccessKey(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get verification key: %w", err)
-	}
-
-	token, err := jwt.Parse([]byte(tokenString), jwt.WithKey(jwa.RS256(), key))
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid token: %w", err)
-	}
-
-	// Extract user ID from token
-	userID, ok := token.Subject()
-	if !ok {
-		return nil, nil, fmt.Errorf("token missing subject")
-	}
-
-	// 3. Check session validity
-	// If Redis is enabled, we can check if session is cached
-	if s.redisClient != nil {
-		// TODO: Implement session caching in Redis
-		// For now, we still hit DB for session details to ensure consistency
-	}
-
-	// Get session from database
+	// Get session from database (always needed for additional metadata)
 	session, err := s.db.GetSession(ctx, tokenString)
 	if err != nil {
 		return nil, nil, fmt.Errorf("session not found: %w", err)
 	}
 
-	// Check if session is expired
+	// Check if session is expired (additional check for plugin tokens)
 	if time.Now().After(session.ExpiresAt) {
 		return nil, nil, fmt.Errorf("session expired")
 	}
@@ -153,39 +140,42 @@ func (s *SessionService) ValidateSession(ctx context.Context, tokenString string
 	return session, user, nil
 }
 
-// DeleteSession deletes a session
+// DeleteSession deletes a session and blacklists the token
 func (s *SessionService) DeleteSession(ctx context.Context, token string) error {
+	// Blacklist the token if a token provider is available
+	if s.tokenProvider != nil {
+		_ = s.tokenProvider.BlacklistToken(token) // Ignore error, continue with database deletion
+	}
+
+	// Delete from database
 	return s.db.DeleteSession(ctx, token)
 }
 
 // RefreshSession refreshes a session using a refresh token
-func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string) (*Session, error) {
+func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string) (*models.Session, error) {
 	// Get session by refresh token
 	session, err := s.db.GetSessionByRefreshToken(ctx, refreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("invalid refresh token: %w", err)
 	}
 
-	// Check if session is expired
-	if time.Now().After(session.ExpiresAt) {
-		return nil, fmt.Errorf("refresh token expired")
-	}
+	if s.tokenProvider != nil {
+		// Use plugin-provided token refresh
+		tokenPair, err := s.tokenProvider.RefreshTokens(refreshToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to refresh tokens: %w", err)
+		}
 
-	// Get user
-	user, err := s.db.GetUserByID(ctx, session.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("user not found: %w", err)
+		// Update session with new tokens
+		session.Token = tokenPair.AccessToken
+		session.RefreshToken = tokenPair.RefreshToken
+		session.ExpiresAt = tokenPair.AccessExpiry
+	} else {
+		// Fallback: generate new simple tokens
+		session.Token = generateRandomToken()
+		session.RefreshToken = generateRandomToken()
+		session.ExpiresAt = time.Now().Add(s.config.SessionExpiry)
 	}
-
-	// Generate new access token
-	token, err := s.generateJWT(user.ID, s.config.SessionExpiry)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate access token: %w", err)
-	}
-
-	// Update session
-	session.Token = token
-	session.ExpiresAt = time.Now().Add(s.config.SessionExpiry)
 
 	if err := s.db.UpdateSession(ctx, session); err != nil {
 		return nil, fmt.Errorf("failed to update session: %w", err)
@@ -194,49 +184,20 @@ func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string
 	return session, nil
 }
 
-// generateJWT generates a JWT token
-func (s *SessionService) generateJWT(userID string, expiry time.Duration) (string, error) {
-	now := time.Now()
-
-	// Get signing key
-	key, err := s.keyManager.GetAccessKey(context.Background())
-	if err != nil {
-		return "", fmt.Errorf("failed to get signing key: %w", err)
-	}
-
-	token, err := jwt.NewBuilder().
-		Subject(userID).
-		JwtID(generateSessionID()). // Add unique ID
-		IssuedAt(now).
-		Expiration(now.Add(expiry)).
-		Build()
-	if err != nil {
-		return "", err
-	}
-
-	// Sign with RS256
-	signed, err := jwt.Sign(token, jwt.WithKey(jwa.RS256(), key))
-	if err != nil {
-		return "", err
-	}
-
-	return string(signed), nil
-}
-
-// generateRefreshToken generates a random refresh token
-func (s *SessionService) generateRefreshToken() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(bytes), nil
-}
-
-// generateSessionID generates a random ID for sessions
-func generateSessionID() string {
+// GenerateSessionID generates a random ID for sessions
+func GenerateSessionID() string {
 	bytes := make([]byte, 16)
 	if _, err := rand.Read(bytes); err != nil {
 		panic(fmt.Sprintf("failed to generate session ID: %v", err))
+	}
+	return base64.URLEncoding.EncodeToString(bytes)
+}
+
+// generateRandomToken generates a random token for fallback authentication
+func generateRandomToken() string {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		panic(fmt.Sprintf("failed to generate random token: %v", err))
 	}
 	return base64.URLEncoding.EncodeToString(bytes)
 }
@@ -247,6 +208,23 @@ func (s *SessionService) GetConfig() *SessionConfig {
 }
 
 // GetDB returns the database provider (useful for handlers)
-func (s *SessionService) GetDB() db.DBProvider {
+func (s *SessionService) GetDB() db.Provider {
 	return s.db
 }
+
+// CreateSessionForPlugin creates a new session (interface implementation for plugins)
+// func (s *SessionService) CreateSessionForPlugin(ctx context.Context, user models.User, ipAddress, userAgent string) (interface{}, error) {
+// 	// context, ok := ctx.(context.Context)
+// 	// if !ok {
+// 	// 	return nil, fmt.Errorf("invalid context type")
+// 	// }
+// 	// u, ok := user.(*User)
+// 	// if !ok {
+// 	// 	return nil, fmt.Errorf("invalid user type")
+// 	// }
+// 	session, err := s.CreateSession(ctx, user, ipAddress, userAgent)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return session, nil
+// }

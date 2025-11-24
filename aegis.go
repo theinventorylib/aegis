@@ -1,3 +1,4 @@
+// Package aegis is the main authentication framework instance.
 package aegis
 
 import (
@@ -8,21 +9,22 @@ import (
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/db"
+	"github.com/theinventorylib/aegis/models"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/server"
 )
 
-// Aegis is the main authentication framework instance
+// Aegis is the main authentication framework instance.
 type Aegis struct {
 	config  *config.Config
-	db      db.DBProvider
+	db      db.Provider
 	router  server.Router
 	auth    *core.AuthService
 	session *core.SessionService
 	plugins []plugins.Plugin
 }
 
-// New creates a new Aegis instance with the provided options
+// New creates a new Aegis instance with the provided options.
 func New(opts ...config.Option) (*Aegis, error) {
 	cfg := config.Default()
 	for _, opt := range opts {
@@ -41,7 +43,6 @@ func New(opts ...config.Option) (*Aegis, error) {
 
 	// Initialize core services
 	sessionConfig := &core.SessionConfig{
-		JWTSecret:     cfg.JWTSecret,
 		SessionExpiry: cfg.SessionExpiry,
 		RefreshExpiry: cfg.RefreshExpiry,
 		CookieSettings: core.CookieSettings{
@@ -109,7 +110,7 @@ func (a *Aegis) RegisterPlugin(plugin plugins.Plugin) error {
 }
 
 // GetDB returns the database provider
-func (a *Aegis) GetDB() db.DBProvider {
+func (a *Aegis) GetDB() db.Provider {
 	return a.db
 }
 
@@ -139,11 +140,31 @@ func (a *Aegis) RequireAuth() func(http.Handler) http.Handler {
 }
 
 // GetUser returns the authenticated user from the request context
-func (a *Aegis) GetUser(ctx context.Context) (*core.User, error) {
+func (a *Aegis) GetUser(ctx context.Context) (*models.User, error) {
 	return core.GetUser(ctx)
 }
 
 // Authenticated checks if the request context has an authenticated user
 func (a *Aegis) Authenticated(ctx context.Context) bool {
 	return core.Authenticated(ctx)
+}
+
+// GetPlugin retrieves a registered plugin by name
+// Returns nil if no plugin with the given name is found
+func (a *Aegis) GetPlugin(name string) plugins.Plugin {
+	for _, plugin := range a.plugins {
+		if plugin.Name() == name {
+			return plugin
+		}
+	}
+	return nil
+}
+
+// GetPlugins returns all registered plugins
+// TODO: Not sure this is needed
+func (a *Aegis) GetPlugins() []plugins.Plugin {
+	// Return a copy to prevent external modification
+	pluginsCopy := make([]plugins.Plugin, len(a.plugins))
+	copy(pluginsCopy, a.plugins)
+	return pluginsCopy
 }

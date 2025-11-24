@@ -1,3 +1,4 @@
+// Package password provides password-based authentication.
 package password
 
 import (
@@ -9,18 +10,18 @@ import (
 	"github.com/theinventorylib/aegis/db"
 )
 
-// DB provides database operations for password accounts
+// DB provides database operations for password accounts.
 type DB struct {
-	provider db.DBProvider
+	provider db.Provider
 }
 
-// NewDB creates a new password database instance
-func NewDB(provider db.DBProvider) *DB {
+// NewDB creates a new password database instance.
+func NewDB(provider db.Provider) *DB {
 	return &DB{provider: provider}
 }
 
-// CreatePasswordAccount creates a new password account in auth.accounts
-func (d *DB) CreatePasswordAccount(ctx context.Context, userID, passwordHash string) error {
+// CreateAccount creates a new password account in auth.accounts.
+func (d *DB) CreateAccount(ctx context.Context, userID, passwordHash string) error {
 	now := time.Now()
 	id := core.GenerateID()
 
@@ -36,9 +37,9 @@ func (d *DB) CreatePasswordAccount(ctx context.Context, userID, passwordHash str
 	return nil
 }
 
-// GetPasswordAccount retrieves a password account by user ID
-func (d *DB) GetPasswordAccount(ctx context.Context, userID string) (*PasswordAccount, error) {
-	account := &PasswordAccount{}
+// GetAccount retrieves a password account by user ID
+func (d *DB) GetAccount(ctx context.Context, userID string) (*Account, error) {
+	account := &Account{}
 
 	err := d.provider.QueryRow(ctx, `
 		SELECT id, user_id, provider, password_hash, created_at, updated_at
@@ -76,8 +77,8 @@ func (d *DB) UpdatePasswordHash(ctx context.Context, userID, passwordHash string
 	return nil
 }
 
-// DeletePasswordAccount deletes a password account for a user
-func (d *DB) DeletePasswordAccount(ctx context.Context, userID string) error {
+// DeleteAccount deletes a password account for a user
+func (d *DB) DeleteAccount(ctx context.Context, userID string) error {
 	_, err := d.provider.Exec(ctx, `
 		DELETE FROM auth.accounts
 		WHERE user_id = ? AND provider = ?
@@ -90,8 +91,8 @@ func (d *DB) DeletePasswordAccount(ctx context.Context, userID string) error {
 	return nil
 }
 
-// HasPasswordAccount checks if a user has a password account
-func (d *DB) HasPasswordAccount(ctx context.Context, userID string) (bool, error) {
+// HasAccount checks if a user has a password account
+func (d *DB) HasAccount(ctx context.Context, userID string) (bool, error) {
 	var count int
 
 	err := d.provider.QueryRow(ctx, `

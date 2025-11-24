@@ -25,7 +25,9 @@ smsPlugin := sms.New(&sms.Config{
 
 ## Usage
 
-Exposes endpoints for:
+### Public Endpoints
+- `POST /sms/verify`: Verify an OTP code.
+- `POST /sms/login`: Login with phone number and password (if Password plugin is enabled).
 
-- Sending SMS OTP
-- Verifying SMS OTP
+### Protected Endpoints (Requires Authentication)
+- `POST /sms/send`: Send an OTP code to a phone number. Requires an active session to prevent spam.

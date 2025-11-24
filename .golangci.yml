@@ -26,7 +26,7 @@ linters:
     - gocyclo         # Cyclomatic complexity
     - dupl            # Code duplication
     - goconst         # Repeated strings that could be constants
-    - godot           # Check comments end in period
+    # - godot         # Check comments end in period (disabled - overly strict)
     - errname         # Check error naming conventions
 
 linters-settings:

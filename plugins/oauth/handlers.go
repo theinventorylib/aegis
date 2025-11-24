@@ -107,7 +107,7 @@ func (h *Handlers) LinkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Link the account
-	oauthUser := GothUserToOAuthUser(gothUser)
+	oauthUser := GothUserToUser(gothUser)
 	if err := h.plugin.LinkAccount(r.Context(), user.ID, oauthUser, gothUser.Provider); err != nil {
 		_ = core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
@@ -116,7 +116,7 @@ func (h *Handlers) LinkAccountHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.Response{
+	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "OAuth account linked successfully",
 	})

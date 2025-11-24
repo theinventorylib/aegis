@@ -93,7 +93,7 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 		})
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.Response{
+	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Login successful",
 		Data: map[string]interface{}{
@@ -111,14 +111,14 @@ func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.plugin.SendOTP(r.Context(), req.PhoneNumber, req.UserID, req.Purpose); err != nil {
-		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+		_ = core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   err.Error(),
 		})
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.Response{
+	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "OTP sent successfully",
 	})
@@ -134,14 +134,14 @@ func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 
 	valid, err := h.plugin.VerifyOTP(r.Context(), req.PhoneNumber, req.Code, req.Purpose)
 	if err != nil || !valid {
-		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+		_ = core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid or expired OTP",
 		})
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.Response{
+	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "OTP verified successfully",
 	})

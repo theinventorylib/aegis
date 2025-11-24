@@ -97,22 +97,8 @@ CREATE INDEX idx_session_expires_at ON auth.session(expires_at);
 CREATE INDEX idx_session_metadata ON auth.session USING GIN(metadata);
 
 -- ==============================================
--- Core Table 5: jwks
--- ==============================================
-CREATE TABLE auth.jwks (
-    kid TEXT PRIMARY KEY,
-    key_data JSONB NOT NULL,
-    algorithm TEXT NOT NULL,
-    use TEXT DEFAULT 'sig',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMP
-);
-
-CREATE INDEX idx_jwks_algorithm ON auth.jwks(algorithm);
-CREATE INDEX idx_jwks_use ON auth.jwks(use);
 
 -- +goose Down
-DROP TABLE IF EXISTS auth.jwks;
 DROP TABLE IF EXISTS auth.session;
 DROP TABLE IF EXISTS auth.verification;
 DROP TABLE IF EXISTS auth.accounts;

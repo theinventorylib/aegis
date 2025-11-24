@@ -1,3 +1,4 @@
+// Package oauth provides OAuth database operations.
 package oauth
 
 import (
@@ -20,7 +21,7 @@ func NewDB(pool *pgxpool.Pool) *DB {
 }
 
 // SaveConnection creates or updates an OAuth connection
-func (db *DB) SaveConnection(ctx context.Context, conn *OAuthConnection) error {
+func (db *DB) SaveConnection(ctx context.Context, conn *Connection) error {
 	providerDataJSON, err := json.Marshal(conn.ProviderData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal provider data: %w", err)
@@ -51,17 +52,18 @@ func (db *DB) SaveConnection(ctx context.Context, conn *OAuthConnection) error {
 	return nil
 }
 
-// GetConnection retrieves an OAuth connection by provider and user ID
-func (db *DB) GetConnection(ctx context.Context, provider, userID string) (*OAuthConnection, error) {
-	conn := &OAuthConnection{}
+// getConnectionByFields is a helper to query OAuth connections by different field combinations.
+func (db *DB) getConnectionByFields(ctx context.Context, whereClause string, args ...interface{}) (*Connection, error) {
+	conn := &Connection{}
 	var providerDataJSON []byte
 
-	err := db.pool.QueryRow(ctx, `
+	query := `
 		SELECT id, user_id, provider, provider_user_id, email, name, avatar_url, 
 		       access_token, refresh_token, expires_at, provider_data, created_at, updated_at
 		FROM plugins_oauth.connections
-		WHERE provider = $1 AND user_id = $2
-	`, provider, userID).Scan(
+		WHERE ` + whereClause
+
+	err := db.pool.QueryRow(ctx, query, args...).Scan(
 		&conn.ID, &conn.UserID, &conn.Provider, &conn.ProviderUserID, &conn.Email, &conn.Name,
 		&conn.AvatarURL, &conn.AccessToken, &conn.RefreshToken, &conn.ExpiresAt,
 		&providerDataJSON, &conn.CreatedAt, &conn.UpdatedAt,
@@ -81,38 +83,18 @@ func (db *DB) GetConnection(ctx context.Context, provider, userID string) (*OAut
 	return conn, nil
 }
 
-// GetConnectionByProviderUserID retrieves connection by provider and provider user ID
-func (db *DB) GetConnectionByProviderUserID(ctx context.Context, provider, providerUserID string) (*OAuthConnection, error) {
-	conn := &OAuthConnection{}
-	var providerDataJSON []byte
+// GetConnection retrieves an OAuth connection by provider and user ID.
+func (db *DB) GetConnection(ctx context.Context, provider, userID string) (*Connection, error) {
+	return db.getConnectionByFields(ctx, "provider = $1 AND user_id = $2", provider, userID)
+}
 
-	err := db.pool.QueryRow(ctx, `
-		SELECT id, user_id, provider, provider_user_id, email, name, avatar_url, 
-		       access_token, refresh_token, expires_at, provider_data, created_at, updated_at
-		FROM plugins_oauth.connections
-		WHERE provider = $1 AND provider_user_id = $2
-	`, provider, providerUserID).Scan(
-		&conn.ID, &conn.UserID, &conn.Provider, &conn.ProviderUserID, &conn.Email, &conn.Name,
-		&conn.AvatarURL, &conn.AccessToken, &conn.RefreshToken, &conn.ExpiresAt,
-		&providerDataJSON, &conn.CreatedAt, &conn.UpdatedAt,
-	)
-
-	if err == pgx.ErrNoRows {
-		return nil, fmt.Errorf("OAuth connection not found")
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get OAuth connection: %w", err)
-	}
-
-	if err := json.Unmarshal(providerDataJSON, &conn.ProviderData); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal provider data: %w", err)
-	}
-
-	return conn, nil
+// GetConnectionByProviderUserID retrieves connection by provider and provider user ID.
+func (db *DB) GetConnectionByProviderUserID(ctx context.Context, provider, providerUserID string) (*Connection, error) {
+	return db.getConnectionByFields(ctx, "provider = $1 AND provider_user_id = $2", provider, providerUserID)
 }
 
 // GetUserConnections retrieves all OAuth connections for a user
-func (db *DB) GetUserConnections(ctx context.Context, userID string) ([]*OAuthConnection, error) {
+func (db *DB) GetUserConnections(ctx context.Context, userID string) ([]*Connection, error) {
 	rows, err := db.pool.Query(ctx, `
 		SELECT id, user_id, provider, provider_user_id, email, name, avatar_url, 
 		       access_token, refresh_token, expires_at, provider_data, created_at, updated_at
@@ -125,9 +107,9 @@ func (db *DB) GetUserConnections(ctx context.Context, userID string) ([]*OAuthCo
 	}
 	defer rows.Close()
 
-	var connections []*OAuthConnection
+	var connections []*Connection
 	for rows.Next() {
-		conn := &OAuthConnection{}
+		conn := &Connection{}
 		var providerDataJSON []byte
 
 		err := rows.Scan(

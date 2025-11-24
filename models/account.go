@@ -1,3 +1,4 @@
+// Package models defines the core data structures for Aegis authentication.
 package models
 
 import "time"

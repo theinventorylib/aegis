@@ -7,7 +7,7 @@ import (
 	"github.com/markbates/goth"
 )
 
-// GothAdapter adapts goth.Provider to our OAuthProvider interface
+// GothAdapter adapts goth.Provider to our Provider interface
 // This makes Goth the default/recommended implementation while keeping it optional
 type GothAdapter struct {
 	provider goth.Provider
@@ -42,8 +42,8 @@ func (g *GothAdapter) GetAuthURL(state string) (string, error) {
 	return authURL, nil
 }
 
-// Exchange exchanges authorization code for user information
-func (g *GothAdapter) Exchange(code string) (*OAuthUser, error) {
+// Exchange exchanges authorization code for user information.
+func (g *GothAdapter) Exchange(_ string) (*User, error) {
 	// Note: This is a simplified version. In practice, you'd need to handle
 	// the full OAuth flow with sessions. For now, we'll use the CompleteAuth approach
 	// which requires gothic to be properly configured.
@@ -53,15 +53,15 @@ func (g *GothAdapter) Exchange(code string) (*OAuthUser, error) {
 	return nil, fmt.Errorf("use gothic.CompleteUserAuth for full Goth integration")
 }
 
-// GothUserToOAuthUser converts goth.User to OAuthUser
+// GothUserToUser converts goth.User to User
 // This is a helper function for converting Goth users to our abstraction
-func GothUserToOAuthUser(gothUser goth.User) *OAuthUser {
+func GothUserToUser(gothUser goth.User) *User {
 	var expiresAt int64
 	if !gothUser.ExpiresAt.IsZero() {
 		expiresAt = gothUser.ExpiresAt.Unix()
 	}
 
-	return &OAuthUser{
+	return &User{
 		ID:           gothUser.UserID,
 		Email:        gothUser.Email,
 		Name:         gothUser.Name,
@@ -72,9 +72,9 @@ func GothUserToOAuthUser(gothUser goth.User) *OAuthUser {
 	}
 }
 
-// OAuthUserToGothUser converts OAuthUser to goth.User
+// UserToGothUser converts User to goth.User
 // This is a helper function for converting our abstraction to Goth
-func OAuthUserToGothUser(oauthUser *OAuthUser, provider string) goth.User {
+func UserToGothUser(oauthUser *User, provider string) goth.User {
 	var expiresAt time.Time
 	if oauthUser.ExpiresAt > 0 {
 		expiresAt = time.Unix(oauthUser.ExpiresAt, 0)

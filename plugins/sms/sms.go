@@ -3,6 +3,7 @@ package sms
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/theinventorylib/aegis"
@@ -16,7 +17,7 @@ import (
 
 // Plugin represents the SMS plugin for Aegis
 type Plugin struct {
-	db             db.DBProvider
+	db             db.Provider
 	provider       Provider
 	otpExpiry      time.Duration
 	otpLength      int
@@ -26,7 +27,7 @@ type Plugin struct {
 
 // Config holds SMS plugin configuration
 type Config struct {
-	DB             db.DBProvider
+	DB             db.Provider
 	Provider       Provider      // SMS sending provider
 	OTPExpiry      time.Duration // OTP expiry duration
 	OTPLength      int
@@ -72,8 +73,8 @@ func (p *Plugin) Description() string {
 	return "SMS verification plugin for phone number validation and MFA"
 }
 
-// Init initializes the plugin
-func (p *Plugin) Init(ctx context.Context, a plugins.Aegis) error {
+// Init initializes the plugin.
+func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 	// Get session service from Aegis instance
 	if app, ok := a.(*aegis.Aegis); ok {
 		p.sessionService = app.GetSessionService()
@@ -85,13 +86,18 @@ func (p *Plugin) Init(ctx context.Context, a plugins.Aegis) error {
 func (p *Plugin) MountRoutes(router server.Router, prefix string) {
 	handlers := NewHandlers(p)
 
-	// SMS OTP routes
-	router.POST(prefix+"/sms/send", handlers.SendOTPHandler)
-	router.POST(prefix+"/sms/verify", handlers.VerifyOTPHandler)
+	// Create auth middleware for protected routes
+	requireAuth := core.RequireAuthMiddleware(p.sessionService)
+
+	// Protected route - sending OTP requires authentication to prevent spam/abuse
+	router.POST(prefix+"/sms/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
+
+	// Public routes
+	router.POST(prefix+"/sms/verify", handlers.VerifyOTPHandler) // User proving phone ownership
 
 	// Phone+password authentication (if password plugin configured)
 	if p.passwordPlugin != nil {
-		router.POST(prefix+"/sms/login", handlers.LoginWithPhoneHandler)
+		router.POST(prefix+"/sms/login", handlers.LoginWithPhoneHandler) // Login endpoint
 	}
 }
 

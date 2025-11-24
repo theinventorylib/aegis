@@ -16,7 +16,7 @@ import (
 
 // Plugin provides email verification functionality
 type Plugin struct {
-	db             db.DBProvider
+	db             db.Provider
 	provider       Provider
 	otpExpiry      time.Duration
 	passwordPlugin *password.Plugin // For email+password authentication
@@ -25,7 +25,7 @@ type Plugin struct {
 
 // Config for email plugin
 type Config struct {
-	DB             db.DBProvider
+	DB             db.Provider
 	Provider       Provider         // Email sending provider
 	OTPExpiry      time.Duration    // OTP expiry duration
 	PasswordPlugin *password.Plugin // Optional: for email+password auth
@@ -62,8 +62,8 @@ func (p *Plugin) Description() string {
 	return "Email verification plugin for email validation, magic links, and password reset"
 }
 
-// Init initializes the plugin
-func (p *Plugin) Init(ctx context.Context, a plugins.Aegis) error {
+// Init initializes the email plugin.
+func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 	// Get session service from Aegis instance
 	if app, ok := a.(*aegis.Aegis); ok {
 		p.sessionService = app.GetSessionService()
@@ -109,7 +109,8 @@ func (p *Plugin) ProvidesAuthMethods() []string {
 }
 
 // SendPasswordResetEmail sends a password reset email with a magic link
-func (p *Plugin) SendPasswordResetEmail(ctx context.Context, email, token, resetURL string) error {
+// SendPasswordResetEmail sends a password reset email.
+func (p *Plugin) SendPasswordResetEmail(_ context.Context, email, token, resetURL string) error {
 	if p.provider == nil {
 		return fmt.Errorf("email provider not configured")
 	}
@@ -183,7 +184,8 @@ func (p *Plugin) SendPasswordResetOTP(ctx context.Context, email, userID string)
 }
 
 // SendVerificationEmail sends an email verification email
-func (p *Plugin) SendVerificationEmail(ctx context.Context, email, token, verifyURL string) error {
+// SendVerificationEmail sends an email verification email.
+func (p *Plugin) SendVerificationEmail(_ context.Context, email, token, verifyURL string) error {
 	if p.provider == nil {
 		return fmt.Errorf("email provider not configured")
 	}
@@ -292,7 +294,8 @@ func (p *Plugin) GetUserByEmail(ctx context.Context, email string) (*models.User
 // CreateUserWithEmail creates a user with email
 func (p *Plugin) CreateUserWithEmail(ctx context.Context, email string) (*models.User, error) {
 	// 1. Create core user
-	user, err := p.sessionService.GetDB().CreateUser(ctx)
+	dbProvider := p.sessionService.GetDB()
+	user, err := dbProvider.CreateUser(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -1,3 +1,4 @@
+// Package main provides the Aegis CLI tool for managing authentication migrations and setup.
 package main
 
 import (

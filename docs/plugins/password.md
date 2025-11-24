@@ -24,8 +24,10 @@ passwordPlugin := password.New(&password.Config{
 
 ## Usage
 
-Exposes endpoints for:
+### Public Endpoints
+- `POST /password/register`: Register a new user (if enabled).
+- `POST /password/login`: Login with email/phone and password.
+- `POST /password/reset`: Request a password reset.
 
-- Registration (with email/password)
-- Login
-- Password Reset
+### Protected Endpoints (Requires Authentication)
+- `POST /password/change`: Change the current user's password.

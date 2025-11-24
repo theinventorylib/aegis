@@ -28,9 +28,9 @@ var (
 	// Global ID strategy configuration (defaults to Sequence)
 	currentIDStrategy = IDStrategySequence
 	// Sequence counter for IDStrategySequence mode
-	sequenceCounter uint64 = 0
+	sequenceCounter uint64
 	// Custom ID generator function (nil by default)
-	customIDGenerator IDGeneratorFunc = nil
+	customIDGenerator IDGeneratorFunc
 )
 
 // SetIDStrategy sets the global ID generation strategy
@@ -58,10 +58,10 @@ func GenerateOTPCode(length int) (string, error) {
 	}
 
 	// Calculate the maximum value for the OTP (e.g., 999999 for 6 digits)
-	max := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(length)), nil)
-	max.Sub(max, big.NewInt(1))
+	maxValue := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(length)), nil)
+	maxValue.Sub(maxValue, big.NewInt(1))
 
-	n, err := rand.Int(rand.Reader, max)
+	n, err := rand.Int(rand.Reader, maxValue)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate OTP: %w", err)
 	}

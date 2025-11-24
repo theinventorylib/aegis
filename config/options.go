@@ -1,3 +1,4 @@
+// Package config provides configuration types and options for Aegis.
 package config
 
 import (
@@ -13,14 +14,13 @@ import (
 // Config holds the configuration for Aegis
 type Config struct {
 	// Core dependencies
-	DB     db.DBProvider
+	DB     db.Provider
 	Router server.Router
 
 	// Internal error tracking (not exported)
 	dbError error
 
 	// Security
-	JWTSecret      []byte
 	CSRFSecret     []byte
 	SessionExpiry  time.Duration
 	RefreshExpiry  time.Duration
@@ -79,9 +79,6 @@ func (c *Config) Validate() error {
 	if c.Router == nil {
 		return errors.New("router is required")
 	}
-	if len(c.JWTSecret) == 0 {
-		return errors.New("JWT secret is required")
-	}
 	// CSRF secret only required for web apps (not API-only mode)
 	if !c.APIMode && len(c.CSRFSecret) == 0 {
 		return errors.New("CSRF secret is required (or set APIMode=true for API-only apps)")
@@ -105,11 +102,11 @@ type Option func(*Config)
 //	aegis.New(config.WithDB(sqlDB, db.PostgreSQL), ...)
 func WithDB(sqlDB interface{}, dialect db.Dialect) Option {
 	return func(c *Config) {
-		// Support both *sql.DB and db.DBProvider for flexibility
+		// Support both *sql.DB and db.Provider for flexibility
 		switch v := sqlDB.(type) {
 		case *sql.DB:
 			c.DB = db.NewSQLProvider(v, dialect)
-		case db.DBProvider:
+		case db.Provider:
 			// Allow passing DBProvider directly for advanced use cases
 			c.DB = v
 		}
@@ -180,13 +177,6 @@ func WithRouter(router server.Router) Option {
 	}
 }
 
-// WithJWTSecret sets the JWT signing secret
-func WithJWTSecret(secret []byte) Option {
-	return func(c *Config) {
-		c.JWTSecret = secret
-	}
-}
-
 // WithCSRFSecret sets the CSRF protection secret
 func WithCSRFSecret(secret []byte) Option {
 	return func(c *Config) {
@@ -249,9 +239,9 @@ func WithIDGenerator(generator func() string) Option {
 	}
 }
 
-// WithAPIMode enables API-only mode (skips CSRF secret requirement)
+// WithAPIOnlyMode enables API-only mode (skips CSRF secret requirement)
 // Use this when building APIs without web UI
-func WithAPIMode(enabled bool) Option {
+func WithAPIOnlyMode(enabled bool) Option {
 	return func(c *Config) {
 		c.APIMode = enabled
 	}

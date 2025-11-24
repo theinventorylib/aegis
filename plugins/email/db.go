@@ -1,3 +1,4 @@
+// Package email provides email-based authentication and verification.
 package email
 
 import (
@@ -10,16 +11,16 @@ import (
 // DB provides database operations for Email plugin
 // This uses the core auth.verification table
 type DB struct {
-	provider db.DBProvider
+	provider db.Provider
 }
 
 // NewDB creates a new Email plugin database instance
-func NewDB(provider db.DBProvider) *DB {
+func NewDB(provider db.Provider) *DB {
 	return &DB{provider: provider}
 }
 
 // CreateVerification creates a new email verification record in auth.verification
-func (d *DB) CreateVerification(ctx context.Context, verification *EmailVerification) error {
+func (d *DB) CreateVerification(ctx context.Context, verification *Verification) error {
 	_, err := d.provider.Exec(ctx, `
 		INSERT INTO auth.verification (id, identifier, token, type, expires_at, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
@@ -32,8 +33,8 @@ func (d *DB) CreateVerification(ctx context.Context, verification *EmailVerifica
 }
 
 // GetVerificationByEmail retrieves the most recent valid verification for an email/type
-func (d *DB) GetVerificationByEmail(ctx context.Context, email, verificationType string) (*EmailVerification, error) {
-	verification := &EmailVerification{}
+func (d *DB) GetVerificationByEmail(ctx context.Context, email, verificationType string) (*Verification, error) {
+	verification := &Verification{}
 
 	err := d.provider.QueryRow(ctx, `
 		SELECT id, identifier, token, type, expires_at, created_at
@@ -54,8 +55,8 @@ func (d *DB) GetVerificationByEmail(ctx context.Context, email, verificationType
 }
 
 // GetVerificationByToken retrieves verification by token from auth.verification
-func (d *DB) GetVerificationByToken(ctx context.Context, token string) (*EmailVerification, error) {
-	verification := &EmailVerification{}
+func (d *DB) GetVerificationByToken(ctx context.Context, token string) (*Verification, error) {
+	verification := &Verification{}
 
 	err := d.provider.QueryRow(ctx, `
 		SELECT id, identifier, token, type, expires_at, created_at

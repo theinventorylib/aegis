@@ -1,3 +1,4 @@
+// Package main demonstrates Aegis with multiple plugins.
 package main
 
 import (
@@ -26,7 +27,7 @@ import (
 // MockEmailProvider implements email.Provider for testing
 type MockEmailProvider struct{}
 
-func (m *MockEmailProvider) SendEmail(to, subject, body string) error {
+func (m *MockEmailProvider) SendEmail(to, subject, _ string) error {
 	fmt.Printf("[MockEmail] To: %s, Subject: %s\n", to, subject)
 	return nil
 }
@@ -59,7 +60,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	// Test connection
 	if err := sqlDB.Ping(); err != nil {
@@ -108,7 +109,6 @@ func main() {
 	auth, err := aegis.New(
 		config.WithDB(sqlDB, db.PostgreSQL),
 		config.WithRouter(aegisRouter),
-		config.WithJWTSecret([]byte("demo-secret-key-do-not-use-in-prod")),
 	)
 	if err != nil {
 		log.Fatal("Failed to initialize Aegis:", err)
@@ -143,21 +143,28 @@ func main() {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-			w.Write([]byte(fmt.Sprintf("Hello, %s!", user.ID)))
+			_, _ = fmt.Fprintf(w, "Hello, %s!", user.ID)
 		})
 	})
 
 	// 7. Admin Routes Example (Protected by Admin Middleware)
+	// Now you can retrieve plugins from the auth instance!
 	r.Group(func(r chi.Router) {
 		// Note: You usually want to combine AuthMiddleware + AdminMiddleware
 		// But the admin plugin's middleware might handle user fetching too.
 		// Let's check admin.AdminMiddleware implementation - it calls core.GetUser.
 		// So we need AuthMiddleware first to populate the context.
 		r.Use(auth.AuthMiddleware())
-		r.Use(adminPlugin.AdminMiddleware)
 
-		r.Get("/api/admin/dashboard", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("Welcome to the Admin Dashboard"))
+		// Retrieve admin plugin from auth instance instead of keeping a reference
+		if adminPlugin := auth.GetPlugin("admin"); adminPlugin != nil {
+			if ap, ok := adminPlugin.(*admin.Plugin); ok {
+				r.Use(ap.AdminMiddleware)
+			}
+		}
+
+		r.Get("/api/admin/dashboard", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("Welcome to the Admin Dashboard"))
 		})
 	})
 
@@ -171,7 +178,17 @@ func main() {
 	fmt.Println("  POST   /auth/password/change   (Change Password)")
 	fmt.Println("  GET    /api/admin/users        (List Users - Admin only)")
 
-	if err := http.ListenAndServe(port, r); err != nil {
+	// Start server with timeouts
+	server := &http.Server{
+		Addr:           port,
+		Handler:        r,
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   15 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MB
+	}
+
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

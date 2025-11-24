@@ -1,8 +1,9 @@
 -- ==============================================
 -- Aegis Core Schema v2.0
--- 5 Core Tables: user, accounts, verification, session, jwks
+-- 4 Core Tables: user, accounts, verification, session
 -- Everything else is plugin-managed
 -- ==============================================
+
 
 -- Drop old tables (will be migrated)
 DROP TABLE IF EXISTS auth.password_reset_tokens CASCADE;
@@ -85,24 +86,11 @@ CREATE INDEX idx_session_refresh_token ON auth.session(refresh_token);
 CREATE INDEX idx_session_expires_at ON auth.session(expires_at);
 CREATE INDEX idx_session_metadata ON auth.session USING GIN(metadata);
 
--- ==============================================
--- Core Table 5: jwks
--- ==============================================
-CREATE TABLE auth.jwks (
-    kid TEXT PRIMARY KEY,
-    key_data JSONB NOT NULL,
-    algorithm TEXT NOT NULL,
-    use TEXT DEFAULT 'sig', -- 'sig' for signing, 'enc' for encryption
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMP
-);
-
-CREATE INDEX idx_jwks_algorithm ON auth.jwks(algorithm);
-CREATE INDEX idx_jwks_use ON auth.jwks(use);
 
 -- ==============================================
 -- Triggers for updated_at
 -- ==============================================
+
 CREATE OR REPLACE FUNCTION auth.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN

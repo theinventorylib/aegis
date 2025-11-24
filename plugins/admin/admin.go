@@ -1,8 +1,11 @@
+// Package admin provides administrative functionality for user and organization management.
 package admin
 
 import (
 	"context"
+	"net/http"
 
+	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/db"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/server"
@@ -10,11 +13,12 @@ import (
 
 // Plugin implements admin-level management
 type Plugin struct {
-	database db.DBProvider
+	database       db.Provider
+	sessionService *core.SessionService
 }
 
 // New creates a new admin plugin
-func New(database db.DBProvider) *Plugin {
+func New(database db.Provider) *Plugin {
 	return &Plugin{
 		database: database,
 	}
@@ -35,33 +39,35 @@ func (p *Plugin) Description() string {
 	return "Admin dashboard and management API"
 }
 
-// Init initializes the admin plugin
-func (p *Plugin) Init(ctx context.Context, a plugins.Aegis) error {
-	// No initialization needed
+// Init initializes the admin plugin.
+func (p *Plugin) Init(_ context.Context, aegis plugins.Aegis) error {
+	// Store session service for auth middleware
+	p.sessionService = aegis.GetSessionService()
 	return nil
 }
 
 // MountRoutes registers HTTP routes
 func (p *Plugin) MountRoutes(router server.Router, prefix string) {
-	// Apply admin middleware to all admin routes
-	// Note: Users should apply RequireAuth middleware before these routes
+	// Create auth middleware - ALL admin routes require authentication
+	// TODO: Add role-based access control (RequireAdminMiddleware) for production
+	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
-	// User management
-	router.GET(prefix+"/admin/users", p.ListUsersHandler)
-	router.GET(prefix+"/admin/users/:id", p.GetUserHandler)
-	router.POST(prefix+"/admin/users/:id/disable", p.DisableUserHandler)
-	router.POST(prefix+"/admin/users/:id/enable", p.EnableUserHandler)
-	router.DELETE(prefix+"/admin/users/:id", p.DeleteUserHandler)
+	// User management - all protected
+	router.GET(prefix+"/admin/users", requireAuth(http.HandlerFunc(p.ListUsersHandler)).ServeHTTP)
+	router.GET(prefix+"/admin/users/:id", requireAuth(http.HandlerFunc(p.GetUserHandler)).ServeHTTP)
+	router.POST(prefix+"/admin/users/:id/disable", requireAuth(http.HandlerFunc(p.DisableUserHandler)).ServeHTTP)
+	router.POST(prefix+"/admin/users/:id/enable", requireAuth(http.HandlerFunc(p.EnableUserHandler)).ServeHTTP)
+	router.DELETE(prefix+"/admin/users/:id", requireAuth(http.HandlerFunc(p.DeleteUserHandler)).ServeHTTP)
 
-	// Organization management
-	router.POST(prefix+"/admin/organizations", p.AddOrganizationHandler)
-	router.GET(prefix+"/admin/organizations", p.ListOrganizationsHandler)
-	router.GET(prefix+"/admin/organizations/:id", p.GetOrganizationHandler)
-	router.POST(prefix+"/admin/organizations/:id/ban", p.BanOrganizationHandler)
-	router.DELETE(prefix+"/admin/organizations/:id", p.DeleteOrganizationHandler)
+	// Organization management - all protected
+	router.POST(prefix+"/admin/organizations", requireAuth(http.HandlerFunc(p.AddOrganizationHandler)).ServeHTTP)
+	router.GET(prefix+"/admin/organizations", requireAuth(http.HandlerFunc(p.ListOrganizationsHandler)).ServeHTTP)
+	router.GET(prefix+"/admin/organizations/:id", requireAuth(http.HandlerFunc(p.GetOrganizationHandler)).ServeHTTP)
+	router.POST(prefix+"/admin/organizations/:id/ban", requireAuth(http.HandlerFunc(p.BanOrganizationHandler)).ServeHTTP)
+	router.DELETE(prefix+"/admin/organizations/:id", requireAuth(http.HandlerFunc(p.DeleteOrganizationHandler)).ServeHTTP)
 
-	// Stats and analytics
-	router.GET(prefix+"/admin/stats", p.GetStatsHandler)
+	// Stats and analytics - protected
+	router.GET(prefix+"/admin/stats", requireAuth(http.HandlerFunc(p.GetStatsHandler)).ServeHTTP)
 }
 
 // Dependencies returns plugin dependencies

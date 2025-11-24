@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"errors"
+
+	"github.com/theinventorylib/aegis/models"
 )
 
 // contextKey is a custom type for context keys to avoid collisions
@@ -13,13 +15,13 @@ const (
 )
 
 // WithUser adds a user to the context
-func WithUser(ctx context.Context, user *User) context.Context {
+func WithUser(ctx context.Context, user *models.User) context.Context {
 	return context.WithValue(ctx, userContextKey, user)
 }
 
 // GetUser extracts the user from the context
-func GetUser(ctx context.Context) (*User, error) {
-	user, ok := ctx.Value(userContextKey).(*User)
+func GetUser(ctx context.Context) (*models.User, error) {
+	user, ok := ctx.Value(userContextKey).(*models.User)
 	if !ok || user == nil {
 		return nil, errors.New("user not found in context")
 	}

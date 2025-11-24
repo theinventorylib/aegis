@@ -2,8 +2,8 @@ package oauth
 
 import "time"
 
-// OAuthConnection represents an OAuth provider connection for a user
-type OAuthConnection struct {
+// Connection represents an OAuth provider connection for a user
+type Connection struct {
 	ID             string                 `json:"id"`
 	UserID         string                 `json:"userId"`
 	Provider       string                 `json:"provider"`

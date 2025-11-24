@@ -12,7 +12,6 @@ type PasswordHasherConfig struct {
 
 // SessionConfig defines configuration for session management
 type SessionConfig struct {
-	JWTSecret      []byte
 	SessionExpiry  time.Duration
 	RefreshExpiry  time.Duration
 	CookieSettings CookieSettings
@@ -35,7 +34,7 @@ type CookieSettings struct {
 	SameSite string // "Lax", "Strict", or "None"
 }
 
-// Default returns default password hashing configuration
+// DefaultPasswordHasherConfig returns default password hashing configuration.
 func DefaultPasswordHasherConfig() *PasswordHasherConfig {
 	return &PasswordHasherConfig{
 		Argon2Time:      1,

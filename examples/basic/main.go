@@ -1,3 +1,4 @@
+// Package main demonstrates basic Aegis usage.
 package main
 
 import (
@@ -5,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -27,7 +29,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to open database connection:", err)
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	// Test the connection
 	if err := sqlDB.Ping(); err != nil {
@@ -47,7 +49,6 @@ func main() {
 	auth, err := aegis.New(
 		config.WithDB(sqlDB, db.PostgreSQL),
 		config.WithRouter(aegisRouter),
-		config.WithJWTSecret([]byte("your-secret-key-change-in-production")),
 		config.WithCSRFSecret([]byte("your-csrf-secret-change-in-production")),
 		config.WithCookieSecure(false), // Set to true in production with HTTPS
 	)
@@ -71,7 +72,7 @@ func main() {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `{"message":"Hello, user %s!"}`, user.ID)
+			_, _ = fmt.Fprintf(w, `{"message":"Hello, user %s!"}`, user.ID)
 		})
 	})
 
@@ -89,7 +90,17 @@ func main() {
 	fmt.Println("Protected endpoints:")
 	fmt.Println("  GET    /api/protected")
 
-	if err := http.ListenAndServe(port, r); err != nil {
+	// Start server with timeouts
+	server := &http.Server{
+		Addr:           port,
+		Handler:        r,
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   15 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MB
+	}
+
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

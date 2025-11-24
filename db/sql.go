@@ -9,19 +9,19 @@ import (
 	"github.com/theinventorylib/aegis/models"
 )
 
-// Dialect represents SQL syntax variations between database systems
+// Dialect represents SQL syntax variations between database systems.
 type Dialect string
 
 const (
-	// PostgreSQL dialect (supports $1, $2 placeholders and RETURNING)
+	// PostgreSQL dialect (supports $1, $2 placeholders and RETURNING).
 	PostgreSQL Dialect = "postgres"
-	// MySQL dialect (supports ? placeholders and LAST_INSERT_ID)
+	// MySQL dialect (supports ? placeholders and LAST_INSERT_ID).
 	MySQL Dialect = "mysql"
-	// SQLite dialect (supports ? placeholders and LAST_INSERT_ID)
+	// SQLite dialect (supports ? placeholders and LAST_INSERT_ID).
 	SQLite Dialect = "sqlite"
 )
 
-// SQLProvider implements DBProvider using database/sql for any SQL database
+// SQLProvider implements DBProvider using database/sql for any SQL database.
 type SQLProvider struct {
 	db      *sql.DB
 	dialect Dialect
@@ -37,14 +37,14 @@ func NewSQLProvider(db *sql.DB, dialect Dialect) *SQLProvider {
 	}
 }
 
-// Close closes the database connection
+// Close closes the database connection.
 func (p *SQLProvider) Close() error {
 	return p.db.Close()
 }
 
 // ========== GENERIC QUERY INTERFACE ==========
 
-// sqlRow wraps *sql.Row to implement db.Row
+// sqlRow wraps *sql.Row to implement db.Row.
 type sqlRow struct {
 	row *sql.Row
 }
@@ -53,7 +53,7 @@ func (r *sqlRow) Scan(dest ...interface{}) error {
 	return r.row.Scan(dest...)
 }
 
-// sqlRows wraps *sql.Rows to implement db.Rows
+// sqlRows wraps *sql.Rows to implement db.Rows.
 type sqlRows struct {
 	rows *sql.Rows
 }
@@ -74,7 +74,7 @@ func (r *sqlRows) Err() error {
 	return r.rows.Err()
 }
 
-// sqlResult wraps sql.Result to implement db.Result
+// sqlResult wraps sql.Result to implement db.Result.
 type sqlResult struct {
 	result sql.Result
 }
@@ -87,7 +87,7 @@ func (r *sqlResult) LastInsertId() (int64, error) {
 	return r.result.LastInsertId()
 }
 
-// sqlTx wraps *sql.Tx to implement db.Tx
+// sqlTx wraps *sql.Tx to implement db.Tx.
 type sqlTx struct {
 	tx *sql.Tx
 }
@@ -112,15 +112,15 @@ func (t *sqlTx) QueryRow(ctx context.Context, query string, args ...interface{})
 	return &sqlRow{row: t.tx.QueryRowContext(ctx, query, args...)}
 }
 
-func (t *sqlTx) Commit(ctx context.Context) error {
+func (t *sqlTx) Commit(_ context.Context) error {
 	return t.tx.Commit()
 }
 
-func (t *sqlTx) Rollback(ctx context.Context) error {
+func (t *sqlTx) Rollback(_ context.Context) error {
 	return t.tx.Rollback()
 }
 
-// Query executes a query that returns rows
+// Query executes a query that returns rows.
 func (p *SQLProvider) Query(ctx context.Context, query string, args ...interface{}) (Rows, error) {
 	rows, err := p.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -129,12 +129,12 @@ func (p *SQLProvider) Query(ctx context.Context, query string, args ...interface
 	return &sqlRows{rows: rows}, nil
 }
 
-// QueryRow executes a query that returns a single row
+// QueryRow executes a query that returns a single row.
 func (p *SQLProvider) QueryRow(ctx context.Context, query string, args ...interface{}) Row {
 	return &sqlRow{row: p.db.QueryRowContext(ctx, query, args...)}
 }
 
-// Exec executes a query that doesn't return rows
+// Exec executes a query that doesn't return rows.
 func (p *SQLProvider) Exec(ctx context.Context, query string, args ...interface{}) (Result, error) {
 	result, err := p.db.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -143,7 +143,7 @@ func (p *SQLProvider) Exec(ctx context.Context, query string, args ...interface{
 	return &sqlResult{result: result}, nil
 }
 
-// Begin starts a new transaction
+// Begin starts a new transaction.
 func (p *SQLProvider) Begin(ctx context.Context) (Tx, error) {
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -154,7 +154,7 @@ func (p *SQLProvider) Begin(ctx context.Context) (Tx, error) {
 
 // ========== CORE USER OPERATIONS ==========
 
-// CreateUser creates a new user
+// CreateUser creates a new user.
 func (p *SQLProvider) CreateUser(ctx context.Context) (*models.User, error) {
 	user := &models.User{
 		CreatedAt: time.Now(),
@@ -163,7 +163,7 @@ func (p *SQLProvider) CreateUser(ctx context.Context) (*models.User, error) {
 
 	switch p.dialect {
 	case PostgreSQL:
-		// PostgreSQL uses RETURNING clause
+		// PostgreSQL uses RETURNING clause.
 		err := p.db.QueryRowContext(ctx, `
 			INSERT INTO auth.user (created_at, updated_at)
 			VALUES ($1, $2)
@@ -176,7 +176,7 @@ func (p *SQLProvider) CreateUser(ctx context.Context) (*models.User, error) {
 		}
 
 	case MySQL, SQLite:
-		// MySQL and SQLite use LastInsertId
+		// MySQL and SQLite use LastInsertId.
 		result, err := p.db.ExecContext(ctx, `
 			INSERT INTO auth.user (created_at, updated_at)
 			VALUES (?, ?)
@@ -198,7 +198,7 @@ func (p *SQLProvider) CreateUser(ctx context.Context) (*models.User, error) {
 	return user, nil
 }
 
-// GetUserByID retrieves a user by ID
+// GetUserByID retrieves a user by ID.
 func (p *SQLProvider) GetUserByID(ctx context.Context, id string) (*models.User, error) {
 	user := &models.User{}
 
@@ -228,7 +228,7 @@ func (p *SQLProvider) GetUserByID(ctx context.Context, id string) (*models.User,
 	return user, nil
 }
 
-// UpdateUser updates a user
+// UpdateUser updates a user.
 func (p *SQLProvider) UpdateUser(ctx context.Context, user *models.User) error {
 	query := `UPDATE auth.user SET updated_at = NOW() WHERE id = `
 	var err error
@@ -249,7 +249,7 @@ func (p *SQLProvider) UpdateUser(ctx context.Context, user *models.User) error {
 	return nil
 }
 
-// DeleteUser deletes a user and all associated data (cascades to sessions, etc.)
+// DeleteUser deletes a user and all associated data (cascades to sessions, etc.).
 func (p *SQLProvider) DeleteUser(ctx context.Context, userID string) error {
 	query := `DELETE FROM auth.user WHERE id = `
 	var err error
@@ -269,7 +269,7 @@ func (p *SQLProvider) DeleteUser(ctx context.Context, userID string) error {
 	return nil
 }
 
-// ListUsers retrieves a paginated list of users
+// ListUsers retrieves a paginated list of users.
 func (p *SQLProvider) ListUsers(ctx context.Context, offset, limit int) ([]*models.User, error) {
 	query := `SELECT id, created_at, updated_at FROM auth.user ORDER BY created_at DESC `
 	var rows *sql.Rows
@@ -308,7 +308,7 @@ func (p *SQLProvider) ListUsers(ctx context.Context, offset, limit int) ([]*mode
 	return users, nil
 }
 
-// CountUsers returns the total number of users
+// CountUsers returns the total number of users.
 func (p *SQLProvider) CountUsers(ctx context.Context) (int, error) {
 	var count int
 	err := p.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM auth.user").Scan(&count)
@@ -320,7 +320,7 @@ func (p *SQLProvider) CountUsers(ctx context.Context) (int, error) {
 
 // ========== SESSION OPERATIONS ==========
 
-// CreateSession creates a new session
+// CreateSession creates a new session.
 func (p *SQLProvider) CreateSession(ctx context.Context, session *models.Session) error {
 	query := `INSERT INTO auth.session (id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent) VALUES `
 	var err error
@@ -345,69 +345,48 @@ func (p *SQLProvider) CreateSession(ctx context.Context, session *models.Session
 	return nil
 }
 
-// GetSession retrieves a session by token
+// getSessionByField is a helper to query sessions by any field.
+func (p *SQLProvider) getSessionByField(ctx context.Context, fieldName, value string) (*models.Session, error) {
+	session := &models.Session{}
+	query := `SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent FROM auth.session WHERE ` + fieldName + ` = `
+	var err error
+
+	switch p.dialect {
+	case PostgreSQL:
+		err = p.db.QueryRowContext(ctx, query+`$1`, value).Scan(
+			&session.ID, &session.UserID, &session.Token, &session.RefreshToken,
+			&session.ExpiresAt, &session.CreatedAt, &session.IPAddress, &session.UserAgent,
+		)
+	case MySQL, SQLite:
+		err = p.db.QueryRowContext(ctx, query+`?`, value).Scan(
+			&session.ID, &session.UserID, &session.Token, &session.RefreshToken,
+			&session.ExpiresAt, &session.CreatedAt, &session.IPAddress, &session.UserAgent,
+		)
+	default:
+		return nil, fmt.Errorf("unsupported dialect: %s", p.dialect)
+	}
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("session not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session: %w", err)
+	}
+
+	return session, nil
+}
+
+// GetSession retrieves a session by token.
 func (p *SQLProvider) GetSession(ctx context.Context, token string) (*models.Session, error) {
-	session := &models.Session{}
-	query := `SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent FROM auth.session WHERE token = `
-	var err error
-
-	switch p.dialect {
-	case PostgreSQL:
-		err = p.db.QueryRowContext(ctx, query+`$1`, token).Scan(
-			&session.ID, &session.UserID, &session.Token, &session.RefreshToken,
-			&session.ExpiresAt, &session.CreatedAt, &session.IPAddress, &session.UserAgent,
-		)
-	case MySQL, SQLite:
-		err = p.db.QueryRowContext(ctx, query+`?`, token).Scan(
-			&session.ID, &session.UserID, &session.Token, &session.RefreshToken,
-			&session.ExpiresAt, &session.CreatedAt, &session.IPAddress, &session.UserAgent,
-		)
-	default:
-		return nil, fmt.Errorf("unsupported dialect: %s", p.dialect)
-	}
-
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("session not found")
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get session: %w", err)
-	}
-
-	return session, nil
+	return p.getSessionByField(ctx, "token", token)
 }
 
-// GetSessionByRefreshToken retrieves a session by refresh token
+// GetSessionByRefreshToken retrieves a session by refresh token.
 func (p *SQLProvider) GetSessionByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error) {
-	session := &models.Session{}
-	query := `SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent FROM auth.session WHERE refresh_token = `
-	var err error
-
-	switch p.dialect {
-	case PostgreSQL:
-		err = p.db.QueryRowContext(ctx, query+`$1`, refreshToken).Scan(
-			&session.ID, &session.UserID, &session.Token, &session.RefreshToken,
-			&session.ExpiresAt, &session.CreatedAt, &session.IPAddress, &session.UserAgent,
-		)
-	case MySQL, SQLite:
-		err = p.db.QueryRowContext(ctx, query+`?`, refreshToken).Scan(
-			&session.ID, &session.UserID, &session.Token, &session.RefreshToken,
-			&session.ExpiresAt, &session.CreatedAt, &session.IPAddress, &session.UserAgent,
-		)
-	default:
-		return nil, fmt.Errorf("unsupported dialect: %s", p.dialect)
-	}
-
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("session not found")
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get session: %w", err)
-	}
-
-	return session, nil
+	return p.getSessionByField(ctx, "refresh_token", refreshToken)
 }
 
-// UpdateSession updates a session
+// UpdateSession updates a session.
 func (p *SQLProvider) UpdateSession(ctx context.Context, session *models.Session) error {
 	query := `UPDATE auth.session SET expires_at = `
 	var err error
@@ -427,7 +406,7 @@ func (p *SQLProvider) UpdateSession(ctx context.Context, session *models.Session
 	return nil
 }
 
-// DeleteSession deletes a session by token
+// DeleteSession deletes a session by token.
 func (p *SQLProvider) DeleteSession(ctx context.Context, token string) error {
 	query := `DELETE FROM auth.session WHERE token = `
 	var err error
@@ -447,7 +426,7 @@ func (p *SQLProvider) DeleteSession(ctx context.Context, token string) error {
 	return nil
 }
 
-// GetUserSessions retrieves all sessions for a user
+// GetUserSessions retrieves all sessions for a user.
 func (p *SQLProvider) GetUserSessions(ctx context.Context, userID string) ([]*models.Session, error) {
 	query := `SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent FROM auth.session WHERE user_id = `
 	var rows *sql.Rows
@@ -487,7 +466,7 @@ func (p *SQLProvider) GetUserSessions(ctx context.Context, userID string) ([]*mo
 	return sessions, nil
 }
 
-// DeleteUserSessions deletes all sessions for a user
+// DeleteUserSessions deletes all sessions for a user.
 func (p *SQLProvider) DeleteUserSessions(ctx context.Context, userID string) error {
 	query := `DELETE FROM auth.session WHERE user_id = `
 	var err error

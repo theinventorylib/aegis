@@ -13,8 +13,11 @@ import (
 type ExportFormat string
 
 const (
-	FormatSQL           ExportFormat = "sql"
-	FormatGoose         ExportFormat = "goose"
+	// FormatSQL exports migrations as plain SQL files.
+	FormatSQL ExportFormat = "sql"
+	// FormatGoose exports migrations in Goose format.
+	FormatGoose ExportFormat = "goose"
+	// FormatGolangMigrate exports migrations in golang-migrate format.
 	FormatGolangMigrate ExportFormat = "golang-migrate"
 )
 
@@ -47,7 +50,7 @@ func NewExporter(config ExporterConfig) *Exporter {
 // Export writes migrations to disk in the specified format
 func (e *Exporter) Export() error {
 	// Create output directory
-	if err := os.MkdirAll(e.outputDir, 0755); err != nil {
+	if err := os.MkdirAll(e.outputDir, 0750); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
@@ -67,7 +70,7 @@ func (e *Exporter) Export() error {
 func (e *Exporter) exportSQL() error {
 	// Export core migration
 	filename := filepath.Join(e.outputDir, "001_aegis_core.sql")
-	if err := os.WriteFile(filename, []byte(CoreMigration.Up), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(CoreMigration.Up), 0600); err != nil {
 		return fmt.Errorf("failed to write core migration: %w", err)
 	}
 
@@ -90,7 +93,7 @@ func (e *Exporter) exportSQL() error {
 				migration.Up,
 			)
 
-			if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(filename, []byte(content), 0600); err != nil {
 				return fmt.Errorf("failed to write %s migration: %w", plugin.Name(), err)
 			}
 		}
@@ -107,7 +110,7 @@ func (e *Exporter) exportGoose() error {
 		CoreMigration.Up,
 		CoreMigration.Down,
 	)
-	if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(content), 0600); err != nil {
 		return fmt.Errorf("failed to write core migration: %w", err)
 	}
 
@@ -131,7 +134,7 @@ func (e *Exporter) exportGoose() error {
 				migration.Down,
 			)
 
-			if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(filename, []byte(content), 0600); err != nil {
 				return fmt.Errorf("failed to write %s migration: %w", plugin.Name(), err)
 			}
 
@@ -146,13 +149,13 @@ func (e *Exporter) exportGoose() error {
 func (e *Exporter) exportGolangMigrate() error {
 	// Export core migration UP
 	upFile := filepath.Join(e.outputDir, "000001_aegis_core.up.sql")
-	if err := os.WriteFile(upFile, []byte(CoreMigration.Up), 0644); err != nil {
+	if err := os.WriteFile(upFile, []byte(CoreMigration.Up), 0600); err != nil {
 		return fmt.Errorf("failed to write core up migration: %w", err)
 	}
 
 	// Export core migration DOWN
 	downFile := filepath.Join(e.outputDir, "000001_aegis_core.down.sql")
-	if err := os.WriteFile(downFile, []byte(CoreMigration.Down), 0644); err != nil {
+	if err := os.WriteFile(downFile, []byte(CoreMigration.Down), 0600); err != nil {
 		return fmt.Errorf("failed to write core down migration: %w", err)
 	}
 
@@ -173,13 +176,13 @@ func (e *Exporter) exportGolangMigrate() error {
 
 			// UP migration
 			upFile := filepath.Join(e.outputDir, baseName+".up.sql")
-			if err := os.WriteFile(upFile, []byte(migration.Up), 0644); err != nil {
+			if err := os.WriteFile(upFile, []byte(migration.Up), 0600); err != nil {
 				return fmt.Errorf("failed to write %s up migration: %w", plugin.Name(), err)
 			}
 
 			// DOWN migration
 			downFile := filepath.Join(e.outputDir, baseName+".down.sql")
-			if err := os.WriteFile(downFile, []byte(migration.Down), 0644); err != nil {
+			if err := os.WriteFile(downFile, []byte(migration.Down), 0600); err != nil {
 				return fmt.Errorf("failed to write %s down migration: %w", plugin.Name(), err)
 			}
 

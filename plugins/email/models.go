@@ -2,8 +2,8 @@ package email
 
 import "time"
 
-// EmailVerification represents an email verification record
-type EmailVerification struct {
+// Verification represents an email verification record
+type Verification struct {
 	ID        string    `json:"id"`
 	UserID    string    `json:"userId,omitempty"`
 	Email     string    `json:"email"`

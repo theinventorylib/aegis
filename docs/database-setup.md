@@ -264,7 +264,7 @@ func TestUserCreation(t *testing.T) {
     auth, _ := aegis.New(
         config.WithDB(sqlDB, db.SQLite),
         config.WithJWTSecret([]byte("test-secret")),
-        config.WithAPIMode(true),
+        config.WithAPIOnlyMode(true),
     )
     
     // Test your code

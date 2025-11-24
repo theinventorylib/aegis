@@ -1,8 +1,8 @@
 package oauth
 
-// OAuthProvider defines the interface for OAuth provider implementations
+// Provider defines the interface for OAuth provider implementations
 // This abstraction allows users to use Goth (default/recommended) or provide custom implementations
-type OAuthProvider interface {
+type Provider interface {
 	// Name returns the provider identifier (e.g., "google", "github", "apple")
 	Name() string
 
@@ -10,11 +10,11 @@ type OAuthProvider interface {
 	GetAuthURL(state string) (string, error)
 
 	// Exchange exchanges an authorization code for user information
-	Exchange(code string) (*OAuthUser, error)
+	Exchange(code string) (*User, error)
 }
 
-// OAuthUser represents a user from an OAuth provider
-type OAuthUser struct {
+// User represents a user from an OAuth provider
+type User struct {
 	ID           string // Provider-specific user ID
 	Email        string
 	Name         string
