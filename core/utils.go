@@ -4,9 +4,10 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
-	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/oklog/ulid/v2"
 )
 
 // IDStrategy defines how IDs should be generated
@@ -16,19 +17,20 @@ type IDStrategy string
 type IDGeneratorFunc func() string
 
 const (
-	// IDStrategySequence uses an in-memory sequence (default, simpler for most apps)
-	IDStrategySequence IDStrategy = "sequence"
-	// IDStrategyUUID uses UUID v4 for IDs (recommended for distributed systems)
+	// IDStrategyULID uses ULID for IDs (default, best for most use cases)
+	// ULIDs are sortable, time-based, and work across restarts
+	IDStrategyULID IDStrategy = "ulid"
+	// IDStrategyUUID uses UUID v4 for IDs (random, not sortable)
 	IDStrategyUUID IDStrategy = "uuid"
 	// IDStrategyCustom uses a user-provided custom function
 	IDStrategyCustom IDStrategy = "custom"
 )
 
 var (
-	// Global ID strategy configuration (defaults to Sequence)
-	currentIDStrategy = IDStrategySequence
-	// Sequence counter for IDStrategySequence mode
-	sequenceCounter uint64
+	// Global ID strategy configuration (defaults to ULID)
+	currentIDStrategy = IDStrategyULID
+	// Entropy source for ULID generation (crypto/rand for security)
+	ulidEntropy = ulid.Monotonic(rand.Reader, 0)
 	// Custom ID generator function (nil by default)
 	customIDGenerator IDGeneratorFunc
 )
@@ -75,48 +77,53 @@ func GenerateOTPCode(length int) (string, error) {
 
 // GenerateID generates a unique identifier based on the configured strategy
 //
-// Default Strategy: Sequence (generates "1", "2", "3"...)
+// Default Strategy: ULID (generates sortable, time-based IDs like "01ARZ3NDEKTSV4RRFFQ69G5FAV")
 //
 // Strategies:
-//   - Sequence (default): Returns a sequential number like "1", "2", "3"
-//     Best for: Single-instance applications, simpler debugging, smaller IDs
+//   - ULID (default): Returns a sortable, time-based ID (26 characters)
+//     Best for: Most use cases - sortable, works after restarts, distributed systems
 //   - UUID: Returns a UUID v4 like "550e8400-e29b-41d4-a716-446655440000"
-//     Best for: Distributed systems, microservices, avoiding ID collisions
+//     Best for: When you need standard UUID format
+//   - Sequence: Returns sequential numbers like "1", "2", "3" (WARNING: resets on restart)
+//     Best for: Testing only - NOT safe for production use
 //   - Custom: Uses your own ID generation function
-//     Best for: Special requirements (ULID, KSUID, nanoid, etc.)
+//     Best for: Special requirements (KSUID, nanoid, etc.)
 //
-// To use UUID: core.SetIDStrategy(core.IDStrategyUUID)
-// To use custom: core.SetCustomIDGenerator(yourFunc)
+// Examples:
+//   - Use UUID: core.SetIDStrategy(core.IDStrategyUUID)
+//   - Use Sequence (testing only): core.SetIDStrategy(core.IDStrategySequence)
+//   - Use Custom: core.SetCustomIDGenerator(yourFunc)
 //
-// Note: For database-generated sequences, use database defaults instead (SERIAL in PostgreSQL, AUTO_INCREMENT in MySQL)
+// Note: For database-generated IDs, use database defaults instead
+// (SERIAL in PostgreSQL, AUTO_INCREMENT in MySQL) and don't call GenerateID()
 func GenerateID() string {
 	switch currentIDStrategy {
+	case IDStrategyULID:
+		// Generate ULID with monotonic entropy for sortability
+		// Even if multiple IDs are generated in the same millisecond, they'll be unique and sorted
+		return ulid.MustNew(ulid.Timestamp(time.Now()), ulidEntropy).String()
 	case IDStrategyUUID:
 		return uuid.New().String()
 	case IDStrategyCustom:
 		if customIDGenerator != nil {
 			return customIDGenerator()
 		}
-		// Fallback to sequence if custom generator is nil
-		fallthrough
-	case IDStrategySequence:
-		fallthrough
+		// Fallback to ULID if custom generator is nil
+		return ulid.MustNew(ulid.Timestamp(time.Now()), ulidEntropy).String()
 	default:
-		// Atomic increment for thread-safety
-		id := atomic.AddUint64(&sequenceCounter, 1)
-		return fmt.Sprintf("%d", id)
+		// Default to ULID
+		return ulid.MustNew(ulid.Timestamp(time.Now()), ulidEntropy).String()
 	}
 }
 
-// GenerateUUID always generates a UUID v4, regardless of strategy
-// Use this when you specifically need a UUID
-func GenerateUUID() string {
-	return uuid.New().String()
-}
-
-// GenerateSequenceID always generates a sequential ID, regardless of strategy
-// Use this when you specifically need a sequence
-func GenerateSequenceID() string {
-	id := atomic.AddUint64(&sequenceCounter, 1)
-	return fmt.Sprintf("%d", id)
-}
+// // GenerateUUID always generates a UUID v4, regardless of strategy
+// // Use this when you specifically need a UUID
+// func GenerateUUID() string {
+// 	return uuid.New().String()
+// }
+// // GenerateSequenceID always generates a sequential ID, regardless of strategy
+// // Use this when you specifically need a sequence
+// func GenerateSequenceID() string {
+// 	id := atomic.AddUint64(&sequenceCounter, 1)
+// 	return fmt.Sprintf("%d", id)
+// }

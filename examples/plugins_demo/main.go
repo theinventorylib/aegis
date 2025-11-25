@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -114,17 +115,17 @@ func main() {
 		log.Fatal("Failed to initialize Aegis:", err)
 	}
 
-	// Register plugins
-	if err := auth.Use(passwordPlugin); err != nil {
+	// Register plugins with context
+	if err := auth.Use(context.Background(), passwordPlugin); err != nil {
 		log.Fatal("Failed to register password plugin:", err)
 	}
-	if err := auth.Use(emailPlugin); err != nil {
+	if err := auth.Use(context.Background(), emailPlugin); err != nil {
 		log.Fatal("Failed to register email plugin:", err)
 	}
-	if err := auth.Use(smsPlugin); err != nil {
+	if err := auth.Use(context.Background(), smsPlugin); err != nil {
 		log.Fatal("Failed to register sms plugin:", err)
 	}
-	if err := auth.Use(adminPlugin); err != nil {
+	if err := auth.Use(context.Background(), adminPlugin); err != nil {
 		log.Fatal("Failed to register admin plugin:", err)
 	}
 
@@ -157,8 +158,8 @@ func main() {
 		r.Use(auth.AuthMiddleware())
 
 		// Retrieve admin plugin from auth instance instead of keeping a reference
-		if adminPlugin := auth.GetPlugin("admin"); adminPlugin != nil {
-			if ap, ok := adminPlugin.(*admin.Plugin); ok {
+		if adminPluginRetrieved, ok := auth.GetPlugin("admin"); ok {
+			if ap, ok := adminPluginRetrieved.(*admin.Plugin); ok {
 				r.Use(ap.AdminMiddleware)
 			}
 		}
