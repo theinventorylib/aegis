@@ -2,8 +2,11 @@ package core
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -56,74 +59,79 @@ func HashPassword(password string, time, memory uint32, threads uint8, keyLen ui
 
 // VerifyPassword verifies a password against an Argon2id hash
 func VerifyPassword(password, encodedHash string) (bool, error) {
-	// Parse the encoded hash
-	var version int
-	var memory, time uint32
+	// Expected PHC-style format: $argon2id$v=19$m=65536,t=1,p=4$<salt>$<hash>
+	parts := strings.Split(encodedHash, "$")
+	if len(parts) != 6 || parts[1] != "argon2id" {
+		return false, fmt.Errorf("invalid hash format")
+	}
+
+	// version
+	if !strings.HasPrefix(parts[2], "v=") {
+		return false, fmt.Errorf("invalid version in hash")
+	}
+	// params: m=...,t=...,p=...
+	params := parts[3]
+	var memory uint32
+	var t uint32
 	var threads uint8
-	var salt, hash []byte
 
-	_, err := fmt.Sscanf(encodedHash, "$argon2id$v=%d$m=%d,t=%d,p=%d$", &version, &memory, &time, &threads)
-	if err != nil {
-		return false, fmt.Errorf("invalid hash format: %w", err)
-	}
-
-	// Extract salt and hash
-	parts := make([]string, 6)
-	n := 0
-	for i, char := range encodedHash {
-		if char == '$' {
-			n++
-			if n >= 4 {
-				parts[4] = encodedHash[i+1:]
-				break
+	for _, kv := range strings.Split(params, ",") {
+		kvParts := strings.SplitN(kv, "=", 2)
+		if len(kvParts) != 2 {
+			return false, fmt.Errorf("invalid params in hash")
+		}
+		k := kvParts[0]
+		v := kvParts[1]
+		switch k {
+		case "m":
+			mi, err := strconv.ParseUint(v, 10, 32)
+			if err != nil {
+				return false, fmt.Errorf("invalid memory value: %w", err)
 			}
+			memory = uint32(mi)
+		case "t":
+			ti, err := strconv.ParseUint(v, 10, 32)
+			if err != nil {
+				return false, fmt.Errorf("invalid time value: %w", err)
+			}
+			t = uint32(ti)
+		case "p":
+			pi, err := strconv.ParseUint(v, 10, 8)
+			if err != nil {
+				return false, fmt.Errorf("invalid threads value: %w", err)
+			}
+			threads = uint8(pi)
+		default:
+			// ignore unknown params
 		}
 	}
 
-	// Parse salt and hash from the last two parts
-	saltHash := make([]string, 0, 2)
-	lastPart := parts[4]
-	for i := len(lastPart) - 1; i >= 0; i-- {
-		if lastPart[i] == '$' {
-			saltHash = append(saltHash, lastPart[i+1:])
-			saltHash = append(saltHash, lastPart[:i])
-			break
-		}
-	}
-
-	if len(saltHash) != 2 {
-		return false, fmt.Errorf("invalid hash format: missing salt or hash")
-	}
-
-	salt, err = base64.RawStdEncoding.DecodeString(saltHash[1])
+	// salt and hash are base64 encoded
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
 		return false, fmt.Errorf("failed to decode salt: %w", err)
 	}
 
-	hash, err = base64.RawStdEncoding.DecodeString(saltHash[0])
+	hash, err := base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil {
 		return false, fmt.Errorf("failed to decode hash: %w", err)
 	}
 
-	// Generate hash from the provided password
-	// Check hash length to prevent overflow when converting to uint32
-	hashLen := len(hash)
-	if hashLen > int(^uint32(0)) {
+	// Compute key using the same parameters
+	if len(hash) == 0 {
+		return false, fmt.Errorf("invalid hash length")
+	}
+	// Safely convert length to uint32, guarding against overflow
+	// We check that len(hash) fits in uint32 before conversion
+	if len(hash) > int(^uint32(0)) {
 		return false, fmt.Errorf("hash length too large")
 	}
-	keyLen := uint32(hashLen)
-	computedHash := argon2.IDKey([]byte(password), salt, time, memory, threads, keyLen)
+	keyLen := uint32(len(hash)) // #nosec G115 -- overflow checked above
+	computed := argon2.IDKey([]byte(password), salt, t, memory, threads, keyLen)
 
-	// Compare hashes
-	if len(computedHash) != len(hash) {
-		return false, nil
+	// Use constant-time comparison to mitigate timing attacks
+	if subtle.ConstantTimeCompare(computed, hash) == 1 {
+		return true, nil
 	}
-
-	for i := range hash {
-		if hash[i] != computedHash[i] {
-			return false, nil
-		}
-	}
-
-	return true, nil
+	return false, nil
 }

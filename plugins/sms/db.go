@@ -4,8 +4,10 @@ package sms
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/theinventorylib/aegis/db"
+	"github.com/theinventorylib/aegis/models"
 )
 
 // DB provides database operations for SMS plugin
@@ -77,4 +79,61 @@ func (d *DB) InvalidateVerifications(ctx context.Context, identifier, verificati
 		return fmt.Errorf("failed to invalidate verifications: %w", err)
 	}
 	return nil
+}
+
+// GetUserByPhone retrieves a user by phone number
+func (d *DB) GetUserByPhone(ctx context.Context, phone string) (*models.User, error) {
+	var user models.User
+	err := d.provider.QueryRow(ctx, `
+		SELECT id, created_at, updated_at
+		FROM auth.user
+		WHERE phone_number = ?
+	`, phone).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	return &user, nil
+}
+
+// UpdateUserPhone updates a user's phone number and verification status
+func (d *DB) UpdateUserPhone(ctx context.Context, userID, phone string, verified bool) error {
+	_, err := d.provider.Exec(ctx, `
+		UPDATE auth.user
+		SET phone_number = ?, phone_verified = ?
+		WHERE id = ?
+	`, phone, verified, userID)
+
+	if err != nil {
+		return fmt.Errorf("failed to update user phone: %w", err)
+	}
+	return nil
+}
+
+// VerifyOTP verifies an OTP code and deletes it if valid
+func (d *DB) VerifyOTP(ctx context.Context, phoneNumber, code, purpose string) (bool, error) {
+	var id string
+	var token string
+	var expiresAt time.Time
+
+	err := d.provider.QueryRow(ctx, `
+		SELECT id, token, expires_at
+		FROM auth.verification
+		WHERE identifier = ? AND type = ? AND expires_at > NOW()
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, phoneNumber, purpose).Scan(&id, &token, &expiresAt)
+
+	if err != nil {
+		return false, fmt.Errorf("OTP not found or expired")
+	}
+
+	// Verify code
+	if token != code {
+		return false, nil
+	}
+
+	// Delete the used verification token
+	return true, d.DeleteVerification(ctx, id)
 }

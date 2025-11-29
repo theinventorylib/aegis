@@ -125,8 +125,13 @@ func (a *Aegis) MountRoutes(prefix string) {
 }
 
 // Use registers a plugin with the Aegis instance with context support and default priority.
-// Plugins registered with Use have priority 100 (executed after high-priority plugins).
+// Plugins registered with Use have priority 100 (mounted after high-priority plugins).
 // This is the canonical method for plugin registration.
+//
+// Lifecycle guarantees:
+//   - The plugin is registered and visible via GetPlugin/GetPlugins BEFORE Init is called
+//   - If Init fails, the plugin registration is automatically rolled back
+//   - Plugins can discover other registered plugins during their Init call
 //
 // The context allows callers to:
 //   - Set initialization timeouts
@@ -143,7 +148,13 @@ func (a *Aegis) Use(ctx context.Context, plugin plugins.Plugin) error {
 }
 
 // UseWithPriority registers a plugin with an explicit priority.
-// Lower priority values are initialized and mounted first.
+// Lower priority values are mounted first (initialization order follows registration order).
+//
+// Lifecycle guarantees:
+//   - Plugins are registered BEFORE Init is called, making them visible via GetPlugin/GetPlugins
+//   - If Init fails, the plugin registration is rolled back (removed from registry)
+//   - Init is called in the order UseWithPriority is called (caller order, not priority order)
+//   - MountRoutes is called in priority order (lower priority first)
 //
 // Priority guidelines:
 //   - 0-50: Critical infrastructure plugins (database, logging)
@@ -165,8 +176,27 @@ func (a *Aegis) UseWithPriority(ctx context.Context, plugin plugins.Plugin, prio
 			"priority", priority)
 	}
 
-	// Initialize plugin with context
+	// Register plugin FIRST (makes it visible during Init)
+	a.mu.Lock()
+	a.plugins = append(a.plugins, pluginRegistration{
+		plugin:   plugin,
+		priority: priority,
+	})
+	a.mu.Unlock()
+
+	// Initialize plugin with context (plugin is now visible via GetPlugin/GetPlugins)
 	if err := plugin.Init(ctx, a); err != nil {
+		// Rollback registration on init failure
+		a.mu.Lock()
+		// Find and remove the registration we just appended
+		for i := len(a.plugins) - 1; i >= 0; i-- {
+			if a.plugins[i].plugin == plugin {
+				a.plugins = append(a.plugins[:i], a.plugins[i+1:]...)
+				break
+			}
+		}
+		a.mu.Unlock()
+
 		if a.config.Logger != nil {
 			a.config.Logger.Error("Plugin initialization failed",
 				"name", plugin.Name(),
@@ -175,14 +205,6 @@ func (a *Aegis) UseWithPriority(ctx context.Context, plugin plugins.Plugin, prio
 		return fmt.Errorf("failed to initialize plugin %s: %w", plugin.Name(), err)
 	}
 
-	// Thread-safe plugin registration with priority
-	a.mu.Lock()
-	a.plugins = append(a.plugins, pluginRegistration{
-		plugin:   plugin,
-		priority: priority,
-	})
-	a.mu.Unlock()
-
 	if a.config.Logger != nil {
 		a.config.Logger.Info("Plugin registered successfully",
 			"name", plugin.Name(),
@@ -190,14 +212,6 @@ func (a *Aegis) UseWithPriority(ctx context.Context, plugin plugins.Plugin, prio
 	}
 
 	return nil
-}
-
-// RegisterPlugin is deprecated. Use Use instead.
-// This method forwards to Use with context.Background().
-//
-// Deprecated: Use Use(ctx, plugin) for better context control.
-func (a *Aegis) RegisterPlugin(plugin plugins.Plugin) error {
-	return a.Use(context.Background(), plugin)
 }
 
 // GetDB returns the database provider
@@ -220,8 +234,16 @@ func (a *Aegis) GetSessionService() *core.SessionService {
 	return a.session
 }
 
+// GetAuthService returns the core AuthService instance
+func (a *Aegis) GetAuthService() *core.AuthService {
+	return a.auth
+}
+
 // AuthMiddleware returns middleware that validates sessions and injects user into context.
-// Panics if session service is nil (should never happen if New succeeded).
+//
+// Panics if session service is nil. This indicates a critical misconfiguration and should
+// never occur if the Aegis instance was created via New(). The panic is intentional to
+// catch configuration errors during development rather than silently failing in production.
 func (a *Aegis) AuthMiddleware() func(http.Handler) http.Handler {
 	if a.session == nil {
 		panic("aegis: session service is nil - this should never happen")
@@ -230,7 +252,10 @@ func (a *Aegis) AuthMiddleware() func(http.Handler) http.Handler {
 }
 
 // RequireAuth returns middleware that requires authentication.
-// Panics if session service is nil (should never happen if New succeeded).
+//
+// Panics if session service is nil. This indicates a critical misconfiguration and should
+// never occur if the Aegis instance was created via New(). The panic is intentional to
+// catch configuration errors during development rather than silently failing in production.
 func (a *Aegis) RequireAuth() func(http.Handler) http.Handler {
 	if a.session == nil {
 		panic("aegis: session service is nil - this should never happen")
@@ -278,8 +303,8 @@ func (a *Aegis) GetPlugins() []plugins.Plugin {
 	return result
 }
 
-// getSortedPlugins returns plugins sorted by priority (lower priority first).
-// Must be called with at least read lock held, or returns a locked copy.
+// getSortedPlugins returns a copy of plugins sorted by priority (lower priority first).
+// This function is thread-safe and acquires its own read lock.
 func (a *Aegis) getSortedPlugins() []pluginRegistration {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

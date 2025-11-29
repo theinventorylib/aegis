@@ -29,7 +29,12 @@ aegis export [flags]
 
 - `email` - Email verification and authentication
 - `sms` - SMS/phone number verification
-- `oauth` - OAuth provider integrations
+- `oauth` - OAuth provider integrations (Google, GitHub, etc.)
+- `jwt` - JWT token generation and validation
+- `bearer` - Bearer token authentication support
+- `openapi` - OpenAPI 3.0 documentation with Scalar UI
+- `admin` - Administrative endpoints for user management
+- `organizations` - Multi-tenant organization support
 
 ## Examples
 
@@ -174,7 +179,7 @@ Displays usage information.
 
 ### "Unknown plugin" error
 
-Make sure you're using valid plugin names: `email`, `sms`, `oauth`
+Make sure you're using valid plugin names: `email`, `sms`, `oauth`, `jwt`, `bearer`, `openapi`, `admin`, `organizations`
 
 ```bash
 # ✅ Correct

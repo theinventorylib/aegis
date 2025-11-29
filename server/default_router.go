@@ -3,13 +3,16 @@ package server
 import (
 	"net/http"
 	"sync"
+
+	"github.com/theinventorylib/aegis/models"
 )
 
 // DefaultRouter wraps the standard library http.ServeMux with method-aware routing.
 type DefaultRouter struct {
-	mux      *http.ServeMux
-	handlers map[string]map[string]http.HandlerFunc // path -> method -> handler
-	mu       sync.RWMutex
+	mux           *http.ServeMux
+	handlers      map[string]map[string]http.HandlerFunc // path -> method -> handler
+	routeMetadata []models.RouteMetadata
+	mu            sync.RWMutex
 }
 
 // NewDefaultRouter creates a new default router using net/http.
@@ -86,4 +89,22 @@ func (r *DefaultRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 // Handler returns the underlying http.Handler (useful for http.ListenAndServe).
 func (r *DefaultRouter) Handler() http.Handler {
 	return r.mux
+}
+
+// RegisterRouteMetadata registers documentation metadata for a route.
+func (r *DefaultRouter) RegisterRouteMetadata(metadata models.RouteMetadata) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.routeMetadata = append(r.routeMetadata, metadata)
+}
+
+// GetRouteMetadata returns all registered route metadata.
+func (r *DefaultRouter) GetRouteMetadata() []models.RouteMetadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Return a copy to prevent external modification
+	result := make([]models.RouteMetadata, len(r.routeMetadata))
+	copy(result, r.routeMetadata)
+	return result
 }

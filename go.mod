@@ -4,6 +4,7 @@ go 1.25.4
 
 require (
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/lestrrat-go/jwx/v3 v3.0.12

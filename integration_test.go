@@ -73,12 +73,12 @@ func TestPluginLifecycle(t *testing.T) {
 	initCalled := false
 	routesCalled := false
 
-	plugin.InitFunc = func(_ context.Context, a plugins.Aegis) error {
+	plugin.InitFunc = func(_ context.Context, _ plugins.Aegis) error {
 		initCalled = true
 		return nil
 	}
 
-	plugin.MountRoutesFunc = func(_ server.Router, prefix string) {
+	plugin.MountRoutesFunc = func(_ server.Router, _ string) {
 		routesCalled = true
 	}
 
@@ -273,19 +273,19 @@ func TestPluginPriorities(t *testing.T) {
 
 	// Create plugins with different priorities
 	plugin1 := testinghelpers.NewMockPlugin("high-priority")
-	plugin1.InitFunc = func(_ context.Context, a plugins.Aegis) error {
+	plugin1.InitFunc = func(_ context.Context, _ plugins.Aegis) error {
 		executionOrder = append(executionOrder, "high-priority")
 		return nil
 	}
 
 	plugin2 := testinghelpers.NewMockPlugin("low-priority")
-	plugin2.InitFunc = func(ctx context.Context, a plugins.Aegis) error {
+	plugin2.InitFunc = func(_ context.Context, _ plugins.Aegis) error {
 		executionOrder = append(executionOrder, "low-priority")
 		return nil
 	}
 
 	plugin3 := testinghelpers.NewMockPlugin("medium-priority")
-	plugin3.InitFunc = func(ctx context.Context, a plugins.Aegis) error {
+	plugin3.InitFunc = func(_ context.Context, _ plugins.Aegis) error {
 		executionOrder = append(executionOrder, "medium-priority")
 		return nil
 	}

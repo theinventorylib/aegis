@@ -1,6 +1,6 @@
 # Aegis Plugins Demo
 
-This example demonstrates how to properly configure and use Aegis authentication plugins including **Password**, **Email**, **SMS**, and **Admin** plugins.
+This example demonstrates how to properly configure and use Aegis authentication plugins including **Email**, **SMS**, and **Admin** plugins. Password-based authentication is provided by core and is available to plugins and application code.
 
 ## What This Example Shows
 
@@ -65,8 +65,8 @@ The server will start on `http://localhost:3001`
 - `POST /auth/sms/verify` - Verify SMS OTP
 - `POST /auth/sms/login` - Login with phone + password
 
-### Password Plugin
-- `POST /auth/password/change` - Change user password
+### Password (core)
+- Password and password-change flows are handled by the core `AuthService`. Use core APIs or plugin helpers to manage passwords.
 
 ### Admin Plugin
 - `GET /auth/admin/users` - List all users (admin only)
@@ -86,10 +86,10 @@ The server will start on `http://localhost:3001`
 
 ```go
 emailPlugin := email.New(&email.Config{
-    DB:             database,           // DBProvider instance
-    Provider:       &MockEmailProvider{}, // Email sender implementation
-    OTPExpiry:      15 * time.Minute,   // OTP code expiration
-    PasswordPlugin: passwordPlugin,      // Optional: enable email+password auth
+  DB:        database,             // DBProvider instance
+  Provider:  &MockEmailProvider{}, // Email sender implementation
+  OTPExpiry: 15 * time.Minute,     // OTP code expiration
+  // Note: password support is provided by core; no PasswordPlugin parameter required
 })
 ```
 
@@ -97,23 +97,17 @@ emailPlugin := email.New(&email.Config{
 
 ```go
 smsPlugin := sms.New(&sms.Config{
-    DB:             database,          // DBProvider instance
-    Provider:       &MockSMSProvider{}, // SMS sender implementation
-    OTPExpiry:      5 * time.Minute,   // OTP code expiration
-    OTPLength:      6,                  // OTP code length
-    PasswordPlugin: passwordPlugin,     // Optional: enable phone+password auth
+  DB:        database,            // DBProvider instance
+  Provider:  &MockSMSProvider{},  // SMS sender implementation
+  OTPExpiry: 5 * time.Minute,     // OTP code expiration
+  OTPLength: 6,                   // OTP code length
+  // Note: password support is provided by core; no PasswordPlugin parameter required
 })
 ```
 
-### Password Plugin
+### Password (core)
 
-```go
-passwordPlugin := password.New(&password.Config{
-    DB:     database,                           // DBProvider instance
-    UserDB: database,                           // User lookup provider
-    Hasher: core.DefaultPasswordHasherConfig(), // Password hashing config
-})
-```
+Password handling is provided by the core `AuthService`. To create users with passwords, use `AuthService.CreateUserWithPassword` or the Email/SMS plugin helper methods which call into core.
 
 ### Admin Plugin
 
@@ -133,7 +127,7 @@ This example uses mock email and SMS providers that print to console instead of 
 - Postmark
 
 **SMS Providers:**
-- Twie
+- Twilio
 - AWS SNS
 - Vonage
 - MessageBird
@@ -185,7 +179,7 @@ Migrations should be run via a migration tool (coming soon).
 This example demonstrates the plugin-based architecture of Aegis:
 
 1. **Core** provides base authentication (sessions, CSRF)
-2. **Plugins** extend functionality (email, SMS, password, admin)
+2. **Plugins** extend functionality (email, SMS, admin). Password authentication is implemented in core.
 3. **DBProvider** abstracts database operations (PostgreSQL, MySQL)
 4. **Shared Utilities** (`core.GenerateOTPCode`, `core.GenerateID`)
 

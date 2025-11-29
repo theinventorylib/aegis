@@ -31,7 +31,7 @@ The server will start on `http://localhost:3000`.
   ```json
   {
     "email": "user@example.com",
-    "password": "securepassword"
+    "password": "<your-password>"
   }
   ```
 
@@ -39,7 +39,7 @@ The server will start on `http://localhost:3000`.
   ```json
   {
     "email": "user@example.com",
-    "password": "securepassword"
+    "password": "<your-password>"
   }
   ```
 
@@ -94,14 +94,14 @@ The server will start on `http://localhost:3000`.
 ```bash
 curl -X POST http://localhost:3000/auth/signup \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"password123"}'
+    -d '{"email":"test@example.com","password":"<your-password>"}'
 ```
 
 ### 2. Login
 ```bash
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"password123"}' \
+    -d '{"email":"test@example.com","password":"<your-password>"}' \
   -c cookies.txt
 ```
 

@@ -27,7 +27,7 @@ Lower priority numbers are initialized and mounted **first**:
 | Priority Range | Category | Examples |
 |----------------|----------|----------|
 | **0-50** | Critical infrastructure | Database plugins, core logging |
-| **51-99** | High-priority auth | Password, OAuth, JWT |
+| **51-99** | High-priority auth | OAuth, JWT (password support is provided by core) |
 | **100** | Default (Use method) | Standard plugins |
 | **101-150** | Standard plugins | Email verification, SMS |
 | **151+** | Low-priority | Admin dashboards, analytics |
@@ -48,17 +48,20 @@ aegis.Use(ctx, adminPlugin)    // Priority: 100
 ### Example 2: Explicit Priorities
 
 ```go
-// Password plugin needs to initialize first (other plugins depend on it)
-aegis.UseWithPriority(ctx, passwordPlugin, 60)
+// Password support is provided by core; plugins that depend on password
+// (for example, Email/SMS helper flows) should be registered after core
+// initialization. Core is initialized as part of aegis.New(), so register
+// dependent plugins with higher priority numbers when needed.
 
-// Email and SMS depend on password plugin
+// Example: Initialize OAuth with high priority and email/sms after
+aegis.UseWithPriority(ctx, oauthPlugin, 65)
 aegis.UseWithPriority(ctx, emailPlugin, 110)
 aegis.UseWithPriority(ctx, smsPlugin, 110)
 
 // Admin plugin last (just a UI)
 aegis.UseWithPriority(ctx, adminPlugin, 150)
 
-// Initialization order: password → email → sms → admin
+// Initialization order: oauth → email → sms → admin
 ```
 
 ### Example 3: Infrastructure Plugins
@@ -67,17 +70,16 @@ aegis.UseWithPriority(ctx, adminPlugin, 150)
 // Logging infrastructure first
 aegis.UseWithPriority(ctx, loggingPlugin, 10)
 
-// Rate limiting critical for auth endpoints
-aegis.UseWithPriority(ctx, rateLimitPlugin, 20)
+// OpenAPI documentation  
+aegis.UseWithPriority(ctx, openapiPlugin, 20)
 
 // Auth plugins
-aegis.UseWithPriority(ctx, passwordPlugin, 60)
 aegis.UseWithPriority(ctx, oauthPlugin, 65)
 
 // Feature plugins
 aegis.Use(ctx, emailPlugin) // Uses default 100
 
-// Initialization order: logging → ratelimit → password → oauth → email
+// Initialization order: logging → openapi → oauth → email
 ```
 
 ## How It Works
@@ -109,16 +111,15 @@ aegis.Use(ctx, emailPlugin) // Uses default 100
 ### 1. Use Priorities for Dependencies
 
 ```go
-// Password plugin must initialize before email plugin
-aegis.UseWithPriority(ctx, passwordPlugin, 60)  // Dependency
-aegis.UseWithPriority(ctx, emailPlugin, 110)    // Depends on password
+// Password support is part of core. Email plugin can be registered after core
+// initialization; if you need a specific ordering, use UseWithPriority.
+aegis.UseWithPriority(ctx, emailPlugin, 110)
 ```
 
 ### 2. Group Related Plugins
 
 ```go
 // Authentication plugins: 50-99
-aegis.UseWithPriority(ctx, passwordPlugin, 60)
 aegis.UseWithPriority(ctx, oauthPlugin, 65)
 aegis.UseWithPriority(ctx, jwtPlugin, 70)
 
@@ -141,8 +142,9 @@ In your plugin documentation, specify:
 
 Example:
 ```go
-// EmailPlugin requires PasswordPlugin to be registered with priority < 100
-// Recommended: Register with priority 110-150
+// EmailPlugin requires password support (provided by core). If you need a
+// specific ordering relative to other plugins, register with UseWithPriority.
+// Recommended: Register EmailPlugin with priority 110-150 when appropriate.
 ```
 
 ## API Reference
@@ -217,8 +219,8 @@ aegis.New(
 )
 
 // Log output:
-// INFO Registering plugin name=password version=1.0.0 priority=60
-// INFO Plugin registered successfully name=password priority=60
+// INFO Registering plugin name=oauth version=1.0.0 priority=65
+// INFO Plugin registered successfully name=oauth priority=65
 // INFO Registering plugin name=email version=1.0.0 priority=110
 // INFO Plugin registered successfully name=email priority=110
 ```

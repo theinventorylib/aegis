@@ -445,7 +445,7 @@ go test -race -run TestConcurrentAuth
 
 - [Plugin Priorities](./plugin-priorities.md) - Plugin ordering and dependencies
 - [SECURITY.md](../SECURITY.md) - Security best practices
-- [Configuration Guide](./configuration.md) - Configuration options
+- [Getting Started](./getting-started.md) - Configuration options
 
 ---
 

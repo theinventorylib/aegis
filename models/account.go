@@ -10,7 +10,7 @@ type Account struct {
 	UserID            string                 `json:"userId"`
 	Provider          string                 `json:"provider"` // "password", "google", "github", "apple"
 	ProviderAccountID *string                `json:"providerAccountId,omitempty"`
-	PasswordHash      *string                `json:"-"` // Never expose in JSON
+	Password          *string                `json:"-"` // Never expose in JSON
 	AccessToken       *string                `json:"-"` // Never expose in JSON
 	RefreshToken      *string                `json:"-"` // Never expose in JSON
 	ExpiresAt         *time.Time             `json:"expiresAt,omitempty"`

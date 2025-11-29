@@ -14,3 +14,19 @@ type Verification struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 	CreatedAt time.Time `json:"createdAt"`
 }
+
+// ========== Request DTOs ==========
+
+// LoginWithEmailRequest represents email+password login
+type LoginWithEmailRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// RegisterWithEmailRequest represents email+password registration
+type RegisterWithEmailRequest struct {
+	Avatar   *string `json:"avatar"`
+	Name     *string `json:"name"`
+	Email    string  `json:"email"`
+	Password string  `json:"password"`
+}

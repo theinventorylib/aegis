@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/theinventorylib/aegis"
 	"github.com/theinventorylib/aegis/config"
@@ -118,6 +119,8 @@ func (ta *TestAegis) CreateTestSession(t *testing.T, userID string) *models.Sess
 		Token:        "test-token-" + userID,
 		RefreshToken: "test-refresh-" + userID,
 		UserID:       userID,
+		ExpiresAt:    time.Now().Add(24 * time.Hour),
+		CreatedAt:    time.Now(),
 	}
 
 	// Insert using mock database API
@@ -289,10 +292,16 @@ func NewMockPlugin(name string) *MockPlugin {
 	}
 }
 
-func (m *MockPlugin) Name() string        { return m.name }
-func (m *MockPlugin) Version() string     { return m.version }
+// Name returns the plugin name.
+func (m *MockPlugin) Name() string { return m.name }
+
+// Version returns the plugin version.
+func (m *MockPlugin) Version() string { return m.version }
+
+// Description returns the plugin description.
 func (m *MockPlugin) Description() string { return m.description }
 
+// Init initializes the plugin.
 func (m *MockPlugin) Init(ctx context.Context, a plugins.Aegis) error {
 	if m.InitFunc != nil {
 		return m.InitFunc(ctx, a)
@@ -300,24 +309,29 @@ func (m *MockPlugin) Init(ctx context.Context, a plugins.Aegis) error {
 	return nil
 }
 
+// GetMigrations returns the plugin migrations.
 func (m *MockPlugin) GetMigrations() []plugins.Migration {
 	return nil
 }
 
+// MountRoutes mounts the plugin routes.
 func (m *MockPlugin) MountRoutes(router server.Router, prefix string) {
 	if m.MountRoutesFunc != nil {
 		m.MountRoutesFunc(router, prefix)
 	}
 }
 
+// Dependencies returns the plugin dependencies.
 func (m *MockPlugin) Dependencies() []plugins.Dependency {
 	return nil
 }
 
+// RequiresTables returns the required database tables.
 func (m *MockPlugin) RequiresTables() []string {
 	return nil
 }
 
+// ProvidesAuthMethods returns the authentication methods provided by the plugin.
 func (m *MockPlugin) ProvidesAuthMethods() []string {
 	return nil
 }

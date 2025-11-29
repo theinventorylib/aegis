@@ -265,7 +265,7 @@ func WithDB(sqlDB interface{}, dialect db.Dialect) Option {
 		// Support both *sql.DB and db.Provider for flexibility
 		switch v := sqlDB.(type) {
 		case *sql.DB:
-			c.DB = db.NewSQLProvider(v, dialect)
+			c.DB = db.NewSQLProvider(v, dialect, c.IDGenerator)
 		case db.Provider:
 			// Allow passing DBProvider directly for advanced use cases
 			c.DB = v
@@ -298,7 +298,7 @@ func WithPostgres(connString string) Option {
 			_ = sqlDB.Close() // Ignore close error, ping already failed
 			return
 		}
-		c.DB = db.NewSQLProvider(sqlDB, db.PostgreSQL)
+		c.DB = db.NewSQLProvider(sqlDB, db.PostgreSQL, c.IDGenerator)
 	}
 }
 
@@ -326,7 +326,7 @@ func WithMySQL(connString string) Option {
 			_ = sqlDB.Close() // Ignore close error, ping already failed
 			return
 		}
-		c.DB = db.NewSQLProvider(sqlDB, db.MySQL)
+		c.DB = db.NewSQLProvider(sqlDB, db.MySQL, c.IDGenerator)
 	}
 }
 

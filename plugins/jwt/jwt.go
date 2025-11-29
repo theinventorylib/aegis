@@ -17,6 +17,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/db"
+	"github.com/theinventorylib/aegis/models"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/server"
 )
@@ -28,20 +29,6 @@ const (
 	TokenTypeRefresh = "refresh"
 )
 
-// TokenPair represents a set of access and refresh tokens.
-type TokenPair struct {
-	AccessToken   string    `json:"access_token"`
-	AccessExpiry  time.Time `json:"access_expiry"`
-	RefreshToken  string    `json:"refresh_token"`
-	RefreshExpiry time.Time `json:"refresh_expiry"`
-}
-
-// TokenClaims defines the structure of our JWT claims.
-type TokenClaims struct {
-	UserID    string `json:"user_id"`
-	TokenType string `json:"token_type"`
-}
-
 // Config holds JWT-specific configuration.
 type Config struct {
 	DB                  db.Provider   // Database provider for key storage
@@ -50,6 +37,13 @@ type Config struct {
 	AccessTokenExpiry   time.Duration // Access token expiry duration
 	RefreshTokenExpiry  time.Duration // Refresh token expiry duration
 	KeyRotationInterval time.Duration // Key rotation interval
+	// KeySize is the RSA key size to generate (e.g., 2048, 3072). Only used for RSA keys.
+	KeySize int
+	// KeyAlgorithm indicates the signing algorithm. Supported: "RSA" (RS256).
+	KeyAlgorithm string
+	// KeyRetention is how long to keep rotated keys in storage. Must be greater than
+	// the maximum token lifetime to ensure old tokens can still be verified.
+	KeyRetention time.Duration
 }
 
 // DefaultConfig returns default JWT configuration.
@@ -59,6 +53,10 @@ func DefaultConfig() *Config {
 		AccessTokenExpiry:   15 * time.Minute,
 		RefreshTokenExpiry:  7 * 24 * time.Hour,
 		KeyRotationInterval: 24 * time.Hour,
+		KeySize:             2048,
+		KeyAlgorithm:        "RSA",
+		// Keep keys for 30 days by default which should be > refresh token lifetime
+		KeyRetention: 30 * 24 * time.Hour,
 	}
 }
 
@@ -124,9 +122,6 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	// Create handler for JWKS endpoint
 	p.handler = NewHandler(p)
 
-	// Register as token provider with session service
-	sessionService.SetTokenProvider(p)
-
 	return nil
 }
 
@@ -137,13 +132,97 @@ func (p *Plugin) MountRoutes(router server.Router, basePath string) {
 
 	// Protected endpoints - require active session/cookie authentication
 	router.POST(basePath+"/token", requireAuth(http.HandlerFunc(p.handler.HandleGetToken)).ServeHTTP)
+	router.RegisterRouteMetadata(models.RouteMetadata{
+		Method:      "POST",
+		Path:        basePath + "/token",
+		Summary:     "Generate JWT token pair",
+		Description: "Generate access and refresh JWT tokens for the authenticated user",
+		Tags:        []string{"JWT"},
+		Protected:   true,
+		Responses: map[string]*models.ResponseMeta{
+			"200": {Description: "Token pair generated successfully", Schema: "TokenPair"},
+			"401": {Description: "Not authenticated", Schema: models.SchemaError},
+			"500": {Description: "Failed to generate tokens", Schema: models.SchemaError},
+		},
+	})
+
 	router.POST(basePath+"/getAccessToken", requireAuth(http.HandlerFunc(p.handler.HandleGetAccessToken)).ServeHTTP)
+	router.RegisterRouteMetadata(models.RouteMetadata{
+		Method:      "POST",
+		Path:        basePath + "/getAccessToken",
+		Summary:     "Get access token",
+		Description: "Generate a new access token for the authenticated user",
+		Tags:        []string{"JWT"},
+		Protected:   true,
+		Responses: map[string]*models.ResponseMeta{
+			"200": {Description: "Access token generated successfully", Schema: "AccessToken"},
+			"401": {Description: "Not authenticated", Schema: models.SchemaError},
+			"500": {Description: "Failed to generate token", Schema: models.SchemaError},
+		},
+	})
+
 	router.POST(basePath+"/logout", requireAuth(http.HandlerFunc(p.handler.HandleLogout)).ServeHTTP)
+	router.RegisterRouteMetadata(models.RouteMetadata{
+		Method:      "POST",
+		Path:        basePath + "/logout",
+		Summary:     "Logout and blacklist tokens",
+		Description: "Logout the user and blacklist their JWT tokens (requires Redis)",
+		Tags:        []string{"JWT"},
+		Protected:   true,
+		Responses: map[string]*models.ResponseMeta{
+			"200": {Description: "Successfully logged out and tokens blacklisted", Schema: models.SchemaSuccess},
+			"401": {Description: "Not authenticated", Schema: models.SchemaError},
+		},
+	})
 
 	// Public endpoints - no authentication required
 	router.POST(basePath+"/refreshToken", p.handler.HandleRefreshToken) // Refresh token is the auth
-	router.GET("/.well-known/jwks.json", p.handler.HandleJWKS)          // Public key discovery
-	router.GET(basePath+"/jwks", p.handler.HandleJWKS)                  // Convenience endpoint
+	router.RegisterRouteMetadata(models.RouteMetadata{
+		Method:      "POST",
+		Path:        basePath + "/refreshToken",
+		Summary:     "Refresh JWT tokens",
+		Description: "Use a refresh token to obtain new access and refresh tokens",
+		Tags:        []string{"JWT"},
+		Protected:   false,
+		RequestBody: &models.RequestBodyMeta{
+			Description: "Refresh token",
+			Required:    true,
+			Schema:      "RefreshTokenRequest",
+		},
+		Responses: map[string]*models.ResponseMeta{
+			"200": {Description: "Tokens refreshed successfully", Schema: "TokenPair"},
+			"400": {Description: "Invalid request", Schema: models.SchemaError},
+			"401": {Description: "Invalid or expired refresh token", Schema: models.SchemaError},
+		},
+	})
+
+	router.GET("/.well-known/jwks.json", p.handler.HandleJWKS) // Public key discovery
+	router.RegisterRouteMetadata(models.RouteMetadata{
+		Method:      "GET",
+		Path:        "/.well-known/jwks.json",
+		Summary:     "Get JWKS",
+		Description: "Retrieve the JSON Web Key Set for JWT verification",
+		Tags:        []string{"JWT"},
+		Protected:   false,
+		Responses: map[string]*models.ResponseMeta{
+			"200": {Description: "JWKS retrieved successfully", Schema: "JWKS"},
+			"500": {Description: "Failed to retrieve JWKS", Schema: models.SchemaError},
+		},
+	})
+
+	router.GET(basePath+"/jwks", p.handler.HandleJWKS) // Convenience endpoint
+	router.RegisterRouteMetadata(models.RouteMetadata{
+		Method:      "GET",
+		Path:        basePath + "/jwks",
+		Summary:     "Get JWKS (convenience endpoint)",
+		Description: "Retrieve the JSON Web Key Set for JWT verification",
+		Tags:        []string{"JWT"},
+		Protected:   false,
+		Responses: map[string]*models.ResponseMeta{
+			"200": {Description: "JWKS retrieved successfully", Schema: "JWKS"},
+			"500": {Description: "Failed to retrieve JWKS", Schema: models.SchemaError},
+		},
+	})
 }
 
 // Dependencies returns external package dependencies.
@@ -208,7 +287,11 @@ func (p *Plugin) getOrCreateKeyPair(ctx context.Context, keyType string) (jwk.Ke
 // rotateKeyPair generates a new key pair and stores it in the database
 func (p *Plugin) rotateKeyPair(ctx context.Context, keyType string) (jwk.Key, jwk.Key, error) {
 	// Generate new RSA key
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	keySize := 2048
+	if p.config != nil && p.config.KeySize > 0 {
+		keySize = p.config.KeySize
+	}
+	privKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate private key: %w", err)
 	}
@@ -234,8 +317,12 @@ func (p *Plugin) rotateKeyPair(ctx context.Context, keyType string) (jwk.Key, jw
 		return nil, nil, fmt.Errorf("failed to get public key: %w", err)
 	}
 
-	// Store in database with 14-day expiry
-	expiresAt := time.Now().Add(14 * 24 * time.Hour)
+	// Store in database with configured retention
+	retention := 14 * 24 * time.Hour
+	if p.config != nil && p.config.KeyRetention > 0 {
+		retention = p.config.KeyRetention
+	}
+	expiresAt := time.Now().Add(retention)
 	if err := p.db.CreateJWK(ctx, key, "RS256", "sig", &expiresAt); err != nil {
 		return nil, nil, fmt.Errorf("failed to store JWK: %w", err)
 	}
@@ -244,7 +331,7 @@ func (p *Plugin) rotateKeyPair(ctx context.Context, keyType string) (jwk.Key, jw
 }
 
 // GenerateTokenPair creates access and refresh tokens for a user
-func (p *Plugin) GenerateTokenPair(userID string) (*core.TokenPair, error) {
+func (p *Plugin) GenerateTokenPair(userID string) (*TokenPair, error) {
 	// Access Token
 	accessToken, accessExpiry, err := p.generateToken(userID, TokenTypeAccess, p.config.AccessTokenExpiry)
 	if err != nil {
@@ -257,7 +344,7 @@ func (p *Plugin) GenerateTokenPair(userID string) (*core.TokenPair, error) {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	return &core.TokenPair{
+	return &TokenPair{
 		AccessToken:   accessToken,
 		AccessExpiry:  accessExpiry,
 		RefreshToken:  refreshToken,
@@ -281,8 +368,14 @@ func (p *Plugin) generateToken(userID, tokenType string, duration time.Duration)
 	expiration := time.Now().Add(duration)
 
 	// Create token with claims (including unique JTI)
+	// Generate a unique token ID (JTI). This can fail if secure randomness is unavailable.
+	jti, err := core.GenerateSessionID()
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to generate token id: %w", err)
+	}
+
 	token, err := jwt.NewBuilder().
-		JwtID(core.GenerateSessionID()). // Add unique token ID
+		JwtID(jti). // Add unique token ID
 		Claim("user_id", userID).
 		Claim("token_type", tokenType).
 		Issuer(p.config.Issuer).
@@ -305,7 +398,7 @@ func (p *Plugin) generateToken(userID, tokenType string, duration time.Duration)
 }
 
 // ValidateToken checks the validity of a token.
-func (p *Plugin) ValidateToken(tokenStr string) (*core.TokenClaims, error) {
+func (p *Plugin) ValidateToken(tokenStr string) (*Claims, error) {
 	ctx := context.Background()
 
 	// Check if specific token is blacklisted (if Redis is available)
@@ -317,11 +410,16 @@ func (p *Plugin) ValidateToken(tokenStr string) (*core.TokenClaims, error) {
 		}
 	}
 
-	// First parse the token without validation to get the subject (userID)
+	// First parse the token WITHOUT verification. IMPORTANT: do NOT enable
+	// claim validation here because the token signature has not been verified
+	// yet. Validating claims on an unverified token can be manipulated by an
+	// attacker. We only extract the (untrusted) subject for optional checks
+	// such as looking up a user blacklist; any security decisions must be
+	// performed after the verified parse below.
 	parsedToken, err := jwt.Parse(
 		[]byte(tokenStr),
 		jwt.WithVerify(false),
-		jwt.WithValidate(true),
+		jwt.WithValidate(false),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse token: %w", err)
@@ -360,7 +458,7 @@ func (p *Plugin) ValidateToken(tokenStr string) (*core.TokenClaims, error) {
 		return nil, errors.New("missing token type")
 	}
 
-	claims := &core.TokenClaims{
+	claims := &Claims{
 		UserID:    tokenSubject,
 		TokenType: claimTokenType,
 	}
@@ -374,7 +472,7 @@ func (p *Plugin) ValidateToken(tokenStr string) (*core.TokenClaims, error) {
 }
 
 // RefreshTokens handles token refresh mechanism.
-func (p *Plugin) RefreshTokens(refreshToken string) (*core.TokenPair, error) {
+func (p *Plugin) RefreshTokens(refreshToken string) (*TokenPair, error) {
 	ctx := context.Background()
 
 	// Validate the refresh token first
@@ -406,7 +504,7 @@ func (p *Plugin) RefreshTokens(refreshToken string) (*core.TokenPair, error) {
 func (p *Plugin) blacklistTokenWithContext(ctx context.Context, tokenStr string) error {
 	// Only works if Redis is configured
 	if p.redisClient == nil {
-		return nil // Silently skip if Redis not available
+		return fmt.Errorf("redis not configured")
 	}
 
 	// Handle Bearer prefix if present
@@ -448,7 +546,7 @@ func (p *Plugin) blacklistTokenWithContext(ctx context.Context, tokenStr string)
 func (p *Plugin) BlacklistToken(tokenStr string) error {
 	// Only works if Redis is configured
 	if p.redisClient == nil {
-		return nil // Silently skip if Redis not available
+		return fmt.Errorf("redis not configured")
 	}
 
 	ctx := context.Background()

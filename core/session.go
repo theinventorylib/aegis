@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -14,10 +15,11 @@ import (
 
 // SessionService handles session management
 type SessionService struct {
-	db            db.Provider
-	config        *SessionConfig
-	redisClient   *redis.Client
-	tokenProvider TokenProvider // Optional: can be nil
+	db                db.Provider
+	config            *SessionConfig
+	redisClient       *redis.Client
+	bearerAuthEnabled bool         // Controls whether Bearer token auth is enabled
+	mu                sync.RWMutex // Protects bearerAuthEnabled
 }
 
 // NewSessionService creates a new session service
@@ -41,13 +43,7 @@ func NewSessionService(database db.Provider, cfg *SessionConfig) *SessionService
 		db:          database,
 		config:      cfg,
 		redisClient: redisClient,
-		// tokenProvider will be set by plugin if registered
 	}
-}
-
-// SetTokenProvider allows a plugin to register as the token provider
-func (s *SessionService) SetTokenProvider(provider TokenProvider) {
-	s.tokenProvider = provider
 }
 
 // GetRedisClient returns the Redis client (if configured)
@@ -60,24 +56,26 @@ func (s *SessionService) CreateSession(ctx context.Context, user *models.User, i
 	var token, refreshToken string
 	var expiresAt time.Time
 
-	if s.tokenProvider != nil {
-		// Use plugin-provided token generation
-		tokenPair, err := s.tokenProvider.GenerateTokenPair(user.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate token pair: %w", err)
-		}
-		token = tokenPair.AccessToken
-		refreshToken = tokenPair.RefreshToken
-		expiresAt = tokenPair.AccessExpiry
-	} else {
-		// Fallback to simple random token generation
-		token = generateRandomToken()
-		refreshToken = generateRandomToken()
-		expiresAt = time.Now().Add(s.config.SessionExpiry)
+	// Fallback to simple random token generation
+	var err error
+	token, err = generateRandomToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+	refreshToken, err = generateRandomToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+	expiresAt = time.Now().Add(s.config.SessionExpiry)
+
+	// Generate a session ID; avoid panicking on entropy failures by returning an error
+	sid, err := GenerateSessionID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate session id: %w", err)
 	}
 
 	session := &models.Session{
-		ID:           GenerateSessionID(),
+		ID:           sid,
 		UserID:       user.ID,
 		Token:        token,
 		RefreshToken: refreshToken,
@@ -98,33 +96,18 @@ func (s *SessionService) CreateSession(ctx context.Context, user *models.User, i
 func (s *SessionService) ValidateSession(ctx context.Context, tokenString string) (*models.Session, *models.User, error) {
 	var userID string
 
-	if s.tokenProvider != nil {
-		// Use plugin-provided token validation
-		claims, err := s.tokenProvider.ValidateToken(tokenString)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid token: %w", err)
-		}
-		userID = claims.UserID
-	} else {
-		// Fallback: validate by database lookup only
-		session, err := s.db.GetSession(ctx, tokenString)
-		if err != nil {
-			return nil, nil, fmt.Errorf("session not found: %w", err)
-		}
-
-		// Check if session is expired
-		if time.Now().After(session.ExpiresAt) {
-			return nil, nil, fmt.Errorf("session expired")
-		}
-
-		userID = session.UserID
-	}
-
-	// Get session from database (always needed for additional metadata)
+	// Fallback: validate by database lookup only
 	session, err := s.db.GetSession(ctx, tokenString)
 	if err != nil {
 		return nil, nil, fmt.Errorf("session not found: %w", err)
 	}
+
+	// Check if session is expired
+	if time.Now().After(session.ExpiresAt) {
+		return nil, nil, fmt.Errorf("session expired")
+	}
+
+	userID = session.UserID
 
 	// Check if session is expired (additional check for plugin tokens)
 	if time.Now().After(session.ExpiresAt) {
@@ -142,11 +125,6 @@ func (s *SessionService) ValidateSession(ctx context.Context, tokenString string
 
 // DeleteSession deletes a session and blacklists the token
 func (s *SessionService) DeleteSession(ctx context.Context, token string) error {
-	// Blacklist the token if a token provider is available
-	if s.tokenProvider != nil {
-		_ = s.tokenProvider.BlacklistToken(token) // Ignore error, continue with database deletion
-	}
-
 	// Delete from database
 	return s.db.DeleteSession(ctx, token)
 }
@@ -154,28 +132,22 @@ func (s *SessionService) DeleteSession(ctx context.Context, token string) error 
 // RefreshSession refreshes a session using a refresh token
 func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string) (*models.Session, error) {
 	// Get session by refresh token
-	session, err := s.db.GetSessionByRefreshToken(ctx, refreshToken)
+	session, sErr := s.db.GetSessionByRefreshToken(ctx, refreshToken)
+	if sErr != nil {
+		return nil, fmt.Errorf("invalid refresh token: %w", sErr)
+	}
+
+	// Fallback: generate new simple tokens
+	var err error
+	session.Token, err = generateRandomToken()
 	if err != nil {
-		return nil, fmt.Errorf("invalid refresh token: %w", err)
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
-
-	if s.tokenProvider != nil {
-		// Use plugin-provided token refresh
-		tokenPair, err := s.tokenProvider.RefreshTokens(refreshToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to refresh tokens: %w", err)
-		}
-
-		// Update session with new tokens
-		session.Token = tokenPair.AccessToken
-		session.RefreshToken = tokenPair.RefreshToken
-		session.ExpiresAt = tokenPair.AccessExpiry
-	} else {
-		// Fallback: generate new simple tokens
-		session.Token = generateRandomToken()
-		session.RefreshToken = generateRandomToken()
-		session.ExpiresAt = time.Now().Add(s.config.SessionExpiry)
+	session.RefreshToken, err = generateRandomToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
+	session.ExpiresAt = time.Now().Add(s.config.SessionExpiry)
 
 	if err := s.db.UpdateSession(ctx, session); err != nil {
 		return nil, fmt.Errorf("failed to update session: %w", err)
@@ -185,21 +157,22 @@ func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string
 }
 
 // GenerateSessionID generates a random ID for sessions
-func GenerateSessionID() string {
+func GenerateSessionID() (string, error) {
+	// Try to read cryptographically secure random bytes; return an error if unavailable
 	bytes := make([]byte, 16)
 	if _, err := rand.Read(bytes); err != nil {
-		panic(fmt.Sprintf("failed to generate session ID: %v", err))
+		return "", fmt.Errorf("failed to generate session id: %w", err)
 	}
-	return base64.URLEncoding.EncodeToString(bytes)
+	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
 // generateRandomToken generates a random token for fallback authentication
-func generateRandomToken() string {
+func generateRandomToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
-		panic(fmt.Sprintf("failed to generate random token: %v", err))
+		return "", fmt.Errorf("failed to generate random token: %w", err)
 	}
-	return base64.URLEncoding.EncodeToString(bytes)
+	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
 // GetConfig returns the session configuration (useful for middleware)
@@ -210,6 +183,22 @@ func (s *SessionService) GetConfig() *SessionConfig {
 // GetDB returns the database provider (useful for handlers)
 func (s *SessionService) GetDB() db.Provider {
 	return s.db
+}
+
+// EnableBearerAuth enables Bearer token authentication.
+// This should be called by the bearer plugin during initialization.
+func (s *SessionService) EnableBearerAuth() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.bearerAuthEnabled = true
+}
+
+// IsBearerAuthEnabled returns whether Bearer token authentication is enabled.
+// The core AuthMiddleware checks this before attempting to extract Bearer tokens.
+func (s *SessionService) IsBearerAuthEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.bearerAuthEnabled
 }
 
 // CreateSessionForPlugin creates a new session (interface implementation for plugins)

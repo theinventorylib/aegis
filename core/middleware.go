@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"net/http"
 )
 
@@ -19,8 +18,9 @@ func AuthMiddleware(sessionService *SessionService) func(http.Handler) http.Hand
 					ctx = WithUser(ctx, user)
 					r = r.WithContext(ctx)
 				}
-			} else {
-				// Try to get session from Authorization header
+			} else if sessionService.IsBearerAuthEnabled() {
+				// Only check Authorization header if bearer auth is explicitly enabled
+				// This requires the bearer plugin to be registered
 				token := r.Header.Get("Authorization")
 				if token != "" {
 					// Remove "Bearer " prefix if present
@@ -109,43 +109,4 @@ func parseSameSite(value string) http.SameSite {
 	default:
 		return http.SameSiteLaxMode
 	}
-}
-
-// WriteJSON writes a JSON response
-func WriteJSON(w http.ResponseWriter, statusCode int, data interface{}) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	// Simple JSON marshaling for Response type
-	if resp, ok := data.(*Response); ok {
-		return writeResponse(w, resp)
-	}
-
-	return fmt.Errorf("unsupported data type")
-}
-
-func writeResponse(w http.ResponseWriter, resp *Response) error {
-	// Manual JSON construction for simplicity
-	// In production, use encoding/json
-	_, err := fmt.Fprintf(w, `{"success":%t`, resp.Success)
-	if err != nil {
-		return err
-	}
-
-	if resp.Message != "" {
-		_, err = fmt.Fprintf(w, `,"message":"%s"`, resp.Message)
-		if err != nil {
-			return err
-		}
-	}
-
-	if resp.Error != "" {
-		_, err = fmt.Fprintf(w, `,"error":"%s"`, resp.Error)
-		if err != nil {
-			return err
-		}
-	}
-
-	_, err = fmt.Fprint(w, "}")
-	return err
 }

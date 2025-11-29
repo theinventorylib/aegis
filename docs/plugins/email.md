@@ -14,14 +14,16 @@ go get github.com/theinventorylib/aegis/plugins/email
 import "github.com/theinventorylib/aegis/plugins/email"
 
 emailPlugin := email.New(&email.Config{
-    DB:             dbProvider,
-    Provider:       myEmailProvider, // Implements email.Provider interface
-    PasswordPlugin: passwordPlugin,  // Optional: if using passwords
+    DB:        dbProvider,
+    Provider:  myEmailProvider, // Implements email.Provider interface
     
     // Optional configuration
-    OTPLength:      6,
-    OTPExpiration:  15 * time.Minute,
+    OTPLength:     6,
+    OTPExpiration: 15 * time.Minute,
 })
+
+// Note: Password support is provided by core AuthService. The email plugin
+// exposes helper methods that call into core when creating users with passwords.
 ```
 
 ## Usage

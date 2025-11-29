@@ -10,8 +10,13 @@ import (
 
 	"github.com/theinventorylib/aegis/migrations"
 	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/plugins/admin"
+	"github.com/theinventorylib/aegis/plugins/bearer"
 	"github.com/theinventorylib/aegis/plugins/email"
+	"github.com/theinventorylib/aegis/plugins/jwt"
 	"github.com/theinventorylib/aegis/plugins/oauth"
+	"github.com/theinventorylib/aegis/plugins/openapi"
+	"github.com/theinventorylib/aegis/plugins/organizations"
 	"github.com/theinventorylib/aegis/plugins/sms"
 )
 
@@ -118,15 +123,20 @@ func getPlugins(selection string) []plugins.Plugin {
 	// For migration export, we don't need full DB initialization
 	// We only need to call GetMigrations() which doesn't require DB connection
 	availablePlugins := map[string]plugins.Plugin{
-		"email": email.New(&email.Config{}),
-		"sms":   sms.New(&sms.Config{}),
-		"oauth": oauth.New(&oauth.Config{}),
+		"email":         email.New(&email.Config{}),
+		"sms":           sms.New(&sms.Config{}),
+		"oauth":         oauth.New(&oauth.Config{}),
+		"jwt":           jwt.New(&jwt.Config{}),
+		"bearer":        bearer.New(&bearer.Config{}),
+		"openapi":       openapi.New(nil),       // Takes *Config, nil uses defaults
+		"admin":         admin.New(nil),         // Takes db.Provider, nil for migration export
+		"organizations": organizations.New(nil), // Takes db.Provider, nil for migration export
 	}
 
 	if selection == "all" {
 		result := make([]plugins.Plugin, 0, len(availablePlugins))
-		// Return in a consistent order
-		order := []string{"email", "sms", "oauth"}
+		// Return in a consistent order (by priority: infrastructure → auth → features → admin)
+		order := []string{"jwt", "bearer", "email", "sms", "oauth", "openapi", "organizations", "admin"}
 		for _, name := range order {
 			if p, ok := availablePlugins[name]; ok {
 				result = append(result, p)
@@ -143,7 +153,7 @@ func getPlugins(selection string) []plugins.Plugin {
 		if p, ok := availablePlugins[name]; ok {
 			result = append(result, p)
 		} else {
-			fmt.Printf("Warning: Unknown plugin '%s' (available: email, sms, oauth)\n", name)
+			fmt.Printf("Warning: Unknown plugin '%s' (available: email, sms, oauth, jwt, bearer, openapi, admin, organizations)\n", name)
 			return nil
 		}
 	}
@@ -178,7 +188,12 @@ func printUsage() {
 	fmt.Println("AVAILABLE PLUGINS:")
 	fmt.Println("  - email          Email verification and authentication")
 	fmt.Println("  - sms            SMS/phone number verification")
-	fmt.Println("  - oauth          OAuth provider integrations")
+	fmt.Println("  - oauth          OAuth provider integrations (Google, GitHub, etc.)")
+	fmt.Println("  - jwt            JWT token generation and validation")
+	fmt.Println("  - bearer         Bearer token authentication support")
+	fmt.Println("  - openapi        OpenAPI 3.0 documentation with Scalar UI")
+	fmt.Println("  - admin          Administrative endpoints for user management")
+	fmt.Println("  - organizations  Multi-tenant organization support")
 	fmt.Println()
 	fmt.Println("OTHER COMMANDS:")
 	fmt.Println("  aegis version    Show version information")

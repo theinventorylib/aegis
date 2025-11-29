@@ -3,148 +3,215 @@ package admin
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/theinventorylib/aegis/core"
 )
 
-// ListUsersHandler lists all users (paginated)
+// ListUsersHandler lists all users
 func (p *Plugin) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
-	// Extract pagination params
-	// page := r.URL.Query().Get("page")
-	// limit := r.URL.Query().Get("limit")
+	pagination := core.ParsePagination(r)
 
-	users, err := p.listUsers(r.Context(), 0, 50)
+	// Use DB method
+	users, err := p.db.ListUsersRaw(r.Context(), pagination.Offset, pagination.Limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to list users",
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"users":   users,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: map[string]interface{}{
+			"users": users,
+			"page":  pagination.Page,
+			"limit": pagination.Limit,
+		},
 	})
 }
 
 // GetUserHandler gets a specific user
 func (p *Plugin) GetUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("id")
+	userID := r.PathValue("id")
 	if userID == "" {
 		http.Error(w, "User ID required", http.StatusBadRequest)
 		return
 	}
 
-	var id, email, role string
-	var createdAt, updatedAt interface{}
-	var disabled bool
-
-	// Query extended fields
-	err := p.database.QueryRow(r.Context(), `
-		SELECT id, created_at, updated_at, 
-		       COALESCE(email, '') as email, 
-		       COALESCE(role, 'user') as role,
-		       disabled
-		FROM auth.user
-		WHERE id = $1
-	`, userID).Scan(&id, &createdAt, &updatedAt, &email, &role, &disabled)
-
+	user, err := p.db.GetUserRaw(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+		core.WriteJSON(w, http.StatusNotFound, &core.Response{
+			Success: false,
+			Error:   "User not found",
+		})
 		return
 	}
 
-	user := map[string]interface{}{
-		"id":        id,
-		"createdAt": createdAt,
-		"updatedAt": updatedAt,
-		"email":     email,
-		"role":      role,
-		"disabled":  disabled,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"user":    user,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data:    user,
 	})
 }
 
-// DisableUserHandler disables a user account
+// DisableUserHandler disables a user
 func (p *Plugin) DisableUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("id")
+	userID := r.PathValue("id")
 	if userID == "" {
 		http.Error(w, "User ID required", http.StatusBadRequest)
 		return
 	}
 
-	// Get user
-	user, err := p.database.GetUserByID(r.Context(), userID)
+	// Get user first
+	user, err := p.db.GetUserByID(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+		core.WriteJSON(w, http.StatusNotFound, &core.Response{
+			Success: false,
+			Error:   "User not found",
+		})
 		return
 	}
 
-	// Update user status
+	// Update disabled status
 	user.Disabled = true
-	if err := p.database.UpdateUser(r.Context(), user); err != nil {
-		http.Error(w, "Failed to disable user", http.StatusInternalServerError)
+	if err := p.db.UpdateUser(r.Context(), user); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to disable user",
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": "User disabled",
+	// Kill sessions
+	_ = p.db.DeleteUserSessions(r.Context(), userID)
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "User disabled",
 	})
 }
 
-// EnableUserHandler enables a user account
+// EnableUserHandler enables a user
 func (p *Plugin) EnableUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("id")
+	userID := r.PathValue("id")
 	if userID == "" {
 		http.Error(w, "User ID required", http.StatusBadRequest)
 		return
 	}
 
-	// Get user
-	user, err := p.database.GetUserByID(r.Context(), userID)
+	user, err := p.db.GetUserByID(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+		core.WriteJSON(w, http.StatusNotFound, &core.Response{
+			Success: false,
+			Error:   "User not found",
+		})
 		return
 	}
 
-	// Update user status
 	user.Disabled = false
-	if err := p.database.UpdateUser(r.Context(), user); err != nil {
-		http.Error(w, "Failed to enable user", http.StatusInternalServerError)
+	if err := p.db.UpdateUser(r.Context(), user); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to enable user",
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": "User enabled",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "User enabled",
 	})
 }
 
-// DeleteUserHandler deletes a user account
+// DeleteUserHandler deletes a user
 func (p *Plugin) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("id")
+	userID := r.PathValue("id")
 	if userID == "" {
 		http.Error(w, "User ID required", http.StatusBadRequest)
 		return
 	}
 
-	// Delete user (cascades to sessions, OTPs, organization memberships)
-	if err := p.database.DeleteUser(r.Context(), userID); err != nil {
-		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
+	if err := p.db.DeleteUser(r.Context(), userID); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to delete user",
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": "User deleted successfully",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "User deleted",
+	})
+}
+
+// BanUserHandler bans a user
+func (p *Plugin) BanUserHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.PathValue("id")
+	if userID == "" {
+		http.Error(w, "User ID required", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Reason    string    `json:"reason"`
+		ExpiresAt time.Time `json:"expiresAt"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.Reason == "" {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "Ban reason is required",
+		})
+		return
+	}
+
+	var expiry interface{}
+	if !req.ExpiresAt.IsZero() {
+		expiry = req.ExpiresAt
+	}
+
+	if err := p.db.BanUser(r.Context(), userID, req.Reason, expiry); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to ban user",
+		})
+		return
+	}
+
+	// Kill sessions
+	_ = p.db.DeleteUserSessions(r.Context(), userID)
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "User banned",
+	})
+}
+
+// UnbanUserHandler unbans a user
+func (p *Plugin) UnbanUserHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.PathValue("id")
+	if userID == "" {
+		http.Error(w, "User ID required", http.StatusBadRequest)
+		return
+	}
+
+	if err := p.db.UnbanUser(r.Context(), userID); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to unban user",
+		})
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "User unbanned",
 	})
 }
 
@@ -153,146 +220,140 @@ func (p *Plugin) AddOrganizationHandler(w http.ResponseWriter, r *http.Request) 
 	var req struct {
 		Name    string `json:"name"`
 		Slug    string `json:"slug"`
-		OwnerID string `json:"owner_id"`
+		OwnerID string `json:"ownerId"`
 	}
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
 	if req.Name == "" || req.Slug == "" || req.OwnerID == "" {
-		http.Error(w, "Name, slug, and owner_id are required", http.StatusBadRequest)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "Name, slug, and ownerId are required",
+		})
 		return
 	}
 
-	org, err := p.addOrganization(r.Context(), req.Name, req.Slug, req.OwnerID)
+	id := core.GenerateID()
+	org, err := p.db.CreateOrganization(r.Context(), id, req.Name, req.Slug, req.OwnerID)
 	if err != nil {
-		http.Error(w, "Failed to create organization: "+err.Error(), http.StatusInternalServerError)
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to create organization",
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":      true,
-		"organization": org,
+	core.WriteJSON(w, http.StatusCreated, &core.Response{
+		Success: true,
+		Data:    org,
 	})
 }
 
 // ListOrganizationsHandler lists all organizations
 func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request) {
-	orgs, err := p.listOrganizations(r.Context(), 0, 50)
+	pagination := core.ParsePagination(r)
+
+	orgs, err := p.db.ListOrganizations(r.Context(), pagination.Offset, pagination.Limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to list organizations",
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":       true,
-		"organizations": orgs,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: map[string]interface{}{
+			"organizations": orgs,
+			"page":          pagination.Page,
+			"limit":         pagination.Limit,
+		},
 	})
 }
 
 // GetOrganizationHandler gets a specific organization
 func (p *Plugin) GetOrganizationHandler(w http.ResponseWriter, r *http.Request) {
-	orgID := r.URL.Query().Get("id")
+	orgID := r.PathValue("id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
 	}
 
-	org, err := p.getOrganization(r.Context(), orgID)
+	org, err := p.db.GetOrganization(r.Context(), orgID)
 	if err != nil {
-		http.Error(w, "Organization not found", http.StatusNotFound)
+		core.WriteJSON(w, http.StatusNotFound, &core.Response{
+			Success: false,
+			Error:   "Organization not found",
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":      true,
-		"organization": org,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data:    org,
 	})
 }
 
-// BanOrganizationHandler bans (disables) an organization
+// BanOrganizationHandler bans an organization
 func (p *Plugin) BanOrganizationHandler(w http.ResponseWriter, r *http.Request) {
-	orgID := r.URL.Query().Get("id")
+	orgID := r.PathValue("id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
 	}
 
-	if err := p.banOrganization(r.Context(), orgID); err != nil {
-		http.Error(w, "Failed to ban organization: "+err.Error(), http.StatusInternalServerError)
+	if err := p.db.BanOrganization(r.Context(), orgID); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to ban organization",
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Organization banned",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Organization banned",
 	})
 }
 
 // DeleteOrganizationHandler deletes an organization
 func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Request) {
-	orgID := r.URL.Query().Get("id")
+	orgID := r.PathValue("id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
 	}
 
-	if err := p.deleteOrganization(r.Context(), orgID); err != nil {
-		http.Error(w, "Failed to delete organization: "+err.Error(), http.StatusInternalServerError)
+	if err := p.db.DeleteOrganization(r.Context(), orgID); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to delete organization",
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Organization deleted",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Organization deleted",
 	})
 }
 
 // GetStatsHandler returns platform statistics
 func (p *Plugin) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
-	stats, err := p.getStats(r.Context())
+	stats, err := p.db.GetStats(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to get stats",
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"stats":   stats,
-	})
-}
-
-// AdminMiddleware checks if user has admin role
-func (p *Plugin) AdminMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, err := core.GetUser(r.Context())
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Check if user has admin role by querying DB
-		var role string
-		err = p.database.QueryRow(r.Context(), "SELECT role FROM auth.user WHERE id = $1", user.ID).Scan(&role)
-		if err != nil {
-			// If role column doesn't exist or user not found (shouldn't happen if auth passed), fail
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-
-		if role != "admin" {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-
-		next.ServeHTTP(w, r)
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data:    stats,
 	})
 }

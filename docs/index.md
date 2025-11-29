@@ -27,13 +27,25 @@
 
 ## Documentation Sections
 
-- [**Getting Started**](./getting-started.md): Installation and quick start guide.
-- [**Core Concepts**](./core-concepts.md): Architecture, database provider, and schema.
-- [**Architecture & Flow**](./architecture.md): Deep dive into how Aegis works.
-- [**Configuration**](./configuration.md): Configuring Aegis and its plugins.
-- [**Plugins**](./plugins.md): Detailed guides for available plugins.
-- [**CLI Reference**](./cli.md): Using the Aegis CLI tool.
-- [**Database Setup**](./database-setup.md): detailed database setup guide.
+### Getting Started
+- [**Getting Started**](./getting-started.md) - Complete quickstart guide with database setup and configuration
+- [**Core Concepts**](./core-concepts.md) - Architecture, components, request flows, and schema
+
+### Plugins & Extensions
+- [**Plugins Overview**](./plugins.md) - Plugin system and development guide
+- [**Plugin Documentation**](./plugins/) - Individual plugin guides (Password, Email, SMS, OAuth, JWT, Bearer, Admin, Organizations, OpenAPI, Rate Limit)
+
+### Advanced Topics
+- [**Database Setup**](./database-setup.md) - Advanced database configuration and production setup
+- [**ID Generation**](./id-generation.md) - ID strategies (ULID, UUID, custom generators)
+- [**CLI Reference**](./cli.md) - Using the Aegis CLI tool
+- [**API Reference**](./api-reference.md) - Complete API documentation
+- [**Testing Guide**](./testing-guide.md) - Testing your authentication
+
+### Development
+- [**Contributing**](./contributing.md) - How to contribute to Aegis
+- [**Plugin Priorities**](./plugin-priorities.md) - Understanding plugin initialization order
+- [**Concurrency Best Practices**](./concurrency-best-practices.md) - Thread-safety guide
 
 ## Project Info
 

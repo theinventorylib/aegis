@@ -11,17 +11,17 @@ import (
 	"github.com/theinventorylib/aegis/db"
 	"github.com/theinventorylib/aegis/models"
 	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/plugins/password"
+
 	"github.com/theinventorylib/aegis/server"
 )
 
 // Plugin represents the SMS plugin for Aegis
 type Plugin struct {
-	db             db.Provider
+	db             *DB
 	provider       Provider
 	otpExpiry      time.Duration
 	otpLength      int
-	passwordPlugin *password.Plugin // For phone+password authentication
+	authService    *core.AuthService // For phone+password authentication
 	sessionService *core.SessionService
 }
 
@@ -31,8 +31,8 @@ type Config struct {
 	Provider       Provider      // SMS sending provider
 	OTPExpiry      time.Duration // OTP expiry duration
 	OTPLength      int
-	PasswordPlugin *password.Plugin // Optional: for phone+password auth
 	SessionService *core.SessionService
+	// Password auth is provided by core AuthService at runtime
 }
 
 // New creates a new SMS plugin instance
@@ -49,11 +49,10 @@ func New(cfg *Config) *Plugin {
 	}
 
 	return &Plugin{
-		db:             cfg.DB,
+		db:             NewDB(cfg.DB),
 		provider:       cfg.Provider,
 		otpExpiry:      cfg.OTPExpiry,
 		otpLength:      cfg.OTPLength,
-		passwordPlugin: cfg.PasswordPlugin,
 		sessionService: cfg.SessionService,
 	}
 }
@@ -78,6 +77,7 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 	// Get session service from Aegis instance
 	if app, ok := a.(*aegis.Aegis); ok {
 		p.sessionService = app.GetSessionService()
+		p.authService = app.GetAuthService()
 	}
 	return nil
 }
@@ -91,27 +91,92 @@ func (p *Plugin) MountRoutes(router server.Router, prefix string) {
 
 	// Protected route - sending OTP requires authentication to prevent spam/abuse
 	router.POST(prefix+"/sms/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
+	router.RegisterRouteMetadata(models.RouteMetadata{
+		Method:      "POST",
+		Path:        prefix + "/sms/send",
+		Summary:     "Send SMS OTP",
+		Description: "Send a one-time password via SMS to the authenticated user's phone number",
+		Tags:        []string{"SMS"},
+		Protected:   true,
+		RequestBody: &models.RequestBodyMeta{
+			Description: "Phone number to send OTP to",
+			Required:    true,
+			Schema:      "SendOTPRequest",
+		},
+		Responses: map[string]*models.ResponseMeta{
+			"200": {Description: "OTP sent successfully", Schema: models.SchemaSuccess},
+			"400": {Description: "Invalid request", Schema: models.SchemaError},
+			"401": {Description: "Not authenticated", Schema: models.SchemaError},
+			"500": {Description: "Failed to send SMS", Schema: models.SchemaError},
+		},
+	})
 
 	// Public routes
 	router.POST(prefix+"/sms/verify", handlers.VerifyOTPHandler) // User proving phone ownership
+	router.RegisterRouteMetadata(models.RouteMetadata{
+		Method:      "POST",
+		Path:        prefix + "/sms/verify",
+		Summary:     "Verify SMS OTP",
+		Description: "Verify a one-time password sent via SMS",
+		Tags:        []string{"SMS"},
+		Protected:   false,
+		RequestBody: &models.RequestBodyMeta{
+			Description: "Phone number and OTP code",
+			Required:    true,
+			Schema:      "VerifyOTPRequest",
+		},
+		Responses: map[string]*models.ResponseMeta{
+			"200": {Description: "OTP verified successfully", Schema: models.SchemaSuccess},
+			"400": {Description: "Invalid request or incorrect OTP", Schema: models.SchemaError},
+			"401": {Description: "OTP expired or not found", Schema: models.SchemaError},
+		},
+	})
 
-	// Phone+password authentication (if password plugin configured)
-	if p.passwordPlugin != nil {
+	// Phone+password authentication (if core AuthService configured)
+	if p.authService != nil {
 		router.POST(prefix+"/sms/login", handlers.LoginWithPhoneHandler) // Login endpoint
+		router.RegisterRouteMetadata(models.RouteMetadata{
+			Method:      "POST",
+			Path:        prefix + "/sms/login",
+			Summary:     "Login with phone and password",
+			Description: "Authenticate using phone number and password",
+			Tags:        []string{"SMS", "Authentication"},
+			Protected:   false,
+			RequestBody: &models.RequestBodyMeta{
+				Description: "Phone number and password credentials",
+				Required:    true,
+				Schema:      "PhoneLoginRequest",
+			},
+			Responses: map[string]*models.ResponseMeta{
+				"200": {Description: "Login successful, session created", Schema: models.SchemaSession},
+				"400": {Description: "Invalid request", Schema: models.SchemaError},
+				"401": {Description: "Invalid credentials", Schema: models.SchemaError},
+			},
+		})
+
+		router.POST(prefix+"/sms/register", handlers.RegisterWithPhoneHandler)
+		router.RegisterRouteMetadata(models.RouteMetadata{
+			Method:      "POST",
+			Path:        prefix + "/sms/register",
+			Summary:     "Register with phone and password",
+			Description: "Create a new account using phone number and password",
+			Tags:        []string{"SMS", "Authentication"},
+			Protected:   false,
+			RequestBody: &models.RequestBodyMeta{
+				Description: "Phone number and password credentials",
+				Required:    true,
+				Schema:      "RegisterWithPhoneRequest",
+			},
+			Responses: map[string]*models.ResponseMeta{
+				"201": {Description: "Registration successful, session created", Schema: models.SchemaSession},
+				"400": {Description: "Invalid request or phone number already exists", Schema: models.SchemaError},
+			},
+		})
 	}
 }
 
 // Dependencies returns external package dependencies
 func (p *Plugin) Dependencies() []plugins.Dependency {
-	if p.passwordPlugin != nil {
-		return []plugins.Dependency{
-			{
-				Package: "github.com/theinventorylib/aegis/plugins/password",
-				Version: "latest",
-				Purpose: "Password authentication for phone+password login",
-			},
-		}
-	}
 	return []plugins.Dependency{}
 }
 
@@ -139,11 +204,7 @@ func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, userID, purpose strin
 
 	// Invalidate any existing OTPs for this user and purpose
 	if userID != "" {
-		_, err := p.db.Exec(ctx, `
-			DELETE FROM auth.verification
-			WHERE identifier = ? AND type = ?
-		`, userID, purpose)
-		if err != nil {
+		if err := p.db.InvalidateVerifications(ctx, userID, purpose); err != nil {
 			return fmt.Errorf("failed to invalidate existing OTPs: %w", err)
 		}
 	}
@@ -153,12 +214,16 @@ func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, userID, purpose strin
 	expiresAt := time.Now().Add(p.otpExpiry)
 	createdAt := time.Now()
 
-	_, err = p.db.Exec(ctx, `
-		INSERT INTO auth.verification (id, identifier, token, type, expires_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, id, phoneNumber, code, purpose, expiresAt, createdAt)
+	verification := &Verification{
+		ID:          id,
+		PhoneNumber: phoneNumber,
+		Code:        code,
+		Purpose:     purpose,
+		ExpiresAt:   expiresAt,
+		CreatedAt:   createdAt,
+	}
 
-	if err != nil {
+	if err := p.db.CreateVerification(ctx, verification); err != nil {
 		return fmt.Errorf("failed to create verification: %w", err)
 	}
 
@@ -177,53 +242,29 @@ func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, code, purpose strin
 	if p.db == nil {
 		return false, fmt.Errorf("database not configured")
 	}
-
-	var id string
-	var token string
-	var expiresAt time.Time
-
-	err := p.db.QueryRow(ctx, `
-		SELECT id, token, expires_at
-		FROM auth.verification
-		WHERE identifier = ? AND type = ? AND expires_at > NOW()
-		ORDER BY created_at DESC
-		LIMIT 1
-	`, phoneNumber, purpose).Scan(&id, &token, &expiresAt)
-
-	if err != nil {
-		return false, fmt.Errorf("OTP not found or expired")
-	}
-
-	// Verify code
-	if token != code {
-		return false, nil
-	}
-
-	// Delete the used verification token
-	_, err = p.db.Exec(ctx, `
-		DELETE FROM auth.verification
-		WHERE id = ?
-	`, id)
-
-	if err != nil {
-		return false, fmt.Errorf("failed to delete used OTP: %w", err)
-	}
-
-	return true, nil
+	return p.db.VerifyOTP(ctx, phoneNumber, code, purpose)
 }
 
 // GetUserByPhone retrieves a user by phone number
 func (p *Plugin) GetUserByPhone(ctx context.Context, phone string) (*models.User, error) {
-	var user models.User
-	err := p.db.QueryRow(ctx, `
-		SELECT id, created_at, updated_at
-		FROM auth.user
-		WHERE phone_number = ?
-	`, phone).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+	return p.db.GetUserByPhone(ctx, phone)
+}
 
-	if err != nil {
-		return nil, fmt.Errorf("user not found")
+// CreateUserWithPhoneAndPassword creates a new user and password account, then sets the phone number.
+func (p *Plugin) CreateUserWithPhoneAndPassword(ctx context.Context, phone, password string) (*models.User, error) {
+	if p.authService == nil {
+		return nil, fmt.Errorf("core auth service not configured")
 	}
 
-	return &user, nil
+	user, err := p.authService.CreateUserWithPassword(ctx, password)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := p.db.UpdateUserPhone(ctx, user.ID, phone, false); err != nil {
+		_ = p.sessionService.GetDB().DeleteUser(ctx, user.ID)
+		return nil, fmt.Errorf("failed to set phone number: %w", err)
+	}
+
+	return user, nil
 }

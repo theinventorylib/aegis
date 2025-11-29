@@ -23,14 +23,22 @@ type mockPlugin struct {
 	initDelay   time.Duration
 	initError   error
 	initCalled  bool
+	initFunc    func(context.Context, plugins.Aegis) error // Optional custom Init behavior
 }
 
 func (m *mockPlugin) Name() string        { return m.name }
 func (m *mockPlugin) Version() string     { return m.version }
 func (m *mockPlugin) Description() string { return m.description }
 
-func (m *mockPlugin) Init(ctx context.Context, _ plugins.Aegis) error {
+func (m *mockPlugin) Init(ctx context.Context, a plugins.Aegis) error {
 	m.initCalled = true
+
+	// Call custom init function if provided
+	if m.initFunc != nil {
+		return m.initFunc(ctx, a)
+	}
+
+	// Default behavior
 	if m.initDelay > 0 {
 		select {
 		case <-time.After(m.initDelay):
@@ -42,11 +50,11 @@ func (m *mockPlugin) Init(ctx context.Context, _ plugins.Aegis) error {
 	return m.initError
 }
 
-func (m *mockPlugin) GetMigrations() []plugins.Migration         { return nil }
-func (m *mockPlugin) MountRoutes(_ server.Router, prefix string) {}
-func (m *mockPlugin) Dependencies() []plugins.Dependency         { return nil }
-func (m *mockPlugin) RequiresTables() []string                   { return nil }
-func (m *mockPlugin) ProvidesAuthMethods() []string              { return nil }
+func (m *mockPlugin) GetMigrations() []plugins.Migration    { return nil }
+func (m *mockPlugin) MountRoutes(_ server.Router, _ string) {}
+func (m *mockPlugin) Dependencies() []plugins.Dependency    { return nil }
+func (m *mockPlugin) RequiresTables() []string              { return nil }
+func (m *mockPlugin) ProvidesAuthMethods() []string         { return nil }
 
 // mockLogger for testing logging functionality
 type mockLogger struct {
@@ -291,10 +299,21 @@ func TestPluginInitError(t *testing.T) {
 		t.Errorf("Expected error to wrap init error, got: %v", err)
 	}
 
-	// Plugin should not be registered
+	// Plugin should not be registered after rollback
 	_, found := aegis.GetPlugin("failing-plugin")
 	if found {
-		t.Error("Failed plugin should not be registered")
+		t.Error("Failed plugin should not be registered after rollback")
+	}
+
+	// Verify no plugins in registry (complete cleanup)
+	plugins := aegis.GetPlugins()
+	if len(plugins) != 0 {
+		t.Errorf("Expected 0 plugins after rollback, got %d", len(plugins))
+	}
+
+	// Verify Init was called (plugin attempted initialization)
+	if !plugin.initCalled {
+		t.Error("Plugin Init should have been called before rollback")
 	}
 }
 
@@ -431,28 +450,6 @@ func TestLoggingOnError(t *testing.T) {
 	}
 }
 
-func TestDeprecatedRegisterPlugin(t *testing.T) {
-	aegis := setupTestAegis(t)
-
-	plugin := &mockPlugin{
-		name:        "test-plugin",
-		version:     "1.0.0",
-		description: "Test plugin",
-	}
-
-	// Use deprecated method (should still work)
-	err := aegis.RegisterPlugin(plugin)
-	if err != nil {
-		t.Fatalf("RegisterPlugin failed: %v", err)
-	}
-
-	// Verify plugin was registered
-	_, found := aegis.GetPlugin("test-plugin")
-	if !found {
-		t.Error("Plugin should be registered via deprecated RegisterPlugin")
-	}
-}
-
 func TestSessionMiddlewareNilCheck(t *testing.T) {
 	// Create aegis with nil session (shouldn't happen, but test defensive code)
 	aegis := &Aegis{
@@ -481,4 +478,197 @@ func TestRequireAuthMiddlewareNilCheck(t *testing.T) {
 	}()
 
 	_ = aegis.RequireAuth()
+}
+
+func TestPluginVisibilityDuringInit(t *testing.T) {
+	aegis := setupTestAegis(t)
+
+	// Track what plugins were visible during Init
+	var visiblePlugins []string
+
+	// First plugin - should see itself during Init
+	plugin1 := &mockPlugin{
+		name:        "plugin-1",
+		version:     "1.0.0",
+		description: "First plugin",
+	}
+	plugin1.initFunc = func(_ context.Context, a plugins.Aegis) error {
+		// Check if we can see ourselves
+		if p, found := a.(*Aegis).GetPlugin("plugin-1"); found {
+			visiblePlugins = append(visiblePlugins, p.Name())
+		}
+		return nil
+	}
+
+	err := aegis.Use(context.Background(), plugin1)
+	if err != nil {
+		t.Fatalf("Failed to register plugin-1: %v", err)
+	}
+
+	// Verify plugin-1 saw itself during Init
+	if len(visiblePlugins) != 1 || visiblePlugins[0] != "plugin-1" {
+		t.Errorf("Expected plugin-1 to see itself during Init, got: %v", visiblePlugins)
+	}
+
+	// Second plugin - should see both itself and plugin-1
+	visiblePlugins = nil // Reset
+	plugin2 := &mockPlugin{
+		name:        "plugin-2",
+		version:     "1.0.0",
+		description: "Second plugin",
+	}
+	plugin2.initFunc = func(_ context.Context, a plugins.Aegis) error {
+		// Check all visible plugins
+		allPlugins := a.(*Aegis).GetPlugins()
+		for _, p := range allPlugins {
+			visiblePlugins = append(visiblePlugins, p.Name())
+		}
+		return nil
+	}
+
+	err = aegis.Use(context.Background(), plugin2)
+	if err != nil {
+		t.Fatalf("Failed to register plugin-2: %v", err)
+	}
+
+	// Verify plugin-2 saw both plugins during Init
+	if len(visiblePlugins) != 2 {
+		t.Errorf("Expected plugin-2 to see 2 plugins during Init, got: %v", visiblePlugins)
+	}
+	expectedPlugins := map[string]bool{"plugin-1": true, "plugin-2": true}
+	for _, name := range visiblePlugins {
+		if !expectedPlugins[name] {
+			t.Errorf("Unexpected plugin visible during Init: %s", name)
+		}
+	}
+}
+
+func TestPluginInitFailureRollback(t *testing.T) {
+	aegis := setupTestAegis(t)
+
+	// Register a successful plugin first
+	successPlugin := &mockPlugin{
+		name:        "success-plugin",
+		version:     "1.0.0",
+		description: "Successful plugin",
+	}
+	err := aegis.Use(context.Background(), successPlugin)
+	if err != nil {
+		t.Fatalf("Failed to register success plugin: %v", err)
+	}
+
+	// Verify it's registered
+	if _, found := aegis.GetPlugin("success-plugin"); !found {
+		t.Error("Success plugin should be registered")
+	}
+
+	// Try to register a failing plugin
+	var sawSuccessPlugin bool
+	failPlugin := &mockPlugin{
+		name:        "fail-plugin",
+		version:     "1.0.0",
+		description: "Failing plugin",
+	}
+	failPlugin.initFunc = func(_ context.Context, a plugins.Aegis) error {
+		// Check if we can see the success plugin during our Init
+		if _, found := a.(*Aegis).GetPlugin("success-plugin"); found {
+			sawSuccessPlugin = true
+		}
+		// Check if we can see ourselves
+		// Verify plugin visibility during Init
+		_, found := a.(*Aegis).GetPlugin("fail-plugin")
+		_ = found // Plugin should be visible during its own Init
+		return errors.New("intentional failure")
+	}
+
+	err = aegis.Use(context.Background(), failPlugin)
+	if err == nil {
+		t.Error("Expected error from failing plugin")
+	}
+
+	// Verify the failing plugin saw the success plugin during Init
+	if !sawSuccessPlugin {
+		t.Error("Failing plugin should have seen success plugin during Init")
+	}
+
+	// Verify rollback: fail-plugin should NOT be in registry
+	if _, found := aegis.GetPlugin("fail-plugin"); found {
+		t.Error("Failed plugin should not be in registry after rollback")
+	}
+
+	// Verify success-plugin is still registered (rollback didn't affect it)
+	if _, found := aegis.GetPlugin("success-plugin"); !found {
+		t.Error("Success plugin should still be registered after rollback")
+	}
+
+	// Verify only 1 plugin in registry
+	plugins := aegis.GetPlugins()
+	if len(plugins) != 1 {
+		t.Errorf("Expected 1 plugin after rollback, got %d", len(plugins))
+	}
+	if plugins[0].Name() != "success-plugin" {
+		t.Errorf("Expected success-plugin, got %s", plugins[0].Name())
+	}
+}
+
+func TestPriorityOrderMountingVsInit(t *testing.T) {
+	aegis := setupTestAegis(t)
+
+	// Track initialization order
+	var initOrder []string
+	mu := &sync.Mutex{}
+
+	createPlugin := func(name string, _ int) *mockPlugin {
+		p := &mockPlugin{
+			name:        name,
+			version:     "1.0.0",
+			description: fmt.Sprintf("Plugin %s", name),
+		}
+		p.initFunc = func(_ context.Context, _ plugins.Aegis) error {
+			mu.Lock()
+			initOrder = append(initOrder, name)
+			mu.Unlock()
+			return nil
+		}
+		return p
+	}
+
+	// Register plugins in non-priority order
+	lowPriorityPlugin := createPlugin("low-priority", 150)
+	highPriorityPlugin := createPlugin("high-priority", 50)
+	mediumPriorityPlugin := createPlugin("medium-priority", 100)
+
+	// Register in this order: low, high, medium
+	if err := aegis.UseWithPriority(context.Background(), lowPriorityPlugin, 150); err != nil {
+		t.Fatalf("Failed to register low-priority plugin: %v", err)
+	}
+	if err := aegis.UseWithPriority(context.Background(), highPriorityPlugin, 50); err != nil {
+		t.Fatalf("Failed to register high-priority plugin: %v", err)
+	}
+	if err := aegis.UseWithPriority(context.Background(), mediumPriorityPlugin, 100); err != nil {
+		t.Fatalf("Failed to register medium-priority plugin: %v", err)
+	}
+
+	// Verify Init was called in registration order (not priority order)
+	expectedInitOrder := []string{"low-priority", "high-priority", "medium-priority"}
+	if len(initOrder) != len(expectedInitOrder) {
+		t.Fatalf("Expected %d init calls, got %d", len(expectedInitOrder), len(initOrder))
+	}
+	for i, expected := range expectedInitOrder {
+		if initOrder[i] != expected {
+			t.Errorf("Init order[%d]: expected %s, got %s", i, expected, initOrder[i])
+		}
+	}
+
+	// Verify GetPlugins returns plugins in priority order (not registration order)
+	plugins := aegis.GetPlugins()
+	expectedPriorityOrder := []string{"high-priority", "medium-priority", "low-priority"}
+	if len(plugins) != len(expectedPriorityOrder) {
+		t.Fatalf("Expected %d plugins, got %d", len(expectedPriorityOrder), len(plugins))
+	}
+	for i, expected := range expectedPriorityOrder {
+		if plugins[i].Name() != expected {
+			t.Errorf("Priority order[%d]: expected %s, got %s", i, expected, plugins[i].Name())
+		}
+	}
 }

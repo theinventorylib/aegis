@@ -23,11 +23,28 @@
 
 ## ✨ Features
 
-- **Minimal Core Schema**: Only 4 essential tables.
-- **Database Agnostic**: Works with PostgreSQL, MySQL, SQLite.
-- **Plugin System**: Email, SMS, OAuth, Password, and more.
-- **Secure**: Argon2id hashing, JWT sessions, CSRF protection.
-- **Developer Friendly**: No auto-migration magic, fully typed API.
+### Core Authentication
+- **Minimal Core Schema**: Only 4 essential tables
+- **Database Agnostic**: Works with PostgreSQL, MySQL, SQLite
+- **Session Management**: Secure JWT-based sessions with refresh tokens
+- **CSRF Protection**: Built-in CSRF protection for web applications
+- **Password Authentication**: Argon2id hashing built into core (not a plugin)
+- **Developer Friendly**: No auto-migration magic, fully typed API
+
+### 8 Official Plugins
+- **Email** - Email verification via OTP or magic links
+- **SMS** - Phone number verification via OTP
+- **OAuth** - Social login (Google, GitHub, and more)
+- **JWT** - Token generation, validation, and rotation
+- **Bearer** - Bearer token authentication support
+- **Admin** - Administrative endpoints for user management
+- **Organizations** - Multi-tenant organization and team support
+- **OpenAPI** - Interactive API documentation with Scalar UI
+
+### CLI Tool
+- **Migration Export**: Export database migrations in multiple formats
+- **Format Support**: SQL, Goose, golang-migrate
+- **Plugin Selection**: Export core + specific plugins or all at once
 
 ## 🚀 Quick Install
 

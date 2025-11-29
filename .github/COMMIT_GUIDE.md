@@ -37,7 +37,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/) for clear
 - `email` - Email plugin
 - `sms` - SMS plugin
 - `oauth` - OAuth plugin
-- `password` - Password plugin
+- `password` - Password (core support)
 - `cli` - CLI tool
 - `db` - Database layer
 - `migrations` - Migration system

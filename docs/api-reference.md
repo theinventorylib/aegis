@@ -79,10 +79,8 @@ Registers a plugin with explicit priority for deterministic initialization order
 
 **Example**:
 ```go
-// Password plugin first (high priority)
-aegis.UseWithPriority(ctx, passwordPlugin, 60)
-
-// Email plugin later (default priority)
+// Example: OAuth with high priority, email later
+aegis.UseWithPriority(ctx, oauthPlugin, 65)
 aegis.Use(ctx, emailPlugin) // priority: 100
 ```
 
@@ -580,4 +578,4 @@ All public Aegis methods are thread-safe:
 - [SECURITY.md](../SECURITY.md) - Production security recommendations
 - [Plugin Priorities](./plugin-priorities.md) - Plugin ordering
 - [Concurrency Best Practices](./concurrency-best-practices.md) - Thread-safety guide
-- [Configuration Guide](./configuration.md) - Configuration details
+- [Getting Started](./getting-started.md) - Configuration details

@@ -2,10 +2,12 @@ package db
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/theinventorylib/aegis/models"
 )
 
@@ -23,17 +25,20 @@ const (
 
 // SQLProvider implements DBProvider using database/sql for any SQL database.
 type SQLProvider struct {
-	db      *sql.DB
-	dialect Dialect
+	db          *sql.DB
+	dialect     Dialect
+	idGenerator func() string // Injected ID generator (defaults to ULID if nil)
 }
 
 // NewSQLProvider creates a new database-agnostic SQL provider
 // db: a standard *sql.DB connection from any driver
 // dialect: the SQL dialect for query syntax differences
-func NewSQLProvider(db *sql.DB, dialect Dialect) *SQLProvider {
+// idGenerator: optional ID generation function (uses ULID if nil)
+func NewSQLProvider(db *sql.DB, dialect Dialect, idGenerator func() string) *SQLProvider {
 	return &SQLProvider{
-		db:      db,
-		dialect: dialect,
+		db:          db,
+		dialect:     dialect,
+		idGenerator: idGenerator,
 	}
 }
 
@@ -156,40 +161,45 @@ func (p *SQLProvider) Begin(ctx context.Context) (Tx, error) {
 
 // CreateUser creates a new user.
 func (p *SQLProvider) CreateUser(ctx context.Context) (*models.User, error) {
+	// Generate ID using injected generator or fallback to ULID
+	var id string
+	if p.idGenerator != nil {
+		id = p.idGenerator()
+	} else {
+		// Fallback to ULID for backward compatibility
+		entropy := ulid.Monotonic(rand.Reader, 0)
+		id = ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
+	}
+
 	user := &models.User{
+		ID:        id,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
 	switch p.dialect {
 	case PostgreSQL:
-		// PostgreSQL uses RETURNING clause.
+		// Include application-generated ID and return metadata
 		err := p.db.QueryRowContext(ctx, `
-			INSERT INTO auth.user (created_at, updated_at)
-			VALUES ($1, $2)
-			RETURNING id, created_at, updated_at
-		`, user.CreatedAt, user.UpdatedAt).Scan(
-			&user.ID, &user.CreatedAt, &user.UpdatedAt,
+			INSERT INTO auth.user (id, created_at, updated_at, disabled)
+			VALUES ($1, $2, $3, $4)
+			RETURNING id, created_at, updated_at, disabled
+		`, user.ID, user.CreatedAt, user.UpdatedAt, user.Disabled).Scan(
+			&user.ID, &user.CreatedAt, &user.UpdatedAt, &user.Disabled,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
 
 	case MySQL, SQLite:
-		// MySQL and SQLite use LastInsertId.
-		result, err := p.db.ExecContext(ctx, `
-			INSERT INTO auth.user (created_at, updated_at)
-			VALUES (?, ?)
-		`, user.CreatedAt, user.UpdatedAt)
+		// Insert using app-generated ID for MySQL/SQLite as well
+		_, err := p.db.ExecContext(ctx, `
+			INSERT INTO auth.user (id, created_at, updated_at, disabled)
+			VALUES (?, ?, ?, ?)
+		`, user.ID, user.CreatedAt, user.UpdatedAt, user.Disabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
-
-		id, err := result.LastInsertId()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get last insert ID: %w", err)
-		}
-		user.ID = fmt.Sprintf("%d", id)
 
 	default:
 		return nil, fmt.Errorf("unsupported dialect: %s", p.dialect)
@@ -202,17 +212,17 @@ func (p *SQLProvider) CreateUser(ctx context.Context) (*models.User, error) {
 func (p *SQLProvider) GetUserByID(ctx context.Context, id string) (*models.User, error) {
 	user := &models.User{}
 
-	query := `SELECT id, created_at, updated_at FROM auth.user WHERE id = `
+	query := `SELECT id, created_at, updated_at, disabled FROM auth.user WHERE id = `
 	var err error
 
 	switch p.dialect {
 	case PostgreSQL:
 		err = p.db.QueryRowContext(ctx, query+`$1`, id).Scan(
-			&user.ID, &user.CreatedAt, &user.UpdatedAt,
+			&user.ID, &user.CreatedAt, &user.UpdatedAt, &user.Disabled,
 		)
 	case MySQL, SQLite:
 		err = p.db.QueryRowContext(ctx, query+`?`, id).Scan(
-			&user.ID, &user.CreatedAt, &user.UpdatedAt,
+			&user.ID, &user.CreatedAt, &user.UpdatedAt, &user.Disabled,
 		)
 	default:
 		return nil, fmt.Errorf("unsupported dialect: %s", p.dialect)
@@ -271,7 +281,7 @@ func (p *SQLProvider) DeleteUser(ctx context.Context, userID string) error {
 
 // ListUsers retrieves a paginated list of users.
 func (p *SQLProvider) ListUsers(ctx context.Context, offset, limit int) ([]*models.User, error) {
-	query := `SELECT id, created_at, updated_at FROM auth.user ORDER BY created_at DESC `
+	query := `SELECT id, created_at, updated_at, disabled FROM auth.user ORDER BY created_at DESC `
 	var rows *sql.Rows
 	var err error
 
@@ -293,7 +303,7 @@ func (p *SQLProvider) ListUsers(ctx context.Context, offset, limit int) ([]*mode
 	for rows.Next() {
 		user := &models.User{}
 		err := rows.Scan(
-			&user.ID, &user.CreatedAt, &user.UpdatedAt,
+			&user.ID, &user.CreatedAt, &user.UpdatedAt, &user.Disabled,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan user: %w", err)

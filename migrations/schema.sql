@@ -19,12 +19,16 @@ ALTER TABLE IF EXISTS auth.sessions RENAME TO sessions_old;
 -- ==============================================
 CREATE TABLE auth.user (
     id TEXT PRIMARY KEY,
+    avatar TEXT,
+    name TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    disabled BOOLEAN NOT NULL DEFAULT FALSE,
     metadata JSONB DEFAULT '{}'
 );
 
 CREATE INDEX idx_user_metadata ON auth.user USING GIN(metadata);
+CREATE INDEX idx_user_disabled ON auth.user(disabled);
 
 -- ==============================================
 -- Core Table 2: accounts
@@ -110,32 +114,32 @@ CREATE TRIGGER update_accounts_updated_at
     EXECUTE FUNCTION auth.update_updated_at_column();
 
 -- ==============================================
--- Data Migration from Old Schema
+-- Data Migration from Old Schema (Not Needed since there has been no release)
 -- ==============================================
 
 -- Migrate users
-INSERT INTO auth.user (id, email, email_verified, created_at, updated_at)
-SELECT id, email, 
-       COALESCE(email_verified, FALSE), 
-       created_at, 
-       COALESCE(updated_at, created_at)
-FROM users_old
-WHERE EXISTS (SELECT 1 FROM users_old);
+-- INSERT INTO auth.user (id, email, email_verified, created_at, updated_at)
+-- SELECT id, email, 
+--        COALESCE(email_verified, FALSE), 
+--        created_at, 
+--        COALESCE(updated_at, created_at)
+-- FROM users_old
+-- WHERE EXISTS (SELECT 1 FROM users_old);
 
--- Migrate password accounts
-INSERT INTO auth.accounts (user_id, provider, password_hash, created_at, updated_at)
-SELECT id, 'password', password_hash, created_at, COALESCE(updated_at, created_at)
-FROM users_old
-WHERE password_hash IS NOT NULL
-  AND EXISTS (SELECT 1 FROM users_old WHERE password_hash IS NOT NULL);
+-- -- Migrate password accounts
+-- INSERT INTO auth.accounts (user_id, provider, password_hash, created_at, updated_at)
+-- SELECT id, 'password', password_hash, created_at, COALESCE(updated_at, created_at)
+-- FROM users_old
+-- WHERE password_hash IS NOT NULL
+--   AND EXISTS (SELECT 1 FROM users_old WHERE password_hash IS NOT NULL);
 
--- Migrate sessions
-INSERT INTO auth.session (id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent)
-SELECT id, user_id, token, refresh_token, expires_at, created_at, 
-       COALESCE(ip_address, ''), 
-       COALESCE(user_agent, '')
-FROM sessions_old
-WHERE EXISTS (SELECT 1 FROM sessions_old);
+-- -- Migrate sessions
+-- INSERT INTO auth.session (id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent)
+-- SELECT id, user_id, token, refresh_token, expires_at, created_at, 
+--        COALESCE(ip_address, ''), 
+--        COALESCE(user_agent, '')
+-- FROM sessions_old
+-- WHERE EXISTS (SELECT 1 FROM sessions_old);
 
 -- ==============================================
 -- Cleanup (optional - comment out for safety)

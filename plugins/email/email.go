@@ -10,25 +10,24 @@ import (
 	"github.com/theinventorylib/aegis/db"
 	"github.com/theinventorylib/aegis/models"
 	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/plugins/password"
+
 	"github.com/theinventorylib/aegis/server"
 )
 
 // Plugin provides email verification functionality
 type Plugin struct {
-	db             db.Provider
+	db             *DB
 	provider       Provider
 	otpExpiry      time.Duration
-	passwordPlugin *password.Plugin // For email+password authentication
+	authService    *core.AuthService // Use core AuthService for password operations
 	sessionService *core.SessionService
 }
 
 // Config for email plugin
 type Config struct {
 	DB             db.Provider
-	Provider       Provider         // Email sending provider
-	OTPExpiry      time.Duration    // OTP expiry duration
-	PasswordPlugin *password.Plugin // Optional: for email+password auth
+	Provider       Provider      // Email sending provider
+	OTPExpiry      time.Duration // OTP expiry duration
 	SessionService *core.SessionService
 }
 
@@ -39,10 +38,10 @@ func New(cfg *Config) *Plugin {
 	}
 
 	return &Plugin{
-		db:             cfg.DB,
-		provider:       cfg.Provider,
-		otpExpiry:      cfg.OTPExpiry,
-		passwordPlugin: cfg.PasswordPlugin,
+		db:        NewDB(cfg.DB),
+		provider:  cfg.Provider,
+		otpExpiry: cfg.OTPExpiry,
+		// Password functionality now provided by core.AuthService at runtime
 		sessionService: cfg.SessionService,
 	}
 }
@@ -67,6 +66,7 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 	// Get session service from Aegis instance
 	if app, ok := a.(*aegis.Aegis); ok {
 		p.sessionService = app.GetSessionService()
+		p.authService = app.GetAuthService()
 	}
 	return nil
 }
@@ -75,9 +75,46 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 func (p *Plugin) MountRoutes(router server.Router, prefix string) {
 	handlers := NewHandlers(p)
 
-	// Email+password authentication (if password plugin configured)
-	if p.passwordPlugin != nil {
+	// Email+password authentication (uses core AuthService)
+	if p.authService != nil {
 		router.POST(prefix+"/email/login", handlers.LoginWithEmailHandler)
+		router.RegisterRouteMetadata(models.RouteMetadata{
+			Method:      "POST",
+			Path:        prefix + "/email/login",
+			Summary:     "Login with email and password",
+			Description: "Authenticate using email address and password",
+			Tags:        []string{"Email", "Authentication"},
+			Protected:   false,
+			RequestBody: &models.RequestBodyMeta{
+				Description: "Email and password credentials",
+				Required:    true,
+				Schema:      SchemaLoginWithEmailRequest,
+			},
+			Responses: map[string]*models.ResponseMeta{
+				"200": {Description: "Login successful, session created", Schema: models.SchemaSession},
+				"400": {Description: "Invalid request", Schema: models.SchemaError},
+				"401": {Description: "Invalid credentials", Schema: models.SchemaError},
+			},
+		})
+
+		router.POST(prefix+"/email/register", handlers.RegisterWithEmailHandler)
+		router.RegisterRouteMetadata(models.RouteMetadata{
+			Method:      "POST",
+			Path:        prefix + "/email/register",
+			Summary:     "Register with email and password",
+			Description: "Create a new account using email address and password",
+			Tags:        []string{"Email", "Authentication"},
+			Protected:   false,
+			RequestBody: &models.RequestBodyMeta{
+				Description: "Email and password credentials",
+				Required:    true,
+				Schema:      "RegisterWithEmailRequest",
+			},
+			Responses: map[string]*models.ResponseMeta{
+				"201": {Description: "Registration successful, session created", Schema: models.SchemaSession},
+				"400": {Description: "Invalid request or email already exists", Schema: models.SchemaError},
+			},
+		})
 	}
 
 	// Email verification routes would go here
@@ -86,15 +123,6 @@ func (p *Plugin) MountRoutes(router server.Router, prefix string) {
 
 // Dependencies returns external package dependencies
 func (p *Plugin) Dependencies() []plugins.Dependency {
-	if p.passwordPlugin != nil {
-		return []plugins.Dependency{
-			{
-				Package: "github.com/theinventorylib/aegis/plugins/password",
-				Version: "latest",
-				Purpose: "Password authentication for email+password login",
-			},
-		}
-	}
 	return []plugins.Dependency{}
 }
 
@@ -141,11 +169,7 @@ func (p *Plugin) SendPasswordResetOTP(ctx context.Context, email, userID string)
 
 	// Invalidate any existing OTPs for password reset
 	if userID != "" {
-		_, err := p.db.Exec(ctx, `
-			DELETE FROM auth.verification
-			WHERE identifier = ? AND type = ?
-		`, userID, "password_reset")
-		if err != nil {
+		if err := p.db.InvalidateVerifications(ctx, userID, "password_reset"); err != nil {
 			return "", fmt.Errorf("failed to invalidate existing OTPs: %w", err)
 		}
 	}
@@ -155,12 +179,16 @@ func (p *Plugin) SendPasswordResetOTP(ctx context.Context, email, userID string)
 	expiresAt := time.Now().Add(p.otpExpiry)
 	createdAt := time.Now()
 
-	_, err = p.db.Exec(ctx, `
-		INSERT INTO auth.verification (id, identifier, token, type, expires_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, id, email, code, "password_reset", expiresAt, createdAt)
+	verification := &Verification{
+		ID:        id,
+		Email:     email,
+		Code:      code,
+		Purpose:   "password_reset",
+		ExpiresAt: expiresAt,
+		CreatedAt: createdAt,
+	}
 
-	if err != nil {
+	if err := p.db.CreateVerification(ctx, verification); err != nil {
 		return "", fmt.Errorf("failed to create verification: %w", err)
 	}
 
@@ -206,39 +234,7 @@ func (p *Plugin) VerifyOTP(ctx context.Context, email, code, purpose string) (bo
 	if p.db == nil {
 		return false, fmt.Errorf("database not configured")
 	}
-
-	var id string
-	var token string
-	var expiresAt time.Time
-
-	err := p.db.QueryRow(ctx, `
-		SELECT id, token, expires_at
-		FROM auth.verification
-		WHERE identifier = ? AND type = ? AND expires_at > NOW()
-		ORDER BY created_at DESC
-		LIMIT 1
-	`, email, purpose).Scan(&id, &token, &expiresAt)
-
-	if err != nil {
-		return false, fmt.Errorf("OTP not found or expired")
-	}
-
-	// Verify the code matches
-	if token != code {
-		return false, nil
-	}
-
-	// Delete the used verification token
-	_, err = p.db.Exec(ctx, `
-		DELETE FROM auth.verification
-		WHERE id = ?
-	`, id)
-
-	if err != nil {
-		return false, fmt.Errorf("failed to delete used OTP: %w", err)
-	}
-
-	return true, nil
+	return p.db.VerifyOTP(ctx, email, code, purpose)
 }
 
 // VerifyToken verifies a token for link-based verification
@@ -246,49 +242,12 @@ func (p *Plugin) VerifyToken(ctx context.Context, token string) (string, error) 
 	if p.db == nil {
 		return "", fmt.Errorf("database not configured")
 	}
-
-	var id string
-	var identifier string
-	var expiresAt time.Time
-
-	err := p.db.QueryRow(ctx, `
-		SELECT id, identifier, expires_at
-		FROM auth.verification
-		WHERE token = ? AND expires_at > NOW()
-		LIMIT 1
-	`, token).Scan(&id, &identifier, &expiresAt)
-
-	if err != nil {
-		return "", fmt.Errorf("token not found or expired")
-	}
-
-	// Delete the used verification token
-	_, err = p.db.Exec(ctx, `
-		DELETE FROM auth.verification
-		WHERE id = ?
-	`, id)
-
-	if err != nil {
-		return "", fmt.Errorf("failed to delete used token: %w", err)
-	}
-
-	return identifier, nil
+	return p.db.VerifyToken(ctx, token)
 }
 
 // GetUserByEmail retrieves a user by email
 func (p *Plugin) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
-	var user models.User
-	err := p.db.QueryRow(ctx, `
-		SELECT id, created_at, updated_at
-		FROM auth.user
-		WHERE email = ?
-	`, email).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
-
-	if err != nil {
-		return nil, fmt.Errorf("user not found")
-	}
-
-	return &user, nil
+	return p.db.GetUserByEmail(ctx, email)
 }
 
 // CreateUserWithEmail creates a user with email
@@ -300,14 +259,30 @@ func (p *Plugin) CreateUserWithEmail(ctx context.Context, email string) (*models
 		return nil, err
 	}
 
-	// 2. Update email (assuming column exists)
-	_, err = p.db.Exec(ctx, `
-		UPDATE auth.user
-		SET email = ?, email_verified = ?
-		WHERE id = ?
-	`, email, false, user.ID)
+	// 2. Update email
+	if err := p.db.UpdateUserEmail(ctx, user.ID, email, false); err != nil {
+		return nil, fmt.Errorf("failed to set email: %w", err)
+	}
 
+	return user, nil
+}
+
+// CreateUserWithEmailAndPassword creates a new user and a password account, then sets the email.
+func (p *Plugin) CreateUserWithEmailAndPassword(ctx context.Context, email, password string) (*models.User, error) {
+	if p.authService == nil {
+		return nil, fmt.Errorf("core auth service not configured")
+	}
+
+	// Create user with password atomically at core level (best-effort cleanup handled by core)
+	user, err := p.authService.CreateUserWithPassword(ctx, password)
 	if err != nil {
+		return nil, err
+	}
+
+	// Set email for the created user
+	if err := p.db.UpdateUserEmail(ctx, user.ID, email, false); err != nil {
+		// If email set fails, attempt to cleanup the user
+		_ = p.sessionService.GetDB().DeleteUser(ctx, user.ID)
 		return nil, fmt.Errorf("failed to set email: %w", err)
 	}
 

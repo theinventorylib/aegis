@@ -1,3 +1,4 @@
+// Package main demonstrates custom ID generation strategies with Aegis.
 package main
 
 import (

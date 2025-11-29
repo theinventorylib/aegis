@@ -71,7 +71,33 @@ func (p *Plugin) MountRoutes(router server.Router, prefix string) {
 
 	// OAuth authentication routes
 	router.GET(prefix+"/oauth/:provider", handlers.BeginAuthHandler)
+	router.RegisterRouteMetadata(models.RouteMetadata{
+		Method:      "GET",
+		Path:        prefix + "/oauth/{provider}",
+		Summary:     "Begin OAuth flow",
+		Description: "Initiate OAuth authentication with the specified provider (e.g., google, github)",
+		Tags:        []string{"OAuth"},
+		Protected:   false,
+		Responses: map[string]*models.ResponseMeta{
+			"302": {Description: "Redirect to OAuth provider", Schema: "Redirect"},
+			"400": {Description: "Invalid or unsupported provider", Schema: models.SchemaError},
+		},
+	})
+
 	router.GET(prefix+"/oauth/:provider/callback", handlers.CallbackHandler)
+	router.RegisterRouteMetadata(models.RouteMetadata{
+		Method:      "GET",
+		Path:        prefix + "/oauth/{provider}/callback",
+		Summary:     "OAuth callback",
+		Description: "Handle OAuth provider callback and create session",
+		Tags:        []string{"OAuth"},
+		Protected:   false,
+		Responses: map[string]*models.ResponseMeta{
+			"200": {Description: "Authentication successful, session created", Schema: models.SchemaSession},
+			"302": {Description: "Redirect after successful authentication", Schema: "Redirect"},
+			"400": {Description: "Invalid callback or authorization failed", Schema: models.SchemaError},
+		},
+	})
 }
 
 // Dependencies returns external package dependencies

@@ -194,9 +194,9 @@ func TestValidateValidConfiguration(t *testing.T) {
 // mockLogger implements Logger interface for testing
 type mockLogger struct{}
 
-func (mockLogger) Info(_ string, keysAndValues ...interface{})  {}
-func (mockLogger) Error(_ string, keysAndValues ...interface{}) {}
-func (mockLogger) Debug(_ string, keysAndValues ...interface{}) {}
+func (mockLogger) Info(_ string, _ ...interface{})  {}
+func (mockLogger) Error(_ string, _ ...interface{}) {}
+func (mockLogger) Debug(_ string, _ ...interface{}) {}
 
 func TestWithLogger(t *testing.T) {
 	var _ Logger = mockLogger{} // Verify it implements Logger interface

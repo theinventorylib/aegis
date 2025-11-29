@@ -35,7 +35,7 @@ func (h *Handler) HandleGetToken(w http.ResponseWriter, r *http.Request) {
 	// Get current user from context (must be authenticated)
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Not authenticated",
 		})
@@ -45,14 +45,14 @@ func (h *Handler) HandleGetToken(w http.ResponseWriter, r *http.Request) {
 	// Generate token pair for the authenticated user
 	tokenPair, err := h.plugin.GenerateTokenPair(user.ID)
 	if err != nil {
-		_ = core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   "Failed to generate tokens",
 		})
 		return
 	}
 
-	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
+	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Tokens generated successfully",
 		Data:    tokenPair,
@@ -65,7 +65,7 @@ func (h *Handler) HandleGetAccessToken(w http.ResponseWriter, r *http.Request) {
 	// Get current user from context (must be authenticated)
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Not authenticated",
 		})
@@ -75,7 +75,7 @@ func (h *Handler) HandleGetAccessToken(w http.ResponseWriter, r *http.Request) {
 	// Generate token pair (includes both access and refresh tokens)
 	tokenPair, err := h.plugin.GenerateTokenPair(user.ID)
 	if err != nil {
-		_ = core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   "Failed to generate access token",
 		})
@@ -83,7 +83,7 @@ func (h *Handler) HandleGetAccessToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return only access token info
-	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
+	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Access token generated successfully",
 		Data: map[string]interface{}{
@@ -99,7 +99,7 @@ func (h *Handler) HandleGetAccessToken(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	var req RefreshTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		_ = core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
 		})
@@ -109,14 +109,14 @@ func (h *Handler) HandleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	// Validate refresh token and generate new token pair
 	tokenPair, err := h.plugin.RefreshTokens(req.RefreshToken)
 	if err != nil {
-		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Invalid or expired refresh token",
 		})
 		return
 	}
 
-	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
+	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Tokens refreshed successfully",
 		Data:    tokenPair,
@@ -129,7 +129,7 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	// Get current user from context (must be authenticated via middleware)
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Not authenticated",
 		})
@@ -157,7 +157,7 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if token == "" {
-		_ = core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "No session token found",
 		})
@@ -166,14 +166,14 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 
 	// Blacklist the token
 	if err := h.plugin.BlacklistToken(token); err != nil {
-		_ = core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   "Failed to logout",
 		})
 		return
 	}
 
-	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
+	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Logged out successfully",
 		Data: map[string]interface{}{

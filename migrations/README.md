@@ -163,6 +163,47 @@ for _, m := range migrations {
 }
 ```
 
+### Migration Ordering
+
+The Aegis exporter generates migrations with the following numbering strategy:
+
+**Core Migration**: Always numbered `001` (or `00001` for Goose format)
+
+**Plugin Migrations**: Numbered starting from `002` onwards:
+- Each plugin gets a block of 100 migration numbers
+- Plugin 1: `002-101`
+- Plugin 2: `102-201`
+- Plugin 3: `202-301`
+- etc.
+
+**Example with 3 plugins**:
+```
+001_aegis_core.sql              # Core schema (required)
+002_aegis_email_001.sql         # Email plugin migration 1
+102_aegis_sms_001.sql           # SMS plugin migration 1
+202_aegis_oauth_001.sql         # OAuth plugin migration 1
+```
+
+**Plugin Dependencies**:
+- Plugins declare their table dependencies via `RequiresTables()`
+- The exporter does **NOT** automatically reorder migrations based on dependencies
+- You are responsible for ensuring plugins are exported/run in the correct order
+- Always run **core migrations first** before any plugin migrations
+
+**Example of plugin dependencies**:
+```go
+// Email plugin requires core tables
+func (p *Plugin) RequiresTables() []string {
+    return []string{"auth.user", "auth.accounts"}
+}
+```
+
+**Recommended Order**:
+1. Core schema (`auth.user`, `auth.accounts`, `auth.verification`, `auth.session`)
+2. Foundation plugins (email, SMS, OAuth)
+3. Higher-level plugins (admin, organizations)
+
+
 ## Core Tables
 
 Aegis requires these **5 core tables**:

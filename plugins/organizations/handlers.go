@@ -39,13 +39,15 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var req struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
-	}
+	var req CreateOrganizationRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		core.WriteValidationError(w, err)
 		return
 	}
 
@@ -119,13 +121,15 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var req struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
-	}
+	var req UpdateOrganizationRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		core.WriteValidationError(w, err)
 		return
 	}
 
@@ -191,13 +195,15 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	var req struct {
-		UserID string `json:"userId"`
-		Role   string `json:"role"` // "admin" or "member"
-	}
+	var req AddOrganizationMemberRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		core.WriteValidationError(w, err)
 		return
 	}
 
@@ -257,12 +263,15 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var req struct {
-		Role string `json:"role"`
-	}
+	var req UpdateMemberRoleRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		core.WriteValidationError(w, err)
 		return
 	}
 
@@ -340,13 +349,15 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
+	var req CreateTeamRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		core.WriteValidationError(w, err)
 		return
 	}
 
@@ -437,13 +448,15 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
+	var req UpdateTeamRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		core.WriteValidationError(w, err)
 		return
 	}
 
@@ -521,13 +534,15 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		UserID string `json:"userId"`
-		Role   string `json:"role"` // "lead" or "member"
-	}
+	var req AddTeamMemberRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		core.WriteValidationError(w, err)
 		return
 	}
 
@@ -612,12 +627,15 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var req struct {
-		Role string `json:"role"` // "lead" or "member"
-	}
+	var req UpdateTeamMemberRoleRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		core.WriteValidationError(w, err)
 		return
 	}
 

@@ -36,24 +36,20 @@ func (h *Handlers) BeginAuthHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	user, session, err := h.plugin.CompleteAuth(r.Context(), w, r)
 	if err != nil {
-		_ = core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   err.Error(),
 		})
 		return
 	}
 
-	// Set session cookie
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session_token",
-		Value:    session.Token,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	// Set session cookie using central helper to respect configured cookie settings
+	if h.plugin.sessionService != nil {
+		cfg := h.plugin.sessionService.GetConfig()
+		core.SetSessionCookie(w, session.Token, cfg)
+	}
 
-	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
+	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Data: map[string]interface{}{
 			"user":    user,
@@ -67,7 +63,7 @@ func (h *Handlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	// Goth logout - error not critical
 	_ = gothic.Logout(w, r)
 
-	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
+	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Logged out successfully",
 	})
@@ -83,7 +79,7 @@ func (h *Handlers) LinkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	// Get current user from context
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		_ = core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Not authenticated",
 		})
@@ -99,7 +95,7 @@ func (h *Handlers) LinkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	// Complete OAuth and link to existing account
 	gothUser, err := gothic.CompleteUserAuth(w, r)
 	if err != nil {
-		_ = core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   err.Error(),
 		})
@@ -109,14 +105,14 @@ func (h *Handlers) LinkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	// Link the account
 	oauthUser := GothUserToUser(gothUser)
 	if err := h.plugin.LinkAccount(r.Context(), user.ID, oauthUser, gothUser.Provider); err != nil {
-		_ = core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   fmt.Sprintf("Failed to link OAuth account: %v", err),
 		})
 		return
 	}
 
-	_ = core.WriteJSON(w, http.StatusOK, &core.Response{
+	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "OAuth account linked successfully",
 	})

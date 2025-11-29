@@ -154,16 +154,16 @@ func TestMultiplePlugins(t *testing.T) {
     
     ctx := context.Background()
     
-    // Register plugins
-    passwordPlugin := password.New(&password.Config{DB: testAegis.DB})
+    // Register plugins (example: email + admin)
     emailPlugin := email.New(&email.Config{DB: testAegis.DB})
-    
-    testAegis.Use(ctx, passwordPlugin)
+    adminPlugin := admin.New(testAegis.DB)
+
     testAegis.Use(ctx, emailPlugin)
-    
+    testAegis.Use(ctx, adminPlugin)
+
     // Verify integration
-    testinghelpers.AssertPluginRegistered(t, testAegis.Aegis, "password")
     testinghelpers.AssertPluginRegistered(t, testAegis.Aegis, "email")
+    testinghelpers.AssertPluginRegistered(t, testAegis.Aegis, "admin")
 }
 ```
 
@@ -249,7 +249,7 @@ go test -race ./...
 ### Run Specific Package
 
 ```bash
-go test -v ./plugins/password/...
+go test -v ./...    # Run all package tests
 ```
 
 ### Run Integration Tests Only
@@ -274,7 +274,7 @@ go test -v ./...
 ### Run Single Test
 
 ```bash
-go test -run TestMyPlugin ./plugins/password/...
+go test -run TestMyPlugin ./path/to/your/plugin/...
 ```
 
 ---

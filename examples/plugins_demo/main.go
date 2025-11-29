@@ -13,11 +13,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/theinventorylib/aegis"
 	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/db"
 	"github.com/theinventorylib/aegis/plugins/admin"
 	"github.com/theinventorylib/aegis/plugins/email"
-	"github.com/theinventorylib/aegis/plugins/password"
 	"github.com/theinventorylib/aegis/plugins/sms"
 	"github.com/theinventorylib/aegis/server"
 
@@ -69,7 +67,7 @@ func main() {
 	}
 
 	// Create database provider
-	database := db.NewSQLProvider(sqlDB, db.PostgreSQL)
+	database := db.NewSQLProvider(sqlDB, db.PostgreSQL, nil) // nil = use default ULID generation
 
 	// 2. Initialize Router
 	r := chi.NewRouter()
@@ -79,28 +77,19 @@ func main() {
 
 	// 3. Initialize Plugins
 
-	// Password Plugin
-	passwordPlugin := password.New(&password.Config{
-		DB:     database,
-		UserDB: database,
-		Hasher: core.DefaultPasswordHasherConfig(),
-	})
-
-	// Email Plugin (with Password support)
+	// Email Plugin
 	emailPlugin := email.New(&email.Config{
-		DB:             database,
-		Provider:       &MockEmailProvider{},
-		OTPExpiry:      15 * time.Minute,
-		PasswordPlugin: passwordPlugin,
+		DB:        database,
+		Provider:  &MockEmailProvider{},
+		OTPExpiry: 15 * time.Minute,
 	})
 
-	// SMS Plugin (with Password support)
+	// SMS Plugin
 	smsPlugin := sms.New(&sms.Config{
-		DB:             database,
-		Provider:       &MockSMSProvider{},
-		OTPExpiry:      5 * time.Minute,
-		OTPLength:      6,
-		PasswordPlugin: passwordPlugin,
+		DB:        database,
+		Provider:  &MockSMSProvider{},
+		OTPExpiry: 5 * time.Minute,
+		OTPLength: 6,
 	})
 
 	// Admin Plugin
@@ -116,9 +105,6 @@ func main() {
 	}
 
 	// Register plugins with context
-	if err := auth.Use(context.Background(), passwordPlugin); err != nil {
-		log.Fatal("Failed to register password plugin:", err)
-	}
 	if err := auth.Use(context.Background(), emailPlugin); err != nil {
 		log.Fatal("Failed to register email plugin:", err)
 	}
@@ -149,20 +135,13 @@ func main() {
 	})
 
 	// 7. Admin Routes Example (Protected by Admin Middleware)
-	// Now you can retrieve plugins from the auth instance!
 	r.Group(func(r chi.Router) {
-		// Note: You usually want to combine AuthMiddleware + AdminMiddleware
-		// But the admin plugin's middleware might handle user fetching too.
-		// Let's check admin.AdminMiddleware implementation - it calls core.GetUser.
-		// So we need AuthMiddleware first to populate the context.
 		r.Use(auth.AuthMiddleware())
 
-		// Retrieve admin plugin from auth instance instead of keeping a reference
-		if adminPluginRetrieved, ok := auth.GetPlugin("admin"); ok {
-			if ap, ok := adminPluginRetrieved.(*admin.Plugin); ok {
-				r.Use(ap.AdminMiddleware)
-			}
-		}
+		// Use admin.RequireAdminMiddleware from the admin package
+		sessionService := auth.GetSessionService()
+		adminDB := admin.NewDB(database)
+		r.Use(admin.RequireAdminMiddleware(sessionService, adminDB))
 
 		r.Get("/api/admin/dashboard", func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte("Welcome to the Admin Dashboard"))

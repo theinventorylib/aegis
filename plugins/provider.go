@@ -45,7 +45,21 @@ type Plugin interface {
 	MountRoutes(router server.Router, prefix string) // Register HTTP routes
 
 	// Metadata
-	Dependencies() []Dependency    // External dependencies used
-	RequiresTables() []string      // Core tables this plugin depends on
-	ProvidesAuthMethods() []string // Auth methods provided (e.g., "oauth_google", "sms_otp")
+	// Dependencies returns external Go package dependencies required by this plugin.
+	// This is INFORMATIONAL ONLY - Aegis does NOT validate or enforce these dependencies.
+	// Users are responsible for ensuring dependencies are available (via go.mod or build tools).
+	// Use this to document what packages must be imported for the plugin to function.
+	Dependencies() []Dependency
+
+	// RequiresTables returns the names of database tables this plugin depends on.
+	// Format: "schema.table" (e.g., "auth.user", "auth.accounts")
+	// This is INFORMATIONAL ONLY - Aegis does NOT validate table existence.
+	// Users are responsible for running migrations in correct order.
+	// The exporter uses this to document dependencies but does NOT reorder migrations.
+	RequiresTables() []string
+
+	// ProvidesAuthMethods returns authentication method names provided by this plugin.
+	// Examples: "oauth_google", "sms_otp", "email_magic_link", "password"
+	// This is used for documentation and plugin discovery.
+	ProvidesAuthMethods() []string
 }
