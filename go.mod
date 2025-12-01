@@ -11,7 +11,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/markbates/goth v1.82.0
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/redis/go-redis/v9 v9.17.0
+	github.com/redis/go-redis/v9 v9.17.1
 	golang.org/x/crypto v0.45.0
 )
 
