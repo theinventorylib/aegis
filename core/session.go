@@ -221,16 +221,20 @@ func (s *SessionService) cacheSession(ctx context.Context, session *auth.Session
 	if s.redisClient == nil || session == nil {
 		return
 	}
-	sessionJSON, _ := json.Marshal(session)
+	sessionJSON, err := json.Marshal(session)
+	_ = err
 	ttl := time.Until(session.ExpiresAt)
 	if ttl <= 0 {
 		return
 	}
-	_ = s.redisClient.Set(ctx, RedisSessionPrefix+session.Token, sessionJSON, ttl).Err()
+	err = s.redisClient.Set(ctx, RedisSessionPrefix+session.Token, sessionJSON, ttl).Err()
+	_ = err
 	if session.RefreshToken != "" {
-		_ = s.redisClient.Set(ctx, RedisRefreshTokenPrefix+session.RefreshToken, sessionJSON, s.config.RefreshExpiry).Err()
+		err = s.redisClient.Set(ctx, RedisRefreshTokenPrefix+session.RefreshToken, sessionJSON, s.config.RefreshExpiry).Err()
+		_ = err
 	}
-	_ = s.redisClient.SAdd(ctx, RedisUserSessionsPrefix+session.UserID, session.ID).Err()
+	err = s.redisClient.SAdd(ctx, RedisUserSessionsPrefix+session.UserID, session.ID).Err()
+	_ = err
 }
 
 // invalidateSessionCache removes session from Redis cache
@@ -238,11 +242,14 @@ func (s *SessionService) invalidateSessionCache(ctx context.Context, session *au
 	if s.redisClient == nil || session == nil {
 		return
 	}
-	_ = s.redisClient.Del(ctx, RedisSessionPrefix+session.Token).Err()
+	err := s.redisClient.Del(ctx, RedisSessionPrefix+session.Token).Err()
+	_ = err
 	if session.RefreshToken != "" {
-		_ = s.redisClient.Del(ctx, RedisRefreshTokenPrefix+session.RefreshToken).Err()
+		err = s.redisClient.Del(ctx, RedisRefreshTokenPrefix+session.RefreshToken).Err()
+		_ = err
 	}
-	_ = s.redisClient.SRem(ctx, RedisUserSessionsPrefix+session.UserID, session.ID).Err()
+	err = s.redisClient.SRem(ctx, RedisUserSessionsPrefix+session.UserID, session.ID).Err()
+	_ = err
 }
 
 // getSessionFromCache retrieves session from Redis cache
@@ -260,8 +267,9 @@ func (s *SessionService) getSessionFromCache(ctx context.Context, token string) 
 
 // DeleteSession deletes a session and invalidates cache
 func (s *SessionService) DeleteSession(ctx context.Context, token string) error {
-	session, _ := s.sessionStore.GetByToken(ctx, token)
-	err := s.sessionStore.Delete(ctx, token)
+	session, err := s.sessionStore.GetByToken(ctx, token)
+	_ = err
+	err = s.sessionStore.Delete(ctx, token)
 	if err == nil {
 		s.invalidateSessionCache(ctx, &session)
 		_ = s.auditLogger.LogAuthEvent(ctx, AuditEventLogout, session.UserID, session.IPAddress, session.UserAgent, true, nil)

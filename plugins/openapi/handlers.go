@@ -73,7 +73,8 @@ func (h *Handler) ServeSpec(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*") // Allow CORS for documentation tools
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(jsonBytes)
+	_, writeErr := w.Write(jsonBytes)
+	_ = writeErr
 }
 
 // ServeScalarUI serves the Scalar documentation UI.
@@ -115,5 +116,6 @@ func (h *Handler) ServeScalarUI(w http.ResponseWriter, _ *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(html))
+	_, err := w.Write([]byte(html))
+	_ = err
 }

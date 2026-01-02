@@ -500,7 +500,8 @@ func GetUser(ctx context.Context) (*auth.User, error) {
 // This includes all plugin extensions (admin role, jwt claims, org memberships, etc.)
 // Returns nil if no authenticated user or enriched user not set.
 func GetEnrichedUser(ctx context.Context) *EnrichedUser {
-	eu, _ := ctx.Value(enrichedUserKey).(*EnrichedUser)
+	eu, ok := ctx.Value(enrichedUserKey).(*EnrichedUser)
+	_ = ok
 	return eu
 }
 
@@ -529,7 +530,8 @@ func MustGetUser(ctx context.Context) *auth.User {
 // This acts as a per-request cache - once a session is stored in context,
 // it can be retrieved without hitting the database or Redis again.
 func GetSession(ctx context.Context) *auth.Session {
-	session, _ := ctx.Value(sessionContextKey).(*auth.Session)
+	session, ok := ctx.Value(sessionContextKey).(*auth.Session)
+	_ = ok
 	return session
 }
 
@@ -542,7 +544,8 @@ func HasSession(ctx context.Context) bool {
 // IsContextInitialized checks if AegisContextMiddleware has been run.
 // This is used internally to ensure proper middleware chain ordering.
 func IsContextInitialized(ctx context.Context) bool {
-	initialized, _ := ctx.Value(contextInitializedKey).(bool)
+	initialized, err := ctx.Value(contextInitializedKey).(bool)
+	_ = err
 	return initialized
 }
 
@@ -558,14 +561,16 @@ func GetRequestID(ctx context.Context) string {
 // GetRequestMeta extracts the request metadata from the context.
 // Returns nil if not set.
 func GetRequestMeta(ctx context.Context) *RequestMeta {
-	meta, _ := ctx.Value(requestMetaKey).(*RequestMeta)
+	meta, err := ctx.Value(requestMetaKey).(*RequestMeta)
+	_ = err
 	return meta
 }
 
 // GetPluginData extracts the plugin data store from the context.
 // Returns nil if not initialized. Plugins should check for nil.
 func GetPluginData(ctx context.Context) *PluginData {
-	pd, _ := ctx.Value(pluginDataKey).(*PluginData)
+	pd, err := ctx.Value(pluginDataKey).(*PluginData)
+	_ = err
 	return pd
 }
 
@@ -594,7 +599,10 @@ func SetPluginValue(ctx context.Context, key string, value interface{}) {
 
 // Authenticated checks if the context has an authenticated user.
 func Authenticated(ctx context.Context) bool {
-	user, _ := GetUser(ctx)
+	user, err := GetUser(ctx)
+	if err != nil {
+		return false
+	}
 	return user != nil
 }
 

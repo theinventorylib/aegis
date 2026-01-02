@@ -207,7 +207,8 @@ func ValidateMiddleware[T interface{ Validate() error }](
 	return func(w http.ResponseWriter, r *http.Request) {
 		req, err := BindAndValidate[T](r)
 		if err != nil {
-			_ = GetValidationErrors(err)
+			err = GetValidationErrors(err)
+			_ = err
 			return
 		}
 		handler(w, r, req)

@@ -376,8 +376,10 @@ func (s *defaultSessionStore) CleanupExpired(ctx context.Context) error {
 // sqlcUserToUser converts a sqlc-generated User to the domain User model.
 // Parses RFC3339 timestamps and converts SQL nullable fields to Go zero values.
 func sqlcUserToUser(u sqlc.User) User {
-	createdAt, _ := time.Parse(time.RFC3339, u.CreatedAt)
-	updatedAt, _ := time.Parse(time.RFC3339, u.UpdatedAt)
+	createdAt, err := time.Parse(time.RFC3339, u.CreatedAt)
+	_ = err
+	updatedAt, err := time.Parse(time.RFC3339, u.UpdatedAt)
+	_ = err
 	return User{
 		ID:        u.ID,
 		Avatar:    fromNullString(u.Avatar),
@@ -393,9 +395,12 @@ func sqlcUserToUser(u sqlc.User) User {
 // Handles nullable fields and timestamp parsing. ExpiresAt is parsed from a nullable
 // string field (zero time if NULL).
 func sqlcAccountToAccount(a sqlc.Account) Account {
-	createdAt, _ := time.Parse(time.RFC3339, a.CreatedAt)
-	updatedAt, _ := time.Parse(time.RFC3339, a.UpdatedAt)
-	expiresAt, _ := time.Parse(time.RFC3339, fromNullString(a.ExpiresAt))
+	createdAt, err := time.Parse(time.RFC3339, a.CreatedAt)
+	_ = err
+	updatedAt, err := time.Parse(time.RFC3339, a.UpdatedAt)
+	_ = err
+	expiresAt, err := time.Parse(time.RFC3339, fromNullString(a.ExpiresAt))
+	_ = err
 	return Account{
 		ID:                a.ID,
 		UserID:            a.UserID,
@@ -413,8 +418,10 @@ func sqlcAccountToAccount(a sqlc.Account) Account {
 // sqlcVerificationToVerification converts a sqlc-generated Verification to the
 // domain Verification model. Parses RFC3339 timestamps for expiry and creation.
 func sqlcVerificationToVerification(v sqlc.Verification) Verification {
-	expiresAt, _ := time.Parse(time.RFC3339, v.ExpiresAt)
-	createdAt, _ := time.Parse(time.RFC3339, v.CreatedAt)
+	expiresAt, err := time.Parse(time.RFC3339, v.ExpiresAt)
+	_ = err
+	createdAt, err := time.Parse(time.RFC3339, v.CreatedAt)
+	_ = err
 	return Verification{
 		ID:         v.ID,
 		Identifier: v.Identifier,
@@ -428,8 +435,10 @@ func sqlcVerificationToVerification(v sqlc.Verification) Verification {
 // sqlcSessionToSession converts a sqlc-generated Session to the domain Session model.
 // Handles nullable refresh tokens, IP addresses, and user agents.
 func sqlcSessionToSession(s sqlc.Session) Session {
-	expiresAt, _ := time.Parse(time.RFC3339, s.ExpiresAt)
-	createdAt, _ := time.Parse(time.RFC3339, s.CreatedAt)
+	expiresAt, err := time.Parse(time.RFC3339, s.ExpiresAt)
+	_ = err
+	createdAt, err := time.Parse(time.RFC3339, s.CreatedAt)
+	_ = err
 	return Session{
 		ID:           s.ID,
 		UserID:       s.UserID,

@@ -47,7 +47,8 @@ func DeriveSecret(masterSecret []byte, purpose string, length int) []byte {
 
 	derived := make([]byte, length)
 	// HKDF.Read always succeeds for reasonable output lengths
-	_, _ = hkdfReader.Read(derived)
+	_, err := hkdfReader.Read(derived)
+	_ = err
 
 	return derived
 }

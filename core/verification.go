@@ -64,7 +64,11 @@ func (s *VerificationService) CreateVerification(ctx context.Context, identifier
 		token = *customToken
 	} else {
 		// Generate a secure random hex token (32 bytes = 64 hex characters)
-		token, _ = generateHexToken(32)
+		var err error
+		token, err = generateHexToken(32)
+		if err != nil {
+			return auth.Verification{}, err
+		}
 	}
 
 	verification := auth.Verification{

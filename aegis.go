@@ -169,7 +169,7 @@ type pluginRegistration struct {
 //   - config.WithArgon2Params(time, memory, threads, keyLen): Password hashing tuning
 //
 // Parameters:
-//   - ctx: Context for initialization (can be cancelled)
+//   - ctx: Context for initialization (can be canceled)
 //   - opts: Configuration options (config.With* functions)
 //
 // Returns:
@@ -363,7 +363,7 @@ func (a *Aegis) MountRoutes(prefix string) {
 // Default priority is 100 (application plugins). For custom priority, use UseWithPriority.
 //
 // Parameters:
-//   - ctx: Context for plugin initialization (can be cancelled)
+//   - ctx: Context for plugin initialization (can be canceled)
 //   - plugin: Plugin instance to register
 //
 // Returns:
@@ -549,7 +549,8 @@ func (a *Aegis) runUserEnrichers(ctx context.Context, user *core.EnrichedUser) {
 	for _, reg := range a.plugins {
 		if enricher, ok := reg.plugin.(plugins.UserEnricher); ok {
 			// Errors from individual enrichers shouldn't fail the request
-			_ = enricher.EnrichUser(ctx, user)
+			err := enricher.EnrichUser(ctx, user)
+			_ = err
 		}
 	}
 }
@@ -774,7 +775,7 @@ func (w *pluginAegisWrapper) GetAuthService() *core.AuthService {
 	// Actually, the framework's GetAuthService returns *core.AuthService .
 	// This wrapper needs to return the multi-parameter version for the interface.
 	// Since A, V, S are pinned anyway, this is just a type alias/cast.
-	return any(w.Aegis.GetAuthService()).(*core.AuthService)
+	return w.Aegis.GetAuthService()
 }
 
 func (w *pluginAegisWrapper) GetLogger() config.Logger {

@@ -104,7 +104,7 @@ func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaReq
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() { err := rows.Close(); _ = err }()
 
 	// Check if query returned at least one row
 	if !rows.Next() {

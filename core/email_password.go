@@ -176,7 +176,10 @@ func (h *EmailPasswordHandlers) LoginHandler(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		if h.authService.loginAttemptTracker != nil {
 			// Record failed attempt for non-existent user
-			_, _, _ = h.authService.loginAttemptTracker.RecordFailedAttempt(r.Context(), req.Email)
+			attempts, lockout, err := h.authService.loginAttemptTracker.RecordFailedAttempt(r.Context(), req.Email)
+			_ = attempts
+			_ = lockout
+			_ = err
 		}
 		_ = h.authService.auditLogger.LogAuthEvent(r.Context(), AuditEventLoginFailed, "", r.RemoteAddr, r.UserAgent(), false, map[string]interface{}{
 			"email":  req.Email,
@@ -199,7 +202,10 @@ func (h *EmailPasswordHandlers) LoginHandler(w http.ResponseWriter, r *http.Requ
 	if err != nil || !valid {
 		if h.authService.loginAttemptTracker != nil {
 			// Record failed attempt
-			_, _, _ = h.authService.loginAttemptTracker.RecordFailedAttempt(r.Context(), req.Email)
+			attempts, lockout, err := h.authService.loginAttemptTracker.RecordFailedAttempt(r.Context(), req.Email)
+			_ = attempts
+			_ = lockout
+			_ = err
 		}
 		_ = h.authService.auditLogger.LogAuthEvent(r.Context(), AuditEventLoginFailed, uid, r.RemoteAddr, r.UserAgent(), false, map[string]interface{}{
 			"email":  req.Email,
@@ -214,7 +220,8 @@ func (h *EmailPasswordHandlers) LoginHandler(w http.ResponseWriter, r *http.Requ
 
 	// Clear failed attempts on successful login
 	if h.authService.loginAttemptTracker != nil {
-		_ = h.authService.loginAttemptTracker.ClearAttempts(r.Context(), req.Email)
+		err := h.authService.loginAttemptTracker.ClearAttempts(r.Context(), req.Email)
+		_ = err
 	}
 
 	// Create session
@@ -331,7 +338,8 @@ func (h *EmailPasswordHandlers) RegisterHandler(w http.ResponseWriter, r *http.R
 	// Set email
 	if err := h.authService.User.UpdateUserEmail(r.Context(), uid, req.Email); err != nil {
 		// Cleanup user if email set fails
-		_ = h.authService.User.DeleteUser(r.Context(), uid)
+		err := h.authService.User.DeleteUser(r.Context(), uid)
+		_ = err
 		WriteJSON(w, http.StatusBadRequest, &Response{
 			Success: false,
 			Error:   "Failed to set email: " + err.Error(),

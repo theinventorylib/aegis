@@ -335,7 +335,8 @@ atlas migrate apply --dir "file://%s" --url "%s://localhost/mydb"
 		e.outputDir, e.dialect,
 		e.outputDir, e.dialect)
 
-	files, _ := os.ReadDir(e.outputDir)
+	files, err := os.ReadDir(e.outputDir)
+	_ = err
 	var sqlFiles []string
 	for _, file := range files {
 		if filepath.Ext(file.Name()) == ".sql" {

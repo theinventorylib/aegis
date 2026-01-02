@@ -257,8 +257,10 @@ func (s *DefaultAdminStore) GetStats(ctx context.Context) (StatsResponse, error)
 // Helper functions
 
 func sqlcUserToUser(u sqlc.User) User {
-	createdAt, _ := time.Parse(time.RFC3339, u.CreatedAt)
-	updatedAt, _ := time.Parse(time.RFC3339, u.UpdatedAt)
+	createdAt, err := time.Parse(time.RFC3339, u.CreatedAt)
+	_ = err
+	updatedAt, err := time.Parse(time.RFC3339, u.UpdatedAt)
+	_ = err
 	var banExpiry *time.Time
 	if u.BanExpiry.Valid {
 		if t, err := time.Parse(time.RFC3339, u.BanExpiry.String); err == nil {

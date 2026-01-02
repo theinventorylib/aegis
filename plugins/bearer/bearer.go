@@ -129,7 +129,7 @@ func (p *Plugin) Description() string {
 //   - Mobile apps and API clients can authenticate
 //
 // Parameters:
-//   - ctx: Context for initialization (can be cancelled)
+//   - ctx: Context for initialization (can be canceled)
 //   - aegis: Framework instance providing access to services
 //
 // Returns:

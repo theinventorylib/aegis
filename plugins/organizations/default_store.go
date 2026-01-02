@@ -317,8 +317,14 @@ func sqlcOrganizationToOrganization(o interface{}) Organization {
 	case sqlc.ListUserOrganizationsRow:
 		id, name, slug, createdAt, updatedAt = v.ID, v.Name, v.Slug, v.CreatedAt, v.UpdatedAt
 	}
-	createdAtTime, _ := time.Parse(time.RFC3339, createdAt)
-	updatedAtTime, _ := time.Parse(time.RFC3339, updatedAt)
+	createdAtTime, err := time.Parse(time.RFC3339, createdAt)
+	if err != nil {
+		createdAtTime = time.Now()
+	}
+	updatedAtTime, err := time.Parse(time.RFC3339, updatedAt)
+	if err != nil {
+		updatedAtTime = time.Now()
+	}
 	return Organization{
 		ID:        id,
 		Name:      name,
@@ -329,8 +335,10 @@ func sqlcOrganizationToOrganization(o interface{}) Organization {
 }
 
 func sqlcMemberToMember(m sqlc.Member) Member {
-	createdAt, _ := time.Parse(time.RFC3339, m.CreatedAt)
-	updatedAt, _ := time.Parse(time.RFC3339, m.UpdatedAt)
+	createdAt, err := time.Parse(time.RFC3339, m.CreatedAt)
+	_ = err
+	updatedAt, err := time.Parse(time.RFC3339, m.UpdatedAt)
+	_ = err
 	return Member{
 		ID:             m.ID,
 		UserID:         m.UserID,
@@ -342,8 +350,10 @@ func sqlcMemberToMember(m sqlc.Member) Member {
 }
 
 func sqlcTeamToTeam(t sqlc.Team) Team {
-	createdAt, _ := time.Parse(time.RFC3339, t.CreatedAt)
-	updatedAt, _ := time.Parse(time.RFC3339, t.UpdatedAt)
+	createdAt, err := time.Parse(time.RFC3339, t.CreatedAt)
+	_ = err
+	updatedAt, err := time.Parse(time.RFC3339, t.UpdatedAt)
+	_ = err
 	description := ""
 	if t.Description.Valid {
 		description = t.Description.String
@@ -359,8 +369,10 @@ func sqlcTeamToTeam(t sqlc.Team) Team {
 }
 
 func sqlcTeamMemberToTeamMember(m sqlc.TeamMember) TeamMember {
-	createdAt, _ := time.Parse(time.RFC3339, m.CreatedAt)
-	updatedAt, _ := time.Parse(time.RFC3339, m.UpdatedAt)
+	createdAt, err := time.Parse(time.RFC3339, m.CreatedAt)
+	_ = err
+	updatedAt, err := time.Parse(time.RFC3339, m.UpdatedAt)
+	_ = err
 	return TeamMember{
 		ID:        m.ID,
 		TeamID:    m.TeamID,

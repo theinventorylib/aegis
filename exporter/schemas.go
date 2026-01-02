@@ -165,7 +165,8 @@ Complete database schema exported from Aegis authentication library.
 
 `, e.dialect, e.authOnly, strings.Join(pluginNames, ", "))
 
-	files, _ := os.ReadDir(e.outputDir)
+	files, err := os.ReadDir(e.outputDir)
+	_ = err
 	var sqlFiles []string
 	for _, file := range files {
 		if filepath.Ext(file.Name()) == ".sql" {

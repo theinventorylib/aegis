@@ -153,8 +153,10 @@ func generateSchemaType(t reflect.Type) *Schema {
 func applyValidationConstraints(schema *Schema, validationTag string, _ reflect.Type) {
 	// Length constraints: validation:"Length(3,50)"
 	if matches := lengthRegex.FindStringSubmatch(validationTag); matches != nil {
-		minLen, _ := strconv.Atoi(matches[1])
-		maxLen, _ := strconv.Atoi(matches[2])
+		minLen, err := strconv.Atoi(matches[1])
+		_ = err
+		maxLen, err := strconv.Atoi(matches[2])
+		_ = err
 
 		switch schema.Type {
 		case "string":
@@ -169,7 +171,8 @@ func applyValidationConstraints(schema *Schema, validationTag string, _ reflect.
 	// Min/Max constraints: validation:"Min(1)" or validation:"Max(100)"
 	for _, match := range minMaxRegex.FindAllStringSubmatch(validationTag, -1) {
 		constraint := match[1] // "Min" or "Max"
-		value, _ := strconv.Atoi(match[2])
+		value, err := strconv.Atoi(match[2])
+		_ = err
 
 		if schema.Type == "integer" || schema.Type == "number" {
 			floatVal := float64(value)

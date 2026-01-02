@@ -81,7 +81,9 @@ func New(cfg Config) *Auth {
 
 	userStore := cfg.UserStore
 	if any(userStore) == nil {
-		userStore = any(defaultStore.UserStore()).(UserStore)
+		if us, ok := any(defaultStore.UserStore()).(UserStore); ok {
+			userStore = us
+		}
 	}
 
 	accountStore := cfg.AccountStore

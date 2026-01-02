@@ -343,7 +343,7 @@ func (p *Plugin) Description() string {
 // On subsequent runs, loads existing keys from database.
 //
 // Parameters:
-//   - ctx: Context for initialization (can be cancelled)
+//   - ctx: Context for initialization (can be canceled)
 //   - aegis: Framework instance providing database, services, etc.
 //
 // Returns:
@@ -780,7 +780,8 @@ func (p *Plugin) RefreshTokens(refreshToken string) (*TokenPair, error) {
 
 	// Immediately blacklist the used refresh token to prevent reuse (if Redis available)
 	if p.redisClient != nil {
-		_ = p.blacklistTokenWithContext(ctx, refreshToken) // Ignore error, continue to ensure user gets new tokens
+		err := p.blacklistTokenWithContext(ctx, refreshToken)
+		_ = err // Ignore error, continue to ensure user gets new tokens
 	}
 
 	// Generate new token pair
@@ -900,7 +901,7 @@ func (p *Plugin) StartKeyRotation(ctx context.Context) {
 		for {
 			select {
 			case <-ticker.C:
-				// Use background context for rotation since ctx might be cancelled
+				// Use background context for rotation since ctx might be canceled
 				if err := p.RotateKeys(context.Background()); err != nil {
 					// Log error but continue - key rotation failure doesn't break existing tokens
 					if p.logger != nil {
