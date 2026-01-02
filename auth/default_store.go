@@ -137,9 +137,16 @@ func (s *defaultUserStore) List(ctx context.Context, offset, limit int) ([]User,
 	if limit <= 0 {
 		limit = 10
 	}
+	// Ensure values are within int32 range
+	if offset > 2147483647 {
+		offset = 2147483647
+	}
+	if limit > 2147483647 {
+		limit = 2147483647
+	}
 	params := sqlc.ListUsersParams{
-		Offset: int32(offset),
-		Limit:  int32(limit),
+		Offset: int32(offset), // #nosec G115 - bounds checked above
+		Limit:  int32(limit),  // #nosec G115 - bounds checked above
 	}
 	users, err := s.q.ListUsers(ctx, params)
 	if err != nil {

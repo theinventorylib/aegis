@@ -45,13 +45,13 @@ func NewDefaultSMSStore(db *sql.DB) *DefaultSMSStore {
 // CreateUser creates a new user with phone number.
 func (s *DefaultSMSStore) CreateUser(ctx context.Context, user User) (*User, error) {
 	params := sqlc.CreateUserParams{
-		ID:            user.User.ID,
-		Avatar:        toNullString(user.User.Avatar),
-		Name:          user.User.Name,
-		Email:         toNullString(user.User.Email),
-		CreatedAt:     user.User.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:     user.User.UpdatedAt.Format(time.RFC3339),
-		Disabled:      boolToInt(user.User.Disabled),
+		ID:            user.ID,
+		Avatar:        toNullString(user.Avatar),
+		Name:          user.Name,
+		Email:         toNullString(user.Email),
+		CreatedAt:     user.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:     user.UpdatedAt.Format(time.RFC3339),
+		Disabled:      boolToInt(user.Disabled),
 		PhoneNumber:   toNullString(nullPointerString(user.Phone)),
 		PhoneVerified: boolToInt(user.PhoneVerified),
 	}

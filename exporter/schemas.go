@@ -145,7 +145,7 @@ func (e *SchemaExporter) exportPluginSchema(plugin plugins.Plugin) error {
 
 // generateReadme creates a README for the exported schemas
 func (e *SchemaExporter) generateReadme() error {
-	var pluginNames []string
+	pluginNames := make([]string, 0, len(e.plugins))
 	for _, p := range e.plugins {
 		pluginNames = append(pluginNames, p.Name())
 	}

@@ -125,12 +125,12 @@ type AuditLogger interface {
 type NoOpAuditLogger struct{}
 
 // LogEvent implements AuditLogger.
-func (n *NoOpAuditLogger) LogEvent(ctx context.Context, event *AuditEvent) error {
+func (n *NoOpAuditLogger) LogEvent(_ context.Context, _ *AuditEvent) error {
 	return nil
 }
 
 // LogAuthEvent implements AuditLogger.
-func (n *NoOpAuditLogger) LogAuthEvent(ctx context.Context, eventType AuditEventType, userID, ipAddress, userAgent string, success bool, details map[string]interface{}) error {
+func (n *NoOpAuditLogger) LogAuthEvent(_ context.Context, _ AuditEventType, _, _, _ string, _ bool, _ map[string]interface{}) error {
 	return nil
 }
 
@@ -155,7 +155,7 @@ func NewLoggerAuditLogger(logger interface {
 }
 
 // LogEvent implements AuditLogger.
-func (l *LoggerAuditLogger) LogEvent(ctx context.Context, event *AuditEvent) error {
+func (l *LoggerAuditLogger) LogEvent(_ context.Context, event *AuditEvent) error {
 	if l.logger == nil {
 		return nil
 	}

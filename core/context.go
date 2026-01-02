@@ -209,18 +209,18 @@ func (eu *EnrichedUser) MarshalJSON() ([]byte, error) {
 
 	// Create a map with core user fields
 	result := map[string]interface{}{
-		"id":        eu.User.ID,
-		"email":     eu.User.Email,
-		"name":      eu.User.Name,
-		"avatar":    eu.User.Avatar,
-		"disabled":  eu.User.Disabled,
-		"createdAt": eu.User.CreatedAt,
-		"updatedAt": eu.User.UpdatedAt,
+		"id":        eu.ID,
+		"email":     eu.Email,
+		"name":      eu.Name,
+		"avatar":    eu.Avatar,
+		"disabled":  eu.Disabled,
+		"createdAt": eu.CreatedAt,
+		"updatedAt": eu.UpdatedAt,
 	}
 
 	// Add metadata if present
-	if len(eu.User.Metadata) > 0 {
-		result["metadata"] = eu.User.Metadata
+	if len(eu.Metadata) > 0 {
+		result["metadata"] = eu.Metadata
 	}
 
 	// Flatten extensions as top-level fields
@@ -245,17 +245,17 @@ func (eu *EnrichedUser) ToAPIResponseFiltered(config *UserFieldsConfig) map[stri
 	defer eu.mu.RUnlock()
 
 	resp := map[string]interface{}{
-		"id":        eu.User.ID,
-		"email":     eu.User.Email,
-		"name":      eu.User.Name,
-		"avatar":    eu.User.Avatar,
-		"disabled":  eu.User.Disabled,
-		"createdAt": eu.User.CreatedAt,
-		"updatedAt": eu.User.UpdatedAt,
+		"id":        eu.ID,
+		"email":     eu.Email,
+		"name":      eu.Name,
+		"avatar":    eu.Avatar,
+		"disabled":  eu.Disabled,
+		"createdAt": eu.CreatedAt,
+		"updatedAt": eu.UpdatedAt,
 	}
 
-	if len(eu.User.Metadata) > 0 {
-		resp["metadata"] = eu.User.Metadata
+	if len(eu.Metadata) > 0 {
+		resp["metadata"] = eu.Metadata
 	}
 
 	// Build allowed fields set if config specifies fields
@@ -320,7 +320,7 @@ func (swu *SessionWithUser) ToAPIResponseFiltered(config *UserFieldsConfig) map[
 	}
 
 	if swu.User != nil {
-		resp["user"] = swu.User.ToAPIResponseFiltered(config)
+		resp["user"] = swu.ToAPIResponseFiltered(config)
 	}
 
 	return resp

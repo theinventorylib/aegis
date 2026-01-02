@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// OAuthStore defines the interface for OAuth connection storage operations.
+// Store defines the interface for OAuth connection storage operations.
 //
 // This interface abstracts database operations for managing OAuth provider
 // connections. Implementations should use transactions for consistency and
@@ -12,7 +12,7 @@ import (
 //
 // Thread Safety:
 // Implementations must be safe for concurrent use from multiple goroutines.
-type OAuthStore interface {
+type Store interface {
 	// CreateConnection creates a new OAuth provider connection.
 	//
 	// This method links an OAuth provider to an Aegis user account. It stores

@@ -33,14 +33,11 @@ func BenchmarkVerifyPassword(b *testing.B) {
 	password := benchTestPassword
 	hash, _ := HashPassword(password, 0, 0, 0, 0)
 
-	// Declared correctDurations to make the user's edit syntactically correct.
-	var correctDurations []time.Duration
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		start := time.Now()
 		_, _ = VerifyPassword(password, hash)
-		correctDurations = append(correctDurations, time.Since(start))
+		_ = time.Since(start)
 	}
 }
 

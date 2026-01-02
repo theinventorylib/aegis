@@ -287,9 +287,10 @@ func (p *Plugin) GetMigrations() []plugins.Migration {
 
 // GetSchemas returns all schemas for all supported dialects
 func (p *Plugin) GetSchemas() []plugins.Schema {
-	var schemas []plugins.Schema
+	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL}
+	schemas := make([]plugins.Schema, 0, len(dialects))
 
-	for _, dialect := range []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL} {
+	for _, dialect := range dialects {
 		schema, err := GetSchema(dialect)
 		if err != nil {
 			continue
@@ -381,11 +382,11 @@ func (p *Plugin) GetUserByPhone(ctx context.Context, phone string) (*auth.User, 
 	return &auth.User{
 		ID:        user.ID,
 		Avatar:    user.Avatar,
-		Name:      user.User.Name,
-		Email:     user.User.Email,
-		CreatedAt: user.User.CreatedAt,
-		UpdatedAt: user.User.UpdatedAt,
-		Disabled:  user.User.Disabled,
+		Name:      user.Name,
+		Email:     user.Email,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Disabled:  user.Disabled,
 	}, nil
 }
 

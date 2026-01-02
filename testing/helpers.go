@@ -247,7 +247,7 @@ func CleanDatabase(t testing.TB, db *sql.DB) {
 //   - t: Testing instance
 //   - db: Database connection
 //   - dialect: Database dialect ("postgres", "mysql", "sqlite")
-func RunMigrations(t testing.TB, db *sql.DB, dialect string) {
+func RunMigrations(t testing.TB, db *sql.DB, _ string) {
 	t.Helper()
 
 	if db == nil {

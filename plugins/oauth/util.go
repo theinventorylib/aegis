@@ -340,7 +340,7 @@ func Microsoft(clientID, clientSecret, tenantID string, opts ...ProviderOption) 
 //
 // Returns:
 //   - ProviderConfig: Apple provider configuration
-func Apple(clientID, clientSecret, teamID string, opts ...ProviderOption) ProviderConfig {
+func Apple(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
 	cfg := ProviderConfig{
 		ProviderID:   "apple",
 		ProviderType: "apple",

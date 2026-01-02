@@ -407,10 +407,11 @@ func (p *Plugin) SendOTP(ctx context.Context, emailAddress, purpose string) erro
 //   - bool: true if OTP is valid and not expired
 //   - error: If verification fails
 //
+// VerifyOTP verifies an OTP code for the given email address.
+//
 // Example:
 //
 //	valid, err := plugin.VerifyOTP(ctx, "user@example.com", "123456")
-
 //	if valid {
 //	  // Mark email as verified
 //	}

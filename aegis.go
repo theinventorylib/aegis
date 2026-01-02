@@ -193,7 +193,7 @@ type pluginRegistration struct {
 //	if err != nil {
 //		log.Fatal("Failed to initialize Aegis:", err)
 //	}
-func New(ctx context.Context, opts ...config.Option) (*Aegis, error) {
+func New(_ context.Context, opts ...config.Option) (*Aegis, error) {
 	cfg := config.Default()
 	for _, opt := range opts {
 		opt(cfg)

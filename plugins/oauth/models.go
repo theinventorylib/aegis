@@ -123,15 +123,15 @@ type ProviderConfig struct {
 	OverrideUserInfo      bool // Update user info on each sign-in
 
 	// Custom Functions (optional)
-	GetUserInfo func(*OAuthTokens) (*User, error)           // Custom user info fetcher
+	GetUserInfo func(*Tokens) (*User, error)           // Custom user info fetcher
 	MapProfile  func(map[string]interface{}) (*User, error) // Profile mapper
 }
 
-// OAuthTokens represents OAuth token response.
+// Tokens represents OAuth token response.
 //
 // This struct holds the tokens returned by the provider after successful
 // authorization code exchange. It's used for custom user info fetching.
-type OAuthTokens struct {
+type Tokens struct {
 	AccessToken  string                 // OAuth access token
 	RefreshToken string                 // OAuth refresh token
 	ExpiresAt    time.Time              // Token expiration time

@@ -163,8 +163,8 @@ func TestRateLimiter_Allow_WindowReset(t *testing.T) {
 	key := ratelimitTestIP
 
 	// Exhaust limit
-	limiter.Allow(ctx, key)
-	limiter.Allow(ctx, key)
+	_, _, _ = limiter.Allow(ctx, key)
+	_, _, _ = limiter.Allow(ctx, key)
 
 	// Verify blocked
 	allowed, _, _ := limiter.Allow(ctx, key)
@@ -541,7 +541,7 @@ func TestLoginAttemptTracker_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			tracker.RecordFailedAttempt(ctx, identifier)
+			_, _, _ = tracker.RecordFailedAttempt(ctx, identifier)
 		}()
 	}
 	wg.Wait()

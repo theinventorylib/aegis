@@ -1,4 +1,4 @@
-// migrations/exporter.go
+// Package exporter provides functionality for exporting database migrations and schemas.
 package exporter
 
 import (
@@ -12,13 +12,16 @@ import (
 	"github.com/theinventorylib/aegis/plugins"
 )
 
-// ExportFormat defines the output format
+// ExportFormat defines the output format for migration exports.
 type ExportFormat string
 
 const (
-	FormatSQL           ExportFormat = "sql"            // FormatSQL exports migrations as plain SQL files.
-	FormatGoose         ExportFormat = "goose"          // Goose format
-	FormatGolangMigrate ExportFormat = "golang-migrate" // golang-migrate format
+	// FormatSQL exports migrations as plain SQL files.
+	FormatSQL ExportFormat = "sql"
+	// FormatGoose exports migrations in Goose format.
+	FormatGoose ExportFormat = "goose"
+	// FormatGolangMigrate exports migrations in golang-migrate format.
+	FormatGolangMigrate ExportFormat = "golang-migrate"
 )
 
 // Migration represents a single migration

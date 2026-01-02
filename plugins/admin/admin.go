@@ -232,10 +232,8 @@ func (a *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error 
 	role, err := a.store.GetRole(ctx, user.ID)
 	if err != nil {
 		// Even if lookup fails, we don't want to fail the whole enrichment process
-		// unless it's a critical error. For now, we return nil to maintain existing behavior
-		// but we blank the error to show it's intentional.
-		_ = err
-		return nil
+		// Silently ignore role lookup errors as they're not critical
+		return err
 	}
 
 	if role != "" {

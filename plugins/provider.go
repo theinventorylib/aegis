@@ -56,10 +56,14 @@ type Schema struct {
 // Dialect represents a database dialect
 type Dialect string
 
+// Database dialect constants
 const (
+	// DialectPostgres represents PostgreSQL database
 	DialectPostgres Dialect = "postgres"
-	DialectMySQL    Dialect = "mysql"
-	DialectSQLite   Dialect = "sqlite"
+	// DialectMySQL represents MySQL database
+	DialectMySQL Dialect = "mysql"
+	// DialectSQLite represents SQLite database
+	DialectSQLite Dialect = "sqlite"
 )
 
 // Dependency represents an external package dependency.
@@ -99,7 +103,7 @@ type Plugin interface {
 // Example implementation:
 //
 //	func (a *Admin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error {
-//	    role, err := a.store.GetRole(ctx, user.User.ID)
+//	    role, err := a.store.GetRole(ctx, user.ID)
 //	    if err == nil && role != "" {
 //	        user.Set("role", role)
 //	    }

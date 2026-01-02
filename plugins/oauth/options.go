@@ -186,7 +186,7 @@ func WithOverrideUserInfo() ProviderOption {
 //
 // Example:
 //
-//	fetchUser := func(tokens *oauth.OAuthTokens) (*oauth.User, error) {
+//	fetchUser := func(tokens *oauth.Tokens) (*oauth.User, error) {
 //	    // Call custom API with access token
 //	    resp, _ := http.Get("https://api.example.com/user?access_token=" + tokens.AccessToken)
 //	    // Parse custom response format
@@ -198,7 +198,7 @@ func WithOverrideUserInfo() ProviderOption {
 //	oauth.Generic("custom", clientID, clientSecret,
 //	    oauth.WithUserInfoFetcher(fetchUser),
 //	)
-func WithUserInfoFetcher(fn func(*OAuthTokens) (*User, error)) ProviderOption {
+func WithUserInfoFetcher(fn func(*Tokens) (*User, error)) ProviderOption {
 	return func(cfg *ProviderConfig) {
 		cfg.GetUserInfo = fn
 	}

@@ -76,6 +76,37 @@ func (a *Plugin) EnrichUserMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
+// checkUserRole verifies the user has the required role.
+// It first checks the enriched user context, then falls back to database lookup.
+// Returns true if the user has the required role, false otherwise.
+func (a *Plugin) checkUserRole(ctx *http.Request, w http.ResponseWriter, requiredRole string) bool {
+	user, err := core.GetUser(ctx.Context())
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return false
+	}
+
+	// First check if role is already in enriched user (avoid DB call)
+	if role := plugins.GetUserExtensionString(ctx.Context(), ExtKeyRole); role != "" {
+		if role != requiredRole {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return false
+		}
+		return true
+	}
+
+	// Fallback: fetch from DB and enrich for future use
+	role, err := a.store.GetRole(ctx.Context(), user.ID)
+	if err != nil || role != requiredRole {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return false
+	}
+
+	// Enrich user for subsequent middleware/handlers
+	plugins.ExtendUser(ctx.Context(), ExtKeyRole, role)
+	return true
+}
+
 // RequireAdminMiddleware ensures the user has the 'admin' role.
 //
 // This middleware enforces admin-only access to protected routes. It checks for
@@ -102,36 +133,9 @@ func (a *Plugin) EnrichUserMiddleware() func(http.Handler) http.Handler {
 func (a *Plugin) RequireAdminMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := r.Context()
-
-			// Get user from context (populated by AuthMiddleware)
-			user, err := core.GetUser(ctx)
-			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			// First check if role is already in enriched user (avoid DB call)
-			if role := plugins.GetUserExtensionString(ctx, ExtKeyRole); role != "" {
-				if role != RoleAdmin {
-					http.Error(w, "Forbidden", http.StatusForbidden)
-					return
-				}
+			if a.checkUserRole(r, w, RoleAdmin) {
 				next.ServeHTTP(w, r)
-				return
 			}
-
-			// Fallback: fetch from DB and enrich for future use
-			role, err := a.store.GetRole(ctx, user.ID)
-			if err != nil || role != RoleAdmin {
-				http.Error(w, "Forbidden", http.StatusForbidden)
-				return
-			}
-
-			// Enrich user for subsequent middleware/handlers
-			plugins.ExtendUser(ctx, ExtKeyRole, role)
-
-			next.ServeHTTP(w, r)
 		})
 	}
 }
@@ -155,35 +159,9 @@ func (a *Plugin) RequireAdminMiddleware() func(http.Handler) http.Handler {
 func (a *Plugin) RequireRoleMiddleware(requiredRole string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := r.Context()
-
-			user, err := core.GetUser(ctx)
-			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			// First check enriched user
-			if role := plugins.GetUserExtensionString(ctx, ExtKeyRole); role != "" {
-				if role != requiredRole {
-					http.Error(w, "Forbidden", http.StatusForbidden)
-					return
-				}
+			if a.checkUserRole(r, w, requiredRole) {
 				next.ServeHTTP(w, r)
-				return
 			}
-
-			// Fallback: fetch from DB
-			role, err := a.store.GetRole(ctx, user.ID)
-			if err != nil || role != requiredRole {
-				http.Error(w, "Forbidden", http.StatusForbidden)
-				return
-			}
-
-			// Enrich for future use
-			plugins.ExtendUser(ctx, ExtKeyRole, role)
-
-			next.ServeHTTP(w, r)
 		})
 	}
 }

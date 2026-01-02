@@ -79,7 +79,7 @@ func (m *mockUserStore) GetByID(_ context.Context, id string) (User, error) {
 	return user, nil
 }
 
-func (m *mockUserStore) Update(ctx context.Context, user User) error {
+func (m *mockUserStore) Update(_ context.Context, user User) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -91,7 +91,7 @@ func (m *mockUserStore) Update(ctx context.Context, user User) error {
 	return nil
 }
 
-func (m *mockUserStore) Delete(ctx context.Context, id string) error {
+func (m *mockUserStore) Delete(_ context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -102,7 +102,7 @@ func (m *mockUserStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (m *mockUserStore) List(ctx context.Context, offset, limit int) ([]User, error) {
+func (m *mockUserStore) List(_ context.Context, offset, limit int) ([]User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -120,7 +120,7 @@ func (m *mockUserStore) List(ctx context.Context, offset, limit int) ([]User, er
 	return users[offset:end], nil
 }
 
-func (m *mockUserStore) Count(ctx context.Context) (int, error) {
+func (m *mockUserStore) Count(_ context.Context) (int, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.users), nil
@@ -138,7 +138,7 @@ func newMockSessionStore() *mockSessionStore {
 	}
 }
 
-func (m *mockSessionStore) Create(ctx context.Context, session Session) error {
+func (m *mockSessionStore) Create(_ context.Context, session Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if session.CreatedAt.IsZero() {
@@ -148,7 +148,7 @@ func (m *mockSessionStore) Create(ctx context.Context, session Session) error {
 	return nil
 }
 
-func (m *mockSessionStore) Get(ctx context.Context, id string) (Session, error) {
+func (m *mockSessionStore) Get(_ context.Context, id string) (Session, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	session, exists := m.sessions[id]
@@ -158,7 +158,7 @@ func (m *mockSessionStore) Get(ctx context.Context, id string) (Session, error) 
 	return session, nil
 }
 
-func (m *mockSessionStore) GetByToken(ctx context.Context, token string) (Session, error) {
+func (m *mockSessionStore) GetByToken(_ context.Context, token string) (Session, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, session := range m.sessions {
@@ -169,7 +169,7 @@ func (m *mockSessionStore) GetByToken(ctx context.Context, token string) (Sessio
 	return Session{}, ErrSessionNotFound
 }
 
-func (m *mockSessionStore) GetByRefreshToken(ctx context.Context, refreshToken string) (Session, error) {
+func (m *mockSessionStore) GetByRefreshToken(_ context.Context, refreshToken string) (Session, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, session := range m.sessions {
@@ -180,7 +180,7 @@ func (m *mockSessionStore) GetByRefreshToken(ctx context.Context, refreshToken s
 	return Session{}, ErrSessionNotFound
 }
 
-func (m *mockSessionStore) GetByUserID(ctx context.Context, userID string) ([]Session, error) {
+func (m *mockSessionStore) GetByUserID(_ context.Context, userID string) ([]Session, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var sessions []Session
@@ -192,7 +192,7 @@ func (m *mockSessionStore) GetByUserID(ctx context.Context, userID string) ([]Se
 	return sessions, nil
 }
 
-func (m *mockSessionStore) Update(ctx context.Context, session Session) error {
+func (m *mockSessionStore) Update(_ context.Context, session Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, exists := m.sessions[session.ID]; !exists {
@@ -202,14 +202,14 @@ func (m *mockSessionStore) Update(ctx context.Context, session Session) error {
 	return nil
 }
 
-func (m *mockSessionStore) Delete(ctx context.Context, id string) error {
+func (m *mockSessionStore) Delete(_ context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.sessions, id)
 	return nil
 }
 
-func (m *mockSessionStore) DeleteByUserID(ctx context.Context, userID string) error {
+func (m *mockSessionStore) DeleteByUserID(_ context.Context, userID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, session := range m.sessions {
@@ -220,7 +220,7 @@ func (m *mockSessionStore) DeleteByUserID(ctx context.Context, userID string) er
 	return nil
 }
 
-func (m *mockSessionStore) CleanupExpired(ctx context.Context) error {
+func (m *mockSessionStore) CleanupExpired(_ context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := time.Now()
@@ -392,7 +392,7 @@ func TestUserStore_List(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		user := User{ID: string(rune('a' + i)), Email: string(rune('a'+i)) + "@example.com"}
-		store.Create(ctx, user)
+		_, _ = store.Create(ctx, user)
 	}
 
 	users, err := store.List(ctx, 0, 2)
@@ -410,7 +410,7 @@ func TestUserStore_Count(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		user := User{ID: string(rune('a' + i)), Email: string(rune('a'+i)) + "@example.com"}
-		store.Create(ctx, user)
+		_, _ = store.Create(ctx, user)
 	}
 
 	count, err := store.Count(ctx)
@@ -435,7 +435,7 @@ func TestUserStore_ConcurrentAccess(t *testing.T) {
 				ID:    "user_" + string(rune(idx)),
 				Email: "user" + string(rune(idx)) + "@example.com",
 			}
-			store.Create(ctx, user)
+			_, _ = store.Create(ctx, user)
 		}(i)
 	}
 	wg.Wait()
@@ -486,7 +486,7 @@ func TestSessionStore_GetByToken(t *testing.T) {
 		Token:     "unique_session_token",
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 	}
-	store.Create(ctx, session)
+	_ = store.Create(ctx, session)
 
 	retrieved, err := store.GetByToken(ctx, "unique_session_token")
 	if err != nil {
@@ -502,9 +502,9 @@ func TestSessionStore_GetByUserID(t *testing.T) {
 	ctx := context.Background()
 	userID := testUserID
 
-	store.Create(ctx, Session{ID: "sess_1", UserID: userID, Token: "token1", ExpiresAt: time.Now().Add(time.Hour)})
-	store.Create(ctx, Session{ID: "sess_2", UserID: userID, Token: "token2", ExpiresAt: time.Now().Add(time.Hour)})
-	store.Create(ctx, Session{ID: "sess_3", UserID: "other_user", Token: "token3", ExpiresAt: time.Now().Add(time.Hour)})
+	_ = store.Create(ctx, Session{ID: "sess_1", UserID: userID, Token: "token1", ExpiresAt: time.Now().Add(time.Hour)})
+	_ = store.Create(ctx, Session{ID: "sess_2", UserID: userID, Token: "token2", ExpiresAt: time.Now().Add(time.Hour)})
+	_ = store.Create(ctx, Session{ID: "sess_3", UserID: "other_user", Token: "token3", ExpiresAt: time.Now().Add(time.Hour)})
 
 	sessions, err := store.GetByUserID(ctx, userID)
 	if err != nil {
@@ -520,9 +520,9 @@ func TestSessionStore_DeleteByUserID(t *testing.T) {
 	ctx := context.Background()
 	userID := testUserID
 
-	store.Create(ctx, Session{ID: "sess_1", UserID: userID, Token: "token1", ExpiresAt: time.Now().Add(time.Hour)})
-	store.Create(ctx, Session{ID: "sess_2", UserID: userID, Token: "token2", ExpiresAt: time.Now().Add(time.Hour)})
-	store.Create(ctx, Session{ID: "sess_3", UserID: "other_user", Token: "token3", ExpiresAt: time.Now().Add(time.Hour)})
+	_ = store.Create(ctx, Session{ID: "sess_1", UserID: userID, Token: "token1", ExpiresAt: time.Now().Add(time.Hour)})
+	_ = store.Create(ctx, Session{ID: "sess_2", UserID: userID, Token: "token2", ExpiresAt: time.Now().Add(time.Hour)})
+	_ = store.Create(ctx, Session{ID: "sess_3", UserID: "other_user", Token: "token3", ExpiresAt: time.Now().Add(time.Hour)})
 
 	err := store.DeleteByUserID(ctx, userID)
 	if err != nil {
@@ -544,9 +544,9 @@ func TestSessionStore_CleanupExpired(t *testing.T) {
 	store := newMockSessionStore()
 	ctx := context.Background()
 
-	store.Create(ctx, Session{ID: "expired_1", UserID: "user", Token: "t1", ExpiresAt: time.Now().Add(-1 * time.Hour)})
-	store.Create(ctx, Session{ID: "expired_2", UserID: "user", Token: "t2", ExpiresAt: time.Now().Add(-2 * time.Hour)})
-	store.Create(ctx, Session{ID: "valid_1", UserID: "user", Token: "t3", ExpiresAt: time.Now().Add(1 * time.Hour)})
+	_ = store.Create(ctx, Session{ID: "expired_1", UserID: "user", Token: "t1", ExpiresAt: time.Now().Add(-1 * time.Hour)})
+	_ = store.Create(ctx, Session{ID: "expired_2", UserID: "user", Token: "t2", ExpiresAt: time.Now().Add(-2 * time.Hour)})
+	_ = store.Create(ctx, Session{ID: "valid_1", UserID: "user", Token: "t3", ExpiresAt: time.Now().Add(1 * time.Hour)})
 
 	err := store.CleanupExpired(ctx)
 	if err != nil {
@@ -574,7 +574,7 @@ func TestSessionStore_GetByRefreshToken(t *testing.T) {
 		RefreshToken: "refresh_token_value",
 		ExpiresAt:    time.Now().Add(24 * time.Hour),
 	}
-	store.Create(ctx, session)
+	_ = store.Create(ctx, session)
 
 	retrieved, err := store.GetByRefreshToken(ctx, "refresh_token_value")
 	if err != nil {

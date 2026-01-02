@@ -812,9 +812,10 @@ func (p *Plugin) ProvidesAuthMethods() []string {
 
 // GetSchemas returns all schemas for all supported dialects
 func (p *Plugin) GetSchemas() []plugins.Schema {
-	var schemas []plugins.Schema
+	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL}
+	schemas := make([]plugins.Schema, 0, len(dialects))
 
-	for _, dialect := range []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL} {
+	for _, dialect := range dialects {
 		schema, err := GetSchema(dialect)
 		if err != nil {
 			continue

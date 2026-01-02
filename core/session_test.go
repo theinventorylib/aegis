@@ -233,7 +233,7 @@ type mockUserStore struct {
 	mu    sync.RWMutex
 }
 
-func (m *mockUserStore) Create(ctx context.Context, user auth.User) (auth.User, error) {
+func (m *mockUserStore) Create(_ context.Context, user auth.User) (auth.User, error) {
 	if m.users == nil {
 		m.users = make(map[string]auth.User)
 	}
@@ -243,7 +243,7 @@ func (m *mockUserStore) Create(ctx context.Context, user auth.User) (auth.User, 
 	return user, nil
 }
 
-func (m *mockUserStore) GetByID(ctx context.Context, id string) (auth.User, error) {
+func (m *mockUserStore) GetByID(_ context.Context, id string) (auth.User, error) {
 	if m.users == nil {
 		return auth.User{}, ErrUserNotFound
 	}
@@ -256,7 +256,7 @@ func (m *mockUserStore) GetByID(ctx context.Context, id string) (auth.User, erro
 	return user, nil
 }
 
-func (m *mockUserStore) GetByEmail(ctx context.Context, email string) (auth.User, error) {
+func (m *mockUserStore) GetByEmail(_ context.Context, email string) (auth.User, error) {
 	if m.users == nil {
 		return auth.User{}, ErrUserNotFound
 	}
@@ -270,7 +270,7 @@ func (m *mockUserStore) GetByEmail(ctx context.Context, email string) (auth.User
 	return auth.User{}, ErrUserNotFound
 }
 
-func (m *mockUserStore) Update(ctx context.Context, user auth.User) error {
+func (m *mockUserStore) Update(_ context.Context, user auth.User) error {
 	if m.users == nil {
 		return ErrUserNotFound
 	}
@@ -283,7 +283,7 @@ func (m *mockUserStore) Update(ctx context.Context, user auth.User) error {
 	return nil
 }
 
-func (m *mockUserStore) Delete(ctx context.Context, id string) error {
+func (m *mockUserStore) Delete(_ context.Context, id string) error {
 	if m.users == nil {
 		return nil
 	}
@@ -293,7 +293,7 @@ func (m *mockUserStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (m *mockUserStore) List(ctx context.Context, offset, limit int) ([]auth.User, error) {
+func (m *mockUserStore) List(_ context.Context, _, _ int) ([]auth.User, error) {
 	if m.users == nil {
 		return nil, nil
 	}
@@ -306,7 +306,7 @@ func (m *mockUserStore) List(ctx context.Context, offset, limit int) ([]auth.Use
 	return users, nil
 }
 
-func (m *mockUserStore) Count(ctx context.Context) (int, error) {
+func (m *mockUserStore) Count(_ context.Context) (int, error) {
 	if m.users == nil {
 		return 0, nil
 	}
@@ -320,7 +320,7 @@ type mockSessionStore struct {
 	mu       sync.RWMutex
 }
 
-func (m *mockSessionStore) Create(ctx context.Context, session auth.Session) error {
+func (m *mockSessionStore) Create(_ context.Context, session auth.Session) error {
 	if m.sessions == nil {
 		m.sessions = make(map[string]auth.Session)
 	}
@@ -330,7 +330,7 @@ func (m *mockSessionStore) Create(ctx context.Context, session auth.Session) err
 	return nil
 }
 
-func (m *mockSessionStore) Get(ctx context.Context, id string) (auth.Session, error) {
+func (m *mockSessionStore) Get(_ context.Context, id string) (auth.Session, error) {
 	if m.sessions == nil {
 		return auth.Session{}, ErrSessionNotFound
 	}
@@ -343,7 +343,7 @@ func (m *mockSessionStore) Get(ctx context.Context, id string) (auth.Session, er
 	return session, nil
 }
 
-func (m *mockSessionStore) GetByToken(ctx context.Context, token string) (auth.Session, error) {
+func (m *mockSessionStore) GetByToken(_ context.Context, token string) (auth.Session, error) {
 	if m.sessions == nil {
 		return auth.Session{}, ErrSessionNotFound
 	}
@@ -357,7 +357,7 @@ func (m *mockSessionStore) GetByToken(ctx context.Context, token string) (auth.S
 	return auth.Session{}, ErrSessionNotFound
 }
 
-func (m *mockSessionStore) GetByRefreshToken(ctx context.Context, token string) (auth.Session, error) {
+func (m *mockSessionStore) GetByRefreshToken(_ context.Context, token string) (auth.Session, error) {
 	if m.sessions == nil {
 		return auth.Session{}, ErrSessionNotFound
 	}
@@ -371,7 +371,7 @@ func (m *mockSessionStore) GetByRefreshToken(ctx context.Context, token string) 
 	return auth.Session{}, ErrSessionNotFound
 }
 
-func (m *mockSessionStore) GetByUserID(ctx context.Context, userID string) ([]auth.Session, error) {
+func (m *mockSessionStore) GetByUserID(_ context.Context, userID string) ([]auth.Session, error) {
 	if m.sessions == nil {
 		return nil, nil
 	}
@@ -386,7 +386,7 @@ func (m *mockSessionStore) GetByUserID(ctx context.Context, userID string) ([]au
 	return sessions, nil
 }
 
-func (m *mockSessionStore) Update(ctx context.Context, session auth.Session) error {
+func (m *mockSessionStore) Update(_ context.Context, session auth.Session) error {
 	if m.sessions == nil {
 		return ErrSessionNotFound
 	}
@@ -399,7 +399,7 @@ func (m *mockSessionStore) Update(ctx context.Context, session auth.Session) err
 	return nil
 }
 
-func (m *mockSessionStore) Delete(ctx context.Context, id string) error {
+func (m *mockSessionStore) Delete(_ context.Context, id string) error {
 	if m.sessions == nil {
 		return nil
 	}
@@ -409,7 +409,7 @@ func (m *mockSessionStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (m *mockSessionStore) DeleteByUserID(ctx context.Context, userID string) error {
+func (m *mockSessionStore) DeleteByUserID(_ context.Context, userID string) error {
 	if m.sessions == nil {
 		return nil
 	}
@@ -423,7 +423,7 @@ func (m *mockSessionStore) DeleteByUserID(ctx context.Context, userID string) er
 	return nil
 }
 
-func (m *mockSessionStore) CleanupExpired(ctx context.Context) error {
+func (m *mockSessionStore) CleanupExpired(_ context.Context) error {
 	if m.sessions == nil {
 		return nil
 	}

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// AdminStore defines the interface for admin user storage operations.
+// Store defines the interface for admin user storage operations.
 //
 // This interface extends the core auth.UserStore with admin-specific functionality:
 //   - Role assignment and retrieval

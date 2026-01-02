@@ -50,6 +50,7 @@ func NewDefaultOrganizationStore(db *sql.DB) *DefaultOrganizationStore {
 
 // Organization operations
 
+// CreateOrganization creates a new organization.
 func (s *DefaultOrganizationStore) CreateOrganization(ctx context.Context, id, name, slug string, createdAt, updatedAt time.Time) error {
 	params := sqlc.CreateOrganizationParams{
 		ID:        id,
@@ -61,6 +62,7 @@ func (s *DefaultOrganizationStore) CreateOrganization(ctx context.Context, id, n
 	return s.q.CreateOrganization(ctx, params)
 }
 
+// GetOrganization retrieves an organization by its ID.
 func (s *DefaultOrganizationStore) GetOrganization(ctx context.Context, id string) (Organization, error) {
 	o, err := s.q.GetOrganization(ctx, id)
 	if err != nil {
@@ -69,6 +71,7 @@ func (s *DefaultOrganizationStore) GetOrganization(ctx context.Context, id strin
 	return sqlcOrganizationToOrganization(o), nil
 }
 
+// GetOrganizationBySlug retrieves an organization by its slug.
 func (s *DefaultOrganizationStore) GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error) {
 	o, err := s.q.GetOrganizationBySlug(ctx, slug)
 	if err != nil {
@@ -77,6 +80,7 @@ func (s *DefaultOrganizationStore) GetOrganizationBySlug(ctx context.Context, sl
 	return sqlcOrganizationToOrganization(o), nil
 }
 
+// UpdateOrganization updates an organization's details.
 func (s *DefaultOrganizationStore) UpdateOrganization(ctx context.Context, id, name, slug string, updatedAt time.Time) error {
 	params := sqlc.UpdateOrganizationParams{
 		ID:        id,
@@ -87,6 +91,7 @@ func (s *DefaultOrganizationStore) UpdateOrganization(ctx context.Context, id, n
 	return s.q.UpdateOrganization(ctx, params)
 }
 
+// DeleteOrganization soft deletes an organization.
 func (s *DefaultOrganizationStore) DeleteOrganization(ctx context.Context, id string, updatedAt time.Time) error {
 	return s.q.DeleteOrganization(ctx, sqlc.DeleteOrganizationParams{
 		ID:        id,
@@ -94,6 +99,7 @@ func (s *DefaultOrganizationStore) DeleteOrganization(ctx context.Context, id st
 	})
 }
 
+// ListUserOrganizations retrieves all organizations for a user.
 func (s *DefaultOrganizationStore) ListUserOrganizations(ctx context.Context, userID string) ([]Organization, error) {
 	orgs, err := s.q.ListUserOrganizations(ctx, userID)
 	if err != nil {
@@ -108,6 +114,7 @@ func (s *DefaultOrganizationStore) ListUserOrganizations(ctx context.Context, us
 
 // Member operations
 
+// CreateMember adds a member to an organization.
 func (s *DefaultOrganizationStore) CreateMember(ctx context.Context, id, userID, orgID, role string, createdAt, updatedAt time.Time) error {
 	params := sqlc.CreateMemberParams{
 		ID:             id,
@@ -120,6 +127,7 @@ func (s *DefaultOrganizationStore) CreateMember(ctx context.Context, id, userID,
 	return s.q.CreateMember(ctx, params)
 }
 
+// GetMember retrieves a specific member from an organization.
 func (s *DefaultOrganizationStore) GetMember(ctx context.Context, userID, orgID string) (Member, error) {
 	o, err := s.q.GetMember(ctx, sqlc.GetMemberParams{
 		UserID:         userID,
@@ -131,6 +139,7 @@ func (s *DefaultOrganizationStore) GetMember(ctx context.Context, userID, orgID 
 	return sqlcMemberToMember(o), nil
 }
 
+// IsOrganizationMember checks if a user is a member of an organization.
 func (s *DefaultOrganizationStore) IsOrganizationMember(ctx context.Context, userID, orgID string) (bool, error) {
 	return s.q.IsOrganizationMember(ctx, sqlc.IsOrganizationMemberParams{
 		UserID:         userID,
@@ -138,6 +147,7 @@ func (s *DefaultOrganizationStore) IsOrganizationMember(ctx context.Context, use
 	})
 }
 
+// IsOwnerOrAdmin checks if a user is an owner or admin of an organization.
 func (s *DefaultOrganizationStore) IsOwnerOrAdmin(ctx context.Context, userID, orgID string) (bool, error) {
 	return s.q.IsOwnerOrAdmin(ctx, sqlc.IsOwnerOrAdminParams{
 		UserID:         userID,
@@ -145,6 +155,7 @@ func (s *DefaultOrganizationStore) IsOwnerOrAdmin(ctx context.Context, userID, o
 	})
 }
 
+// IsOwner checks if a user is the owner of an organization.
 func (s *DefaultOrganizationStore) IsOwner(ctx context.Context, userID, orgID string) (bool, error) {
 	return s.q.IsOwner(ctx, sqlc.IsOwnerParams{
 		UserID:         userID,
@@ -152,6 +163,7 @@ func (s *DefaultOrganizationStore) IsOwner(ctx context.Context, userID, orgID st
 	})
 }
 
+// UpdateMemberRole updates a member's role in an organization.
 func (s *DefaultOrganizationStore) UpdateMemberRole(ctx context.Context, userID, orgID, role string, updatedAt time.Time) error {
 	return s.q.UpdateMemberRole(ctx, sqlc.UpdateMemberRoleParams{
 		UserID:         userID,
@@ -161,6 +173,7 @@ func (s *DefaultOrganizationStore) UpdateMemberRole(ctx context.Context, userID,
 	})
 }
 
+// RemoveMember removes a member from an organization.
 func (s *DefaultOrganizationStore) RemoveMember(ctx context.Context, userID, orgID string) error {
 	return s.q.RemoveMember(ctx, sqlc.RemoveMemberParams{
 		UserID:         userID,
@@ -168,6 +181,7 @@ func (s *DefaultOrganizationStore) RemoveMember(ctx context.Context, userID, org
 	})
 }
 
+// ListOrganizationMembers retrieves all members of an organization.
 func (s *DefaultOrganizationStore) ListOrganizationMembers(ctx context.Context, orgID string) ([]Member, error) {
 	members, err := s.q.ListOrganizationMembers(ctx, orgID)
 	if err != nil {
@@ -182,6 +196,7 @@ func (s *DefaultOrganizationStore) ListOrganizationMembers(ctx context.Context, 
 
 // Team operations
 
+// CreateTeam creates a new team within an organization.
 func (s *DefaultOrganizationStore) CreateTeam(ctx context.Context, id, orgID, name, description string, createdAt, updatedAt time.Time) error {
 	params := sqlc.CreateTeamParams{
 		ID:             id,
@@ -194,6 +209,7 @@ func (s *DefaultOrganizationStore) CreateTeam(ctx context.Context, id, orgID, na
 	return s.q.CreateTeam(ctx, params)
 }
 
+// GetTeam retrieves a team by its ID.
 func (s *DefaultOrganizationStore) GetTeam(ctx context.Context, id string) (Team, error) {
 	t, err := s.q.GetTeam(ctx, id)
 	if err != nil {
@@ -202,6 +218,7 @@ func (s *DefaultOrganizationStore) GetTeam(ctx context.Context, id string) (Team
 	return sqlcTeamToTeam(t), nil
 }
 
+// ListTeams retrieves all teams in an organization.
 func (s *DefaultOrganizationStore) ListTeams(ctx context.Context, orgID string) ([]Team, error) {
 	teams, err := s.q.ListTeams(ctx, orgID)
 	if err != nil {
@@ -214,6 +231,7 @@ func (s *DefaultOrganizationStore) ListTeams(ctx context.Context, orgID string) 
 	return result, nil
 }
 
+// UpdateTeam updates a team's details.
 func (s *DefaultOrganizationStore) UpdateTeam(ctx context.Context, id, name, description string, updatedAt time.Time) error {
 	params := sqlc.UpdateTeamParams{
 		ID:          id,
@@ -224,12 +242,14 @@ func (s *DefaultOrganizationStore) UpdateTeam(ctx context.Context, id, name, des
 	return s.q.UpdateTeam(ctx, params)
 }
 
+// DeleteTeam deletes a team.
 func (s *DefaultOrganizationStore) DeleteTeam(ctx context.Context, id string) error {
 	return s.q.DeleteTeam(ctx, id)
 }
 
 // Team Member operations
 
+// CreateTeamMember adds a member to a team.
 func (s *DefaultOrganizationStore) CreateTeamMember(ctx context.Context, id, teamID, userID, role string, createdAt, updatedAt time.Time) error {
 	params := sqlc.CreateTeamMemberParams{
 		ID:        id,
@@ -242,6 +262,7 @@ func (s *DefaultOrganizationStore) CreateTeamMember(ctx context.Context, id, tea
 	return s.q.CreateTeamMember(ctx, params)
 }
 
+// GetTeamMember retrieves a specific team member.
 func (s *DefaultOrganizationStore) GetTeamMember(ctx context.Context, teamID, userID string) (TeamMember, error) {
 	tm, err := s.q.GetTeamMember(ctx, sqlc.GetTeamMemberParams{
 		TeamID: teamID,
@@ -253,6 +274,7 @@ func (s *DefaultOrganizationStore) GetTeamMember(ctx context.Context, teamID, us
 	return sqlcTeamMemberToTeamMember(tm), nil
 }
 
+// ListTeamMembers retrieves all members of a team.
 func (s *DefaultOrganizationStore) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMember, error) {
 	members, err := s.q.ListTeamMembers(ctx, teamID)
 	if err != nil {
@@ -265,6 +287,7 @@ func (s *DefaultOrganizationStore) ListTeamMembers(ctx context.Context, teamID s
 	return result, nil
 }
 
+// UpdateTeamMemberRole updates a team member's role.
 func (s *DefaultOrganizationStore) UpdateTeamMemberRole(ctx context.Context, teamID, userID, role string, updatedAt time.Time) error {
 	return s.q.UpdateTeamMemberRole(ctx, sqlc.UpdateTeamMemberRoleParams{
 		TeamID:    teamID,
@@ -274,6 +297,7 @@ func (s *DefaultOrganizationStore) UpdateTeamMemberRole(ctx context.Context, tea
 	})
 }
 
+// RemoveTeamMember removes a member from a team.
 func (s *DefaultOrganizationStore) RemoveTeamMember(ctx context.Context, teamID, userID string) error {
 	return s.q.RemoveTeamMember(ctx, sqlc.RemoveTeamMemberParams{
 		TeamID: teamID,

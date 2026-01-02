@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const testSecurePassword = "SecureP@ssw0rd123"
+
 // TC-PWD-001: Argon2id Hashing
 func TestHashPassword(t *testing.T) {
 	// Given
@@ -32,7 +34,7 @@ func TestHashPassword(t *testing.T) {
 // TC-PWD-002: Password Verification (Valid)
 func TestVerifyPassword_Valid(t *testing.T) {
 	// Given
-	password := "SecureP@ssw0rd123"
+	password := testSecurePassword
 	hash, err := HashPassword(password, 0, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to hash password: %v", err)

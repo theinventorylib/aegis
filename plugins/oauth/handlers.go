@@ -151,7 +151,7 @@ func (h *Handlers) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 //	  "success": true,
 //	  "message": "Logged out successfully"
 //	}
-func (h *Handlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) LogoutHandler(w http.ResponseWriter, _ *http.Request) {
 	// Clear OAuth state cookie if present
 	if h.plugin.stateStore != nil {
 		h.plugin.stateStore.ClearState(w)

@@ -121,7 +121,7 @@ func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
 	}
 
 	// Convert map to slice
-	var result []plugins.Migration
+	result := make([]plugins.Migration, 0, len(migrations))
 	for _, mig := range migrations {
 		result = append(result, *mig)
 	}

@@ -9,7 +9,7 @@ import (
 	"github.com/theinventorylib/aegis/plugins/oauth/internal/gen/sqlc"
 )
 
-// DefaultOAuthStore implements OAuthStore using a SQL database backend.
+// DefaultOAuthStore implements Store using a SQL database backend.
 //
 // This implementation uses sqlc-generated type-safe queries to manage OAuth
 // connections in PostgreSQL, MySQL, or SQLite. It stores connections in the
@@ -97,7 +97,7 @@ func (s *DefaultOAuthStore) GetConnectionsByUserID(ctx context.Context, userID s
 	if err != nil {
 		return nil, err
 	}
-	var result []Connection
+	result := make([]Connection, 0, len(conns))
 	for _, conn := range conns {
 		result = append(result, *sqlcConnectionToConnection(conn))
 	}

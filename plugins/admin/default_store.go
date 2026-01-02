@@ -105,6 +105,7 @@ func (s *DefaultAdminStore) Delete(ctx context.Context, id string) error {
 	})
 }
 
+// List retrieves a paginated list of users.
 func (s *DefaultAdminStore) List(ctx context.Context, offset, limit int) ([]User, error) {
 	// Handle pagination with safe int32 conversion (G115)
 	if offset < 0 {
@@ -113,9 +114,16 @@ func (s *DefaultAdminStore) List(ctx context.Context, offset, limit int) ([]User
 	if limit <= 0 {
 		limit = 10
 	}
+	// Ensure values are within int32 range
+	if offset > 2147483647 {
+		offset = 2147483647
+	}
+	if limit > 2147483647 {
+		limit = 2147483647
+	}
 	params := sqlc.ListUsersParams{
-		Offset: int32(offset),
-		Limit:  int32(limit),
+		Offset: int32(offset), // #nosec G115 - bounds checked above
+		Limit:  int32(limit),  // #nosec G115 - bounds checked above
 	}
 	users, err := s.q.ListUsers(ctx, params)
 	if err != nil {
@@ -155,7 +163,7 @@ func (s *DefaultAdminStore) GetRole(ctx context.Context, userID string) (string,
 }
 
 // RemoveRole removes a role from a user.
-func (s *DefaultAdminStore) RemoveRole(ctx context.Context, userID string, role string) error {
+func (s *DefaultAdminStore) RemoveRole(ctx context.Context, userID string, _ string) error {
 	// In this implementation, we just set role back to 'user'
 	// We ignore the 'role' argument if we only support one role per user
 	return s.AssignRole(ctx, userID, "user")
@@ -163,9 +171,22 @@ func (s *DefaultAdminStore) RemoveRole(ctx context.Context, userID string, role 
 
 // ListUsersRaw lists users returning raw map data.
 func (s *DefaultAdminStore) ListUsersRaw(ctx context.Context, offset, limit int) ([]map[string]interface{}, error) {
+	// Ensure values are within int32 range
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if offset > 2147483647 {
+		offset = 2147483647
+	}
+	if limit > 2147483647 {
+		limit = 2147483647
+	}
 	users, err := s.q.ListUsersRaw(ctx, sqlc.ListUsersRawParams{
-		Offset: int32(offset),
-		Limit:  int32(limit),
+		Offset: int32(offset), // #nosec G115 - bounds checked above
+		Limit:  int32(limit),  // #nosec G115 - bounds checked above
 	})
 	if err != nil {
 		return nil, err

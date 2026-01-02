@@ -172,7 +172,7 @@ func (r *testRouter) DELETE(path string, handler http.HandlerFunc) {
 	r.routes = append(r.routes, testRoute{"DELETE", path, handler})
 }
 
-func (r *testRouter) Use(middleware func(http.Handler) http.Handler) {
+func (r *testRouter) Use(_ func(http.Handler) http.Handler) {
 	// For testing, we don't need to track middleware
 }
 

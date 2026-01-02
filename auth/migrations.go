@@ -157,7 +157,7 @@ DROP TABLE IF EXISTS user;
 	}
 
 	// Convert map to slice
-	var result []Migration
+	result := make([]Migration, 0, len(migrations))
 	for _, mig := range migrations {
 		result = append(result, *mig)
 	}

@@ -87,7 +87,7 @@ type Plugin struct {
 	gothProviders   map[string]goth.Provider  // providerID -> goth.Provider
 	baseCallbackURL string                    // Base URL for OAuth callbacks
 	stateStore      *StateStore               // OAuth state management
-	store           OAuthStore
+	store           Store
 	logger          config.Logger
 	accountService  *core.AccountService
 	userService     *core.UserService
@@ -160,7 +160,7 @@ type Config struct {
 //	    },
 //	}
 //	plugin := oauth.New(cfg, nil, plugins.DialectPostgres)
-func New(cfg *Config, store OAuthStore, dialect ...plugins.Dialect) *Plugin {
+func New(cfg *Config, store *Store, dialect ...plugins.Dialect) *Plugin {
 	if cfg == nil {
 		cfg = &Config{}
 	}
@@ -171,6 +171,7 @@ func New(cfg *Config, store OAuthStore, dialect ...plugins.Dialect) *Plugin {
 	}
 
 	plugin := &Plugin{
+		store:           *store,
 		providerConfigs: make(map[string]ProviderConfig),
 		gothProviders:   make(map[string]goth.Provider),
 		baseCallbackURL: cfg.CallbackURL,
@@ -356,9 +357,10 @@ func (p *Plugin) GetMigrations() []plugins.Migration {
 
 // GetSchemas returns all schemas for all supported dialects
 func (p *Plugin) GetSchemas() []plugins.Schema {
-	var schemas []plugins.Schema
+	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL, plugins.DialectSQLite}
+	schemas := make([]plugins.Schema, 0, len(dialects))
 
-	for _, dialect := range []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL, plugins.DialectSQLite} {
+	for _, dialect := range dialects {
 		schema, err := GetSchema(dialect)
 		if err != nil {
 			continue
