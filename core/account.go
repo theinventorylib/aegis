@@ -123,7 +123,7 @@ func (s *AccountService) UpdatePassword(ctx context.Context, userID, newPassword
 		// Session invalidation is best-effort - if it fails, existing sessions remain valid
 		// until they expire naturally, but the password has been changed successfully
 		s.auditLogger.LogAuthEvent(ctx, "session_deletion_failed", userID, "", "", false, map[string]interface{}{
-			"error": err.Error(),
+			"error":  err.Error(),
 			"reason": "password_change",
 		})
 	}
