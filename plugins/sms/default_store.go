@@ -42,21 +42,24 @@ func NewDefaultSMSStore(db *sql.DB) *DefaultSMSStore {
 	}
 }
 
-// CreateUserWithPhone creates a new user with phone number
+// CreateUser creates a new user with phone number.
 func (s *DefaultSMSStore) CreateUser(ctx context.Context, user User) (*User, error) {
 	params := sqlc.CreateUserParams{
-		ID:        user.ID,
-		Avatar:    toNullString(user.Avatar),
-		Name:      user.Name,
-		Email:     toNullString(user.Email),
-		CreatedAt: user.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
-		Disabled:  boolToInt(user.Disabled),
+		ID:            user.User.ID,
+		Avatar:        toNullString(user.User.Avatar),
+		Name:          user.User.Name,
+		Email:         toNullString(user.User.Email),
+		CreatedAt:     user.User.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:     user.User.UpdatedAt.Format(time.RFC3339),
+		Disabled:      boolToInt(user.User.Disabled),
+		PhoneNumber:   toNullString(nullPointerString(user.Phone)),
+		PhoneVerified: boolToInt(user.PhoneVerified),
 	}
-	err := s.q.CreateUser(ctx, params)
-	if err != nil {
+
+	if err := s.q.CreateUser(ctx, params); err != nil {
 		return nil, err
 	}
+
 	return &user, nil
 }
 
@@ -78,6 +81,13 @@ func (s *DefaultSMSStore) UpdateUserPhone(ctx context.Context, userID, phone str
 		UpdatedAt:     time.Now().Format(time.RFC3339),
 	}
 	return s.q.UpdateUserPhone(ctx, params)
+}
+
+func nullPointerString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // Helper functions

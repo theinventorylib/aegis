@@ -16,7 +16,7 @@ import (
 type ExportFormat string
 
 const (
-	FormatSQL           ExportFormat = "sql"            // Plain SQL
+	FormatSQL           ExportFormat = "sql"            // FormatSQL exports migrations as plain SQL files.
 	FormatGoose         ExportFormat = "goose"          // Goose format
 	FormatGolangMigrate ExportFormat = "golang-migrate" // golang-migrate format
 )
@@ -30,8 +30,8 @@ type Migration struct {
 	Description string
 }
 
-// ExporterConfig configures the migration exporter
-type ExporterConfig struct {
+// Config configures the migration exporter.
+type Config struct {
 	Format    ExportFormat
 	Dialect   plugins.Dialect
 	OutputDir string
@@ -48,7 +48,8 @@ type Exporter struct {
 	plugins   []plugins.Plugin
 }
 
-func NewExporter(config ExporterConfig) *Exporter {
+// NewExporter creates a new migration exporter with the provided configuration.
+func NewExporter(config Config) *Exporter {
 	return &Exporter{
 		format:    config.Format,
 		outputDir: config.OutputDir,
@@ -60,7 +61,7 @@ func NewExporter(config ExporterConfig) *Exporter {
 
 // Export writes migrations to disk in the specified format
 func (e *Exporter) Export() error {
-	if err := os.MkdirAll(e.outputDir, 0755); err != nil {
+	if err := os.MkdirAll(e.outputDir, 0750); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
@@ -103,19 +104,19 @@ func (e *Exporter) getAuthMigrations() ([]Migration, error) {
 	}
 
 	// Get migrations from auth package
-	authMigs, err := auth.GetMigrations(authDialect)
+	allMigrations, err := auth.GetMigrations(authDialect)
 	if err != nil {
 		return nil, fmt.Errorf("get auth migrations: %w", err)
 	}
 
 	// Convert to exporter Migration format
-	var migrations []Migration
-	for _, am := range authMigs {
+	migrations := make([]Migration, 0, len(allMigrations))
+	for _, am := range allMigrations {
 		migrations = append(migrations, Migration{
 			Number:      am.Version,
 			Up:          am.Up,
 			Down:        am.Down,
-			Version:     am.Description,
+			Version:     fmt.Sprintf("%d", am.Version),
 			Description: am.Description,
 		})
 	}
@@ -127,7 +128,7 @@ func (e *Exporter) getPluginMigrations(plugin plugins.Plugin) []Migration {
 	// Get migrations directly from the plugin instance
 	pluginMigrations := plugin.GetMigrations()
 
-	var migrations []Migration
+	migrations := make([]Migration, 0, len(pluginMigrations))
 	for _, pm := range pluginMigrations {
 		migrations = append(migrations, Migration{
 			Number:      pm.Version,
@@ -287,7 +288,7 @@ func (e *Exporter) exportGolangMigrate() error {
 }
 
 func (e *Exporter) generateReadme() error {
-	var pluginNames []string
+	pluginNames := make([]string, 0, len(e.plugins))
 	for _, p := range e.plugins {
 		pluginNames = append(pluginNames, p.Name())
 	}
@@ -382,5 +383,5 @@ The original migrations are available at:
 
 func (e *Exporter) writeFile(filename, content string) error {
 	path := filepath.Join(e.outputDir, filename)
-	return os.WriteFile(path, []byte(content), 0644)
+	return os.WriteFile(path, []byte(content), 0600)
 }

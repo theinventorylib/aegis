@@ -17,7 +17,7 @@ import (
 //
 // Thread Safety:
 // Implementations must be safe for concurrent use.
-type AdminStore interface {
+type Store interface {
 	// ========== Core User Operations ==========
 
 	// Create creates a new user with admin fields.

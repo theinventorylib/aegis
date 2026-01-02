@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+// Test constants for commonly used strings (goconst)
+const (
+	testEmail  = "test@example.com"
+	testUserID = "user_123"
+)
+
 // Error definitions for tests
 var (
 	ErrUserNotFound    = errors.New("user not found")
@@ -32,7 +38,7 @@ func newMockUserStore() *mockUserStore {
 	}
 }
 
-func (m *mockUserStore) Create(ctx context.Context, user User) (User, error) {
+func (m *mockUserStore) Create(_ context.Context, user User) (User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -50,7 +56,7 @@ func (m *mockUserStore) Create(ctx context.Context, user User) (User, error) {
 	return user, nil
 }
 
-func (m *mockUserStore) GetByEmail(ctx context.Context, email string) (User, error) {
+func (m *mockUserStore) GetByEmail(_ context.Context, email string) (User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -62,7 +68,7 @@ func (m *mockUserStore) GetByEmail(ctx context.Context, email string) (User, err
 	return User{}, ErrUserNotFound
 }
 
-func (m *mockUserStore) GetByID(ctx context.Context, id string) (User, error) {
+func (m *mockUserStore) GetByID(_ context.Context, id string) (User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -100,7 +106,7 @@ func (m *mockUserStore) List(ctx context.Context, offset, limit int) ([]User, er
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var users []User
+	users := make([]User, 0, len(m.users))
 	for _, user := range m.users {
 		users = append(users, user)
 	}
@@ -255,7 +261,7 @@ func TestUserStore_Create(t *testing.T) {
 func TestUserStore_EmailUniqueness(t *testing.T) {
 	store := newMockUserStore()
 	ctx := context.Background()
-	email := "test@example.com"
+	email := testEmail
 
 	user1 := User{ID: "user_1", Email: email, Name: "User 1"}
 	_, err := store.Create(ctx, user1)
@@ -276,8 +282,10 @@ func TestUserStore_EmailUniqueness(t *testing.T) {
 func TestUserStore_GetByID(t *testing.T) {
 	store := newMockUserStore()
 	ctx := context.Background()
-	user := User{ID: "user_123", Email: "test@example.com", Name: "Test"}
-	store.Create(ctx, user)
+	user := User{ID: testUserID, Email: testEmail, Name: "Test"}
+	if _, err := store.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	retrieved, err := store.GetByID(ctx, "user_123")
 	if err != nil {
@@ -304,8 +312,10 @@ func TestUserStore_GetByID_NotFound(t *testing.T) {
 func TestUserStore_GetByEmail(t *testing.T) {
 	store := newMockUserStore()
 	ctx := context.Background()
-	user := User{ID: "user_123", Email: "test@example.com", Name: "Test"}
-	store.Create(ctx, user)
+	user := User{ID: testUserID, Email: testEmail, Name: "Test"}
+	if _, err := store.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	retrieved, err := store.GetByEmail(ctx, "test@example.com")
 	if err != nil {
@@ -329,8 +339,10 @@ func TestUserStore_GetByEmail_NotFound(t *testing.T) {
 func TestUserStore_Update(t *testing.T) {
 	store := newMockUserStore()
 	ctx := context.Background()
-	user := User{ID: "user_123", Email: "test@example.com", Name: "Original Name"}
-	store.Create(ctx, user)
+	user := User{ID: testUserID, Email: testEmail, Name: "Original Name"}
+	if _, err := store.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	user.Name = "Updated Name"
 	err := store.Update(ctx, user)
@@ -358,8 +370,10 @@ func TestUserStore_Update_NotFound(t *testing.T) {
 func TestUserStore_Delete(t *testing.T) {
 	store := newMockUserStore()
 	ctx := context.Background()
-	user := User{ID: "user_123", Email: "test@example.com"}
-	store.Create(ctx, user)
+	user := User{ID: "user_1", Email: "user1@example.com", Name: "User 1"}
+	if _, err := store.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	err := store.Delete(ctx, user.ID)
 	if err != nil {
@@ -486,7 +500,7 @@ func TestSessionStore_GetByToken(t *testing.T) {
 func TestSessionStore_GetByUserID(t *testing.T) {
 	store := newMockSessionStore()
 	ctx := context.Background()
-	userID := "user_123"
+	userID := testUserID
 
 	store.Create(ctx, Session{ID: "sess_1", UserID: userID, Token: "token1", ExpiresAt: time.Now().Add(time.Hour)})
 	store.Create(ctx, Session{ID: "sess_2", UserID: userID, Token: "token2", ExpiresAt: time.Now().Add(time.Hour)})
@@ -504,7 +518,7 @@ func TestSessionStore_GetByUserID(t *testing.T) {
 func TestSessionStore_DeleteByUserID(t *testing.T) {
 	store := newMockSessionStore()
 	ctx := context.Background()
-	userID := "user_123"
+	userID := testUserID
 
 	store.Create(ctx, Session{ID: "sess_1", UserID: userID, Token: "token1", ExpiresAt: time.Now().Add(time.Hour)})
 	store.Create(ctx, Session{ID: "sess_2", UserID: userID, Token: "token2", ExpiresAt: time.Now().Add(time.Hour)})
@@ -579,7 +593,7 @@ func TestUser_Methods(t *testing.T) {
 	user := &User{}
 
 	user.SetID("user_123")
-	if user.GetID() != "user_123" {
+	if user.GetID() != testUserID {
 		t.Error("SetID/GetID failed")
 	}
 

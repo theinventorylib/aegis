@@ -338,7 +338,7 @@ func (s *StateStore) decode(value string) (*StateData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	sessionData, err := io.ReadAll(gz)
 	if err != nil {

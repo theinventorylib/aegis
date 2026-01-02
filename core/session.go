@@ -138,7 +138,7 @@ func (s *SessionService) CreateSession(ctx context.Context, user *auth.User, ipA
 		s.cacheSession(ctx, &session)
 	}
 
-	s.auditLogger.LogAuthEvent(ctx, AuditEventLoginSuccess, uid, ipAddress, userAgent, true, nil)
+	_ = s.auditLogger.LogAuthEvent(ctx, AuditEventLoginSuccess, uid, ipAddress, userAgent, true, nil)
 	return &session, nil
 }
 
@@ -264,7 +264,7 @@ func (s *SessionService) DeleteSession(ctx context.Context, token string) error 
 	err := s.sessionStore.Delete(ctx, token)
 	if err == nil {
 		s.invalidateSessionCache(ctx, &session)
-		s.auditLogger.LogAuthEvent(ctx, AuditEventLogout, session.UserID, session.IPAddress, session.UserAgent, true, nil)
+		_ = s.auditLogger.LogAuthEvent(ctx, AuditEventLogout, session.UserID, session.IPAddress, session.UserAgent, true, nil)
 	}
 	return err
 }
@@ -309,21 +309,28 @@ func generateRandomToken() (string, error) {
 	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
+// EnableBearerAuth enables Bearer token authentication for sessions.
 func (s *SessionService) EnableBearerAuth() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.bearerAuthEnabled = true
 }
 
+// IsBearerAuthEnabled checks if Bearer token authentication is enabled.
 func (s *SessionService) IsBearerAuthEnabled() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.bearerAuthEnabled
 }
 
-func (s *SessionService) GetConfig() *SessionConfig        { return s.config }
+// GetConfig returns the session configuration.
+func (s *SessionService) GetConfig() *SessionConfig { return s.config }
+
+// GetCookieManager returns the cookie manager.
 func (s *SessionService) GetCookieManager() *CookieManager { return s.cookieManager }
-func (s *SessionService) GetRedisClient() *redis.Client    { return s.redisClient }
+
+// GetRedisClient returns the Redis client used for session storage.
+func (s *SessionService) GetRedisClient() *redis.Client { return s.redisClient }
 
 // Logout deletes a session by token (alias for DeleteSession)
 func (s *SessionService) Logout(ctx context.Context, token string) error {

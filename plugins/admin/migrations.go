@@ -50,7 +50,8 @@ func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
 		Down:        "", // No down migration for initial schema
 	}
 
-	migrations := make(map[int]*plugins.Migration)
+	// Pre-allocate map with a reasonable initial capacity (e.g., 10 migrations + initial)
+	migrations := make(map[int]*plugins.Migration, 10)
 	migrations[1] = &initial
 
 	// Load additional migrations from migrations/<dialect>/ directory

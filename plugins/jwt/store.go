@@ -7,7 +7,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
-// JWTStore defines the interface for JWT token and key storage operations.
+// Store defines the interface for JWT token and key storage operations.
 //
 // This interface abstracts database operations for JWK (JSON Web Key) storage,
 // allowing different storage backends:
@@ -15,7 +15,7 @@ import (
 //   - NoSQL databases: MongoDB, DynamoDB (custom implementation)
 //   - Cloud key vaults: AWS KMS, Google Cloud KMS (custom implementation)
 //
-// The default implementation (DefaultJWTStore) uses SQL with sqlc-generated queries.
+// The default implementation (DefaultStore) uses SQL with sqlc-generated queries.
 //
 // Key Storage Requirements:
 //   - Persistence: Keys must survive application restarts
@@ -30,7 +30,7 @@ import (
 //   - Key rotation background job (write new keys)
 //   - Token validation requests (read all active keys)
 //   - JWKS endpoint requests (list public keys)
-type JWTStore interface {
+type Store interface {
 	// GetCurrentJWK retrieves the most recent active key for signing.
 	//
 	// This is used during token generation to get the private key for signing.

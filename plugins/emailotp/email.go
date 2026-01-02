@@ -90,7 +90,7 @@ type Plugin struct {
 	// otpLength specifies OTP code length (default: 6 digits)
 	otpLength int
 	// store handles email-specific database operations
-	store EmailOTPStore
+	store Store // Storage driver for user datasending events (nil-safe)
 	// logger for OTP sending events (nil-safe)
 	logger config.Logger
 	// accountService manages password authentication
@@ -122,7 +122,7 @@ type Config struct {
 //
 // Parameters:
 //   - cfg: Plugin configuration (can be nil for defaults)
-//   - store: Custom EmailOTPStore implementation (can be nil, will use DefaultEmailOTPStore)
+//   - store: Custom Store implementation (can be nil, will use DefaultEmailOTPStore)
 //   - dialect: Database dialect (optional, defaults to PostgreSQL)
 //
 // Returns:
@@ -135,7 +135,7 @@ type Config struct {
 //	  OTPExpiry: 15 * time.Minute,
 //	  OTPLength: 8,
 //	}, nil, plugins.DialectPostgres)
-func New(cfg *Config, store *EmailOTPStore, dialect ...plugins.Dialect) *Plugin {
+func New(cfg *Config, store *Store, dialect ...plugins.Dialect) *Plugin {
 	if cfg == nil {
 		cfg = &Config{} // Initialize cfg to avoid nil pointer dereference
 	}
@@ -153,6 +153,7 @@ func New(cfg *Config, store *EmailOTPStore, dialect ...plugins.Dialect) *Plugin 
 	}
 
 	return &Plugin{
+		store:     *store,
 		provider:  cfg.Provider,
 		otpExpiry: cfg.OTPExpiry,
 		otpLength: cfg.OTPLength,
@@ -309,9 +310,10 @@ func (p *Plugin) GetMigrations() []plugins.Migration {
 
 // GetSchemas returns all schemas for all supported dialects
 func (p *Plugin) GetSchemas() []plugins.Schema {
-	var schemas []plugins.Schema
+	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL}
+	schemas := make([]plugins.Schema, 0, len(dialects))
 
-	for _, dialect := range []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL} {
+	for _, dialect := range dialects {
 		schema, err := GetSchema(dialect)
 		if err != nil {
 			continue
@@ -341,8 +343,8 @@ func (p *Plugin) GetSchemas() []plugins.Schema {
 //
 // Example:
 //
-//	err := plugin.SendOTP(ctx, "user@example.com", "user_123", "email_verification")
-func (p *Plugin) SendOTP(ctx context.Context, emailAddress, userID, purpose string) error {
+//	err := plugin.SendOTP(ctx, "user@example.com", "email_verification")
+func (p *Plugin) SendOTP(ctx context.Context, emailAddress, purpose string) error {
 
 	// Generate OTP code using shared utility
 	code, err := core.GenerateOTPCode(p.otpLength)
@@ -407,11 +409,12 @@ func (p *Plugin) SendOTP(ctx context.Context, emailAddress, userID, purpose stri
 //
 // Example:
 //
-//	valid, err := plugin.VerifyOTP(ctx, "user@example.com", "123456", "email_verification")
+//	valid, err := plugin.VerifyOTP(ctx, "user@example.com", "123456")
+
 //	if valid {
 //	  // Mark email as verified
 //	}
-func (p *Plugin) VerifyOTP(ctx context.Context, emailAddress, code, purpose string) (bool, error) {
+func (p *Plugin) VerifyOTP(ctx context.Context, emailAddress, code string) (bool, error) {
 	// Check if provider supports OTP operations
 	if p.provider != nil {
 		// Use provider's OTP verification
@@ -442,14 +445,18 @@ func (p *Plugin) GetUserByEmail(ctx context.Context, email string) (*auth.User, 
 		return nil, err
 	}
 	// Convert from our User type to auth.User
+	userEmail := ""
+	if user.Email != nil {
+		userEmail = *user.Email
+	}
 	return &auth.User{
-		ID:        user.User.ID,
-		Avatar:    user.User.Avatar,
-		Name:      user.User.Name,
-		Email:     user.User.Email,
-		CreatedAt: user.User.CreatedAt,
-		UpdatedAt: user.User.UpdatedAt,
-		Disabled:  user.User.Disabled,
+		ID:        user.ID,
+		Avatar:    user.Avatar,
+		Name:      user.Name,
+		Email:     userEmail,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Disabled:  user.Disabled,
 	}, nil
 }
 

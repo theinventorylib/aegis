@@ -20,7 +20,7 @@ import (
 // Example:
 //
 //	validator := core.NewSchemaValidator(db)
-//	err := validator.ValidateRequirements(ctx, core.CoreSchemaRequirements())
+//	err := validator.ValidateRequirements(ctx, core.SchemaRequirements())
 //	if err != nil {
 //		log.Fatal("Database schema validation failed:", err)
 //	}
@@ -104,7 +104,7 @@ func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaReq
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Check if query returned at least one row
 	if !rows.Next() {
@@ -148,7 +148,7 @@ func ValidateColumnExists(tableName, columnName string) SchemaRequirement {
 	}
 }
 
-// CoreSchemaRequirements returns the schema requirements for core Aegis tables.
+// SchemaRequirements returns the schema requirements for core Aegis tables.
 //
 // This validates the existence of:
 //   - Tables: user, accounts, verification, session
@@ -157,10 +157,10 @@ func ValidateColumnExists(tableName, columnName string) SchemaRequirement {
 // Call this during application startup to ensure the database is properly migrated:
 //
 //	validator := core.NewSchemaValidator(db)
-//	if err := validator.ValidateRequirements(ctx, core.CoreSchemaRequirements()); err != nil {
+//	if err := validator.ValidateRequirements(ctx, core.SchemaRequirements()); err != nil {
 //		log.Fatal("Schema validation failed:", err)
 //	}
-func CoreSchemaRequirements() []SchemaRequirement {
+func SchemaRequirements() []SchemaRequirement {
 	return []SchemaRequirement{
 		ValidateTableExists("user"),
 		ValidateTableExists("accounts"),

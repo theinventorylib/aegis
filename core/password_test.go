@@ -9,7 +9,7 @@ import (
 // TC-PWD-001: Argon2id Hashing
 func TestHashPassword(t *testing.T) {
 	// Given
-	password := "SecureP@ssw0rd123"
+	password := benchSecurePassword
 
 	// When
 	hash, err := HashPassword(password, 0, 0, 0, 0) // Use defaults
@@ -108,7 +108,7 @@ func TestVerifyPassword_TimingSafe(t *testing.T) {
 	var correctDurations []time.Duration
 	for i := 0; i < iterations; i++ {
 		start := time.Now()
-		VerifyPassword(password, hash)
+		_, _ = VerifyPassword(password, hash)
 		correctDurations = append(correctDurations, time.Since(start))
 	}
 
@@ -116,7 +116,7 @@ func TestVerifyPassword_TimingSafe(t *testing.T) {
 	var incorrectDurations []time.Duration
 	for i := 0; i < iterations; i++ {
 		start := time.Now()
-		VerifyPassword("WrongPassword", hash)
+		_, _ = VerifyPassword("WrongPassword", hash)
 		incorrectDurations = append(incorrectDurations, time.Since(start))
 	}
 
@@ -141,14 +141,14 @@ func TestVerifyPassword_TimingSafe(t *testing.T) {
 // TC-PWD-006: Argon2id Parameters
 func TestArgon2idParameters(t *testing.T) {
 	// Verify OWASP-compliant Argon2id parameters
-	password := "TestPassword123!"
+	password := benchTestPassword
 	hash, err := HashPassword(password, 0, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to hash password: %v", err)
 	}
 
 	// Parse hash to verify parameters
-	hashStr := string(hash)
+	hashStr := hash
 	parts := strings.Split(hashStr, "$")
 	if len(parts) < 5 {
 		t.Fatalf("Invalid hash format: %s", hashStr)
@@ -187,7 +187,7 @@ func TestHashPassword_UniqueSalts(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to hash password: %v", err)
 		}
-		hashes[string(hash)] = true
+		hashes[hash] = true
 	}
 
 	// Then - All hashes should be unique (different salts)

@@ -179,7 +179,7 @@ func New(cfg *Config, store OAuthStore, dialect ...plugins.Dialect) *Plugin {
 	}
 
 	// Initialize providers from config
-	var gothProviders []goth.Provider
+	gothProviders := make([]goth.Provider, 0, len(cfg.Providers))
 	for _, providerCfg := range cfg.Providers {
 		// Build callback URL for this provider
 		callbackURL := plugin.buildCallbackURL(providerCfg.ProviderID)
@@ -238,7 +238,8 @@ func (p *Plugin) Description() string {
 
 // SecretPurposeOAuthState is the purpose string for deriving OAuth state secrets.
 // Aegis's secret derivation system uses this to generate a unique secret for
-// signing OAuth state cookies, separate from session cookies or other uses.
+// signing OAuth state cookies,	// SecretPurposeOAuthState is the purpose for OAuth state tokens
+// #nosec G101
 const SecretPurposeOAuthState = "aegis:oauth-state"
 
 // Init initializes the OAuth plugin with Aegis services.

@@ -462,7 +462,7 @@ func (h *Handler) HandleJWKS(w http.ResponseWriter, r *http.Request) {
 	set := jwk.NewSet()
 	for _, dbKey := range keys {
 		// Parse the stored JWK from JSON
-		key, err := jwk.ParseKey([]byte(dbKey.KeyData))
+		key, err := jwk.ParseKey(dbKey.KeyData)
 		if err != nil {
 			// Skip keys that can't be parsed
 			continue

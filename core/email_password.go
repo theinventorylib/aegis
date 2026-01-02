@@ -158,7 +158,7 @@ func (h *EmailPasswordHandlers) LoginHandler(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		if locked {
-			h.authService.auditLogger.LogAuthEvent(r.Context(), AuditEventLoginFailed, "", r.RemoteAddr, r.UserAgent(), false, map[string]interface{}{
+			_ = h.authService.auditLogger.LogAuthEvent(r.Context(), AuditEventLoginFailed, "", r.RemoteAddr, r.UserAgent(), false, map[string]interface{}{
 				"email":     req.Email,
 				"reason":    "account_locked",
 				"remaining": remaining.String(),
@@ -178,7 +178,7 @@ func (h *EmailPasswordHandlers) LoginHandler(w http.ResponseWriter, r *http.Requ
 			// Record failed attempt for non-existent user
 			_, _, _ = h.authService.loginAttemptTracker.RecordFailedAttempt(r.Context(), req.Email)
 		}
-		h.authService.auditLogger.LogAuthEvent(r.Context(), AuditEventLoginFailed, "", r.RemoteAddr, r.UserAgent(), false, map[string]interface{}{
+		_ = h.authService.auditLogger.LogAuthEvent(r.Context(), AuditEventLoginFailed, "", r.RemoteAddr, r.UserAgent(), false, map[string]interface{}{
 			"email":  req.Email,
 			"reason": "user_not_found",
 		})
@@ -201,7 +201,7 @@ func (h *EmailPasswordHandlers) LoginHandler(w http.ResponseWriter, r *http.Requ
 			// Record failed attempt
 			_, _, _ = h.authService.loginAttemptTracker.RecordFailedAttempt(r.Context(), req.Email)
 		}
-		h.authService.auditLogger.LogAuthEvent(r.Context(), AuditEventLoginFailed, uid, r.RemoteAddr, r.UserAgent(), false, map[string]interface{}{
+		_ = h.authService.auditLogger.LogAuthEvent(r.Context(), AuditEventLoginFailed, uid, r.RemoteAddr, r.UserAgent(), false, map[string]interface{}{
 			"email":  req.Email,
 			"reason": "invalid_password",
 		})

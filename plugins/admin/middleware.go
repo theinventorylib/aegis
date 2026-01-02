@@ -30,6 +30,9 @@ const (
 	//
 	// Note: Currently not implemented - reserved for future use.
 	ExtKeyPermissions = "permissions"
+
+	// RoleAdmin is the default role for administrative users.
+	RoleAdmin = "admin"
 )
 
 // EnrichUserMiddleware fetches the user's role and adds it to the EnrichedUser.
@@ -51,7 +54,7 @@ const (
 // The role is then accessible via:
 //   - core.GetUserExtensionString(ctx, "role")
 //   - JSON responses: {"user": {"id": "...", "role": "admin", ...}}
-func (a *Admin) EnrichUserMiddleware() func(http.Handler) http.Handler {
+func (a *Plugin) EnrichUserMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -96,7 +99,7 @@ func (a *Admin) EnrichUserMiddleware() func(http.Handler) http.Handler {
 // Response Codes:
 //   - 401 Unauthorized: User not authenticated
 //   - 403 Forbidden: User authenticated but not admin
-func (a *Admin) RequireAdminMiddleware() func(http.Handler) http.Handler {
+func (a *Plugin) RequireAdminMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -110,7 +113,7 @@ func (a *Admin) RequireAdminMiddleware() func(http.Handler) http.Handler {
 
 			// First check if role is already in enriched user (avoid DB call)
 			if role := plugins.GetUserExtensionString(ctx, ExtKeyRole); role != "" {
-				if role != "admin" {
+				if role != RoleAdmin {
 					http.Error(w, "Forbidden", http.StatusForbidden)
 					return
 				}
@@ -120,7 +123,7 @@ func (a *Admin) RequireAdminMiddleware() func(http.Handler) http.Handler {
 
 			// Fallback: fetch from DB and enrich for future use
 			role, err := a.store.GetRole(ctx, user.ID)
-			if err != nil || role != "admin" {
+			if err != nil || role != RoleAdmin {
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
@@ -149,7 +152,7 @@ func (a *Admin) RequireAdminMiddleware() func(http.Handler) http.Handler {
 // Response Codes:
 //   - 401 Unauthorized: User not authenticated
 //   - 403 Forbidden: User authenticated but lacks required role
-func (a *Admin) RequireRoleMiddleware(requiredRole string) func(http.Handler) http.Handler {
+func (a *Plugin) RequireRoleMiddleware(requiredRole string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()

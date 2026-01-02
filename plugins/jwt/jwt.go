@@ -227,7 +227,7 @@ func DefaultConfig() *Config {
 //	  5. Revoke: BlacklistToken() → Add to Redis blacklist
 type Plugin struct {
 	// store provides database operations for JWK key storage
-	store JWTStore
+	store Store
 
 	// handler manages HTTP endpoints for token operations
 	handler *Handler
@@ -283,7 +283,7 @@ type Plugin struct {
 //		KeyRotationInterval: 7 * 24 * time.Hour,
 //	}
 //	jwtPlugin := jwt.New(config, nil, plugins.DialectPostgres)
-func New(config *Config, store JWTStore, dialect ...plugins.Dialect) *Plugin {
+func New(config *Config, store *Store, dialect ...plugins.Dialect) *Plugin {
 	if config == nil {
 		config = DefaultConfig()
 	}
@@ -294,7 +294,7 @@ func New(config *Config, store JWTStore, dialect ...plugins.Dialect) *Plugin {
 	}
 
 	return &Plugin{
-		store:   store,
+		store:   *store,
 		config:  config,
 		dialect: d,
 	}
@@ -522,9 +522,10 @@ func (p *Plugin) GetMigrations() []plugins.Migration {
 
 // GetSchemas returns all schemas for all supported dialects
 func (p *Plugin) GetSchemas() []plugins.Schema {
-	var schemas []plugins.Schema
+	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL}
+	schemas := make([]plugins.Schema, 0, len(dialects))
 
-	for _, dialect := range []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL} {
+	for _, dialect := range dialects {
 		schema, err := GetSchema(dialect)
 		if err != nil {
 			continue

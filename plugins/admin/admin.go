@@ -43,19 +43,19 @@ import (
 	"github.com/theinventorylib/aegis/router"
 )
 
-// Admin provides role-based access control and administrative user management.
+// Plugin provides role-based access control and administrative user management.
 //
 // This plugin integrates with the core authentication system to provide:
-//   - Admin role verification via middleware
+//   - Plugin role verification via middleware
 //   - User account management (enable/disable/delete)
 //   - Ban management with expiry dates and reasons
 //   - Platform statistics and analytics
 //
 // The plugin implements plugins.UserEnricher to automatically add role information
 // to authenticated users, making it available in API responses.
-type Admin struct {
+type Plugin struct {
 	// store handles admin-specific database operations
-	store AdminStore
+	store Store
 	// dialect specifies the database dialect (postgres, mysql)
 	dialect plugins.Dialect
 	// sessionService provides authentication verification
@@ -75,29 +75,29 @@ type Admin struct {
 //
 //	admin := admin.New(nil, plugins.DialectPostgres)
 //	aegis.RegisterPlugin(admin)
-func New(store AdminStore, dialect ...plugins.Dialect) *Admin {
+func New(store *Store, dialect ...plugins.Dialect) *Plugin {
 	d := plugins.DialectPostgres
 	if len(dialect) > 0 {
 		d = dialect[0]
 	}
-	return &Admin{
-		store:   store,
+	return &Plugin{
+		store:   *store,
 		dialect: d,
 	}
 }
 
 // Name returns the plugin identifier.
-func (a *Admin) Name() string {
+func (a *Plugin) Name() string {
 	return "admin"
 }
 
 // Version returns the plugin version for compatibility tracking.
-func (a *Admin) Version() string {
+func (a *Plugin) Version() string {
 	return "1.0.0"
 }
 
 // Description returns a human-readable description for logging and diagnostics.
-func (a *Admin) Description() string {
+func (a *Plugin) Description() string {
 	return "Admin plugin for user role management"
 }
 
@@ -120,7 +120,7 @@ func (a *Admin) Description() string {
 //
 // Returns:
 //   - error: If schema validation fails or initialization errors occur
-func (a *Admin) Init(ctx context.Context, aegis plugins.Aegis) error {
+func (a *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	// Initialize store if not provided
 	if a.store == nil {
 		a.store = NewDefaultAdminStore(aegis.DB())
@@ -145,7 +145,7 @@ func (a *Admin) Init(ctx context.Context, aegis plugins.Aegis) error {
 }
 
 // GetMigrations returns the plugin migrations
-func (a *Admin) GetMigrations() []plugins.Migration {
+func (a *Plugin) GetMigrations() []plugins.Migration {
 	migs, err := GetMigrations(a.dialect)
 	if err != nil {
 		return []plugins.Migration{}
@@ -153,8 +153,8 @@ func (a *Admin) GetMigrations() []plugins.Migration {
 	return migs
 }
 
-// MountRoutes mounts the admin routes
-func (a *Admin) MountRoutes(r router.Router, prefix string) {
+// MountRoutes registers administrative management endpoints.
+func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 	// Create admin middleware - ALL admin routes require admin role
 	requireAdmin := a.RequireAdminMiddleware()
 
@@ -174,25 +174,26 @@ func (a *Admin) MountRoutes(r router.Router, prefix string) {
 }
 
 // Dependencies returns the plugin dependencies
-func (a *Admin) Dependencies() []plugins.Dependency {
+func (a *Plugin) Dependencies() []plugins.Dependency {
 	return []plugins.Dependency{}
 }
 
 // RequiresTables returns the required tables
-func (a *Admin) RequiresTables() []string {
+func (a *Plugin) RequiresTables() []string {
 	return []string{"user"}
 }
 
 // ProvidesAuthMethods returns the provided auth methods
-func (a *Admin) ProvidesAuthMethods() []string {
+func (a *Plugin) ProvidesAuthMethods() []string {
 	return []string{}
 }
 
 // GetSchemas returns all schemas for all supported dialects
-func (a *Admin) GetSchemas() []plugins.Schema {
-	var schemas []plugins.Schema
+func (a *Plugin) GetSchemas() []plugins.Schema {
+	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL}
+	schemas := make([]plugins.Schema, 0, len(dialects))
 
-	for _, dialect := range []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL} {
+	for _, dialect := range dialects {
 		schema, err := GetSchema(dialect)
 		if err != nil {
 			continue
@@ -223,14 +224,17 @@ func (a *Admin) GetSchemas() []plugins.Schema {
 //
 // Returns:
 //   - error: Always nil (role lookup failure is not an error)
-func (a *Admin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error {
+func (a *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error {
 	if user == nil || user.User == nil {
 		return nil
 	}
 
-	role, err := a.store.GetRole(ctx, user.User.ID)
+	role, err := a.store.GetRole(ctx, user.ID)
 	if err != nil {
-		// User has no role, that's fine
+		// Even if lookup fails, we don't want to fail the whole enrichment process
+		// unless it's a critical error. For now, we return nil to maintain existing behavior
+		// but we blank the error to show it's intentional.
+		_ = err
 		return nil
 	}
 
@@ -242,4 +246,4 @@ func (a *Admin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error {
 }
 
 // Ensure Admin implements UserEnricher
-var _ plugins.UserEnricher = (*Admin)(nil)
+var _ plugins.UserEnricher = (*Plugin)(nil)

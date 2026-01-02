@@ -130,10 +130,18 @@ func (s *defaultUserStore) Delete(ctx context.Context, id string) error {
 }
 
 func (s *defaultUserStore) List(ctx context.Context, offset, limit int) ([]User, error) {
-	users, err := s.q.ListUsers(ctx, sqlc.ListUsersParams{
+	// Handle pagination with safe int32 conversion (G115)
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	params := sqlc.ListUsersParams{
 		Offset: int32(offset),
 		Limit:  int32(limit),
-	})
+	}
+	users, err := s.q.ListUsers(ctx, params)
 	if err != nil {
 		return nil, err
 	}

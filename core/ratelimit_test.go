@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+// Test constants for commonly used strings (goconst)
+const (
+	ratelimitTestIP    = "192.168.1.100"
+	ratelimitTestEmail = "user@example.com"
+)
+
 // TC-RL-001: Rate Limiter Creation
 func TestNewRateLimiter(t *testing.T) {
 	// Given
@@ -51,7 +57,7 @@ func TestRateLimiter_Allow_WithinLimit(t *testing.T) {
 	defer limiter.Stop()
 
 	ctx := context.Background()
-	key := "192.168.1.100"
+	key := ratelimitTestIP
 
 	// When - Attempt 3 times (should succeed)
 	for i := 0; i < 3; i++ {
@@ -82,11 +88,11 @@ func TestRateLimiter_Allow_ExceedLimit(t *testing.T) {
 	defer limiter.Stop()
 
 	ctx := context.Background()
-	key := "192.168.1.100"
+	key := ratelimitTestIP
 
 	// Exhaust the limit
 	for i := 0; i < 3; i++ {
-		limiter.Allow(ctx, key)
+		_, _, _ = limiter.Allow(ctx, key)
 	}
 
 	// When - 4th attempt should be blocked
@@ -121,8 +127,8 @@ func TestRateLimiter_Allow_DifferentKeys(t *testing.T) {
 	key2 := "192.168.1.101"
 
 	// When - Use both keys
-	limiter.Allow(ctx, key1)
-	limiter.Allow(ctx, key1)
+	_, _, _ = limiter.Allow(ctx, key1)
+	_, _, _ = limiter.Allow(ctx, key1)
 
 	// Then - key1 should be exhausted
 	allowed1, _, _ := limiter.Allow(ctx, key1)
@@ -154,7 +160,7 @@ func TestRateLimiter_Allow_WindowReset(t *testing.T) {
 	defer limiter.Stop()
 
 	ctx := context.Background()
-	key := "192.168.1.100"
+	key := ratelimitTestIP
 
 	// Exhaust limit
 	limiter.Allow(ctx, key)
@@ -197,7 +203,7 @@ func TestRateLimiter_Allow_Concurrent(t *testing.T) {
 	defer limiter.Stop()
 
 	ctx := context.Background()
-	key := "192.168.1.100"
+	key := ratelimitTestIP
 
 	// When - Make concurrent requests
 	var wg sync.WaitGroup
@@ -280,7 +286,7 @@ func TestAuthRateLimitConfig(t *testing.T) {
 }
 
 // TC-RL-010: Rate Limiter Stop
-func TestRateLimiter_Stop(t *testing.T) {
+func TestRateLimiter_Stop(_ *testing.T) {
 	// Given
 	config := DefaultRateLimitConfig()
 	limiter := NewRateLimiter(config, nil, nil)
@@ -336,7 +342,7 @@ func TestLoginAttemptTracker_RecordFailedAttempt(t *testing.T) {
 	defer tracker.Stop()
 
 	ctx := context.Background()
-	identifier := "user@example.com"
+	identifier := ratelimitTestEmail
 
 	// When - Record first attempt
 	attempts, lockedOut, err := tracker.RecordFailedAttempt(ctx, identifier)
@@ -365,11 +371,11 @@ func TestLoginAttemptTracker_Lockout(t *testing.T) {
 	defer tracker.Stop()
 
 	ctx := context.Background()
-	identifier := "user@example.com"
+	identifier := ratelimitTestEmail
 
 	// When - Record max attempts
 	for i := 0; i < 3; i++ {
-		tracker.RecordFailedAttempt(ctx, identifier)
+		_, _, _ = tracker.RecordFailedAttempt(ctx, identifier)
 	}
 
 	// Then - Should be locked out
@@ -394,11 +400,11 @@ func TestLoginAttemptTracker_ClearAttempts(t *testing.T) {
 	defer tracker.Stop()
 
 	ctx := context.Background()
-	identifier := "user@example.com"
+	identifier := ratelimitTestEmail
 
 	// Record some attempts
-	tracker.RecordFailedAttempt(ctx, identifier)
-	tracker.RecordFailedAttempt(ctx, identifier)
+	_, _, _ = tracker.RecordFailedAttempt(ctx, identifier)
+	_, _, _ = tracker.RecordFailedAttempt(ctx, identifier)
 
 	// When - Clear attempts
 	err := tracker.ClearAttempts(ctx, identifier)
@@ -437,8 +443,8 @@ func TestLoginAttemptTracker_DifferentIdentifiers(t *testing.T) {
 	user2 := "user2@example.com"
 
 	// Lock out user1
-	tracker.RecordFailedAttempt(ctx, user1)
-	tracker.RecordFailedAttempt(ctx, user1)
+	_, _, _ = tracker.RecordFailedAttempt(ctx, user1)
+	_, _, _ = tracker.RecordFailedAttempt(ctx, user1)
 
 	// Then - user1 should be locked, user2 should not
 	locked1, _, _ := tracker.IsLockedOut(ctx, user1)
@@ -468,11 +474,11 @@ func TestLoginAttemptTracker_LockoutDuration(t *testing.T) {
 	defer tracker.Stop()
 
 	ctx := context.Background()
-	identifier := "user@example.com"
+	identifier := ratelimitTestEmail
 
 	// Lock out
-	tracker.RecordFailedAttempt(ctx, identifier)
-	tracker.RecordFailedAttempt(ctx, identifier)
+	_, _, _ = tracker.RecordFailedAttempt(ctx, identifier)
+	_, _, _ = tracker.RecordFailedAttempt(ctx, identifier)
 
 	// Verify locked
 	locked, _, _ := tracker.IsLockedOut(ctx, identifier)
@@ -527,7 +533,7 @@ func TestLoginAttemptTracker_Concurrent(t *testing.T) {
 	defer tracker.Stop()
 
 	ctx := context.Background()
-	identifier := "user@example.com"
+	identifier := ratelimitTestEmail
 
 	// When - Make concurrent attempts
 	var wg sync.WaitGroup
@@ -548,7 +554,7 @@ func TestLoginAttemptTracker_Concurrent(t *testing.T) {
 }
 
 // TC-LAT-010: Login Attempt Tracker Stop
-func TestLoginAttemptTracker_Stop(t *testing.T) {
+func TestLoginAttemptTracker_Stop(_ *testing.T) {
 	// Given
 	config := DefaultLoginAttemptConfig()
 	tracker := NewLoginAttemptTracker(config, nil)

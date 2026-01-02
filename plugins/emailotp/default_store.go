@@ -42,22 +42,23 @@ func NewDefaultEmailOTPStore(db *sql.DB) *DefaultEmailOTPStore {
 	}
 }
 
-// CreateUserWithEmail creates a new user with email address
+// CreateUser creates a new user with email address.
 func (s *DefaultEmailOTPStore) CreateUser(ctx context.Context, user User) (*User, error) {
 	params := sqlc.CreateUserParams{
 		ID:            user.ID,
 		Avatar:        toNullString(user.Avatar),
 		Name:          user.Name,
-		Email:         toNullString(*user.Email),
+		Email:         toNullString(nullPointerString(user.Email)), // Handle email mapping
 		CreatedAt:     user.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:     user.UpdatedAt.Format(time.RFC3339),
 		Disabled:      boolToInt(user.Disabled),
 		EmailVerified: boolToInt(user.EmailVerified),
 	}
-	err := s.q.CreateUser(ctx, params)
-	if err != nil {
+
+	if err := s.q.CreateUser(ctx, params); err != nil {
 		return nil, err
 	}
+
 	return &user, nil
 }
 
@@ -79,6 +80,13 @@ func (s *DefaultEmailOTPStore) UpdateUserEmail(ctx context.Context, userID, emai
 		UpdatedAt:     time.Now().Format(time.RFC3339),
 	}
 	return s.q.UpdateUserEmail(ctx, params)
+}
+
+func nullPointerString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // Helper functions

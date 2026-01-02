@@ -123,6 +123,7 @@ func (e AuthError) Unwrap() error {
 // handle without parsing error messages.
 const (
 	// AuthErrorCodeInvalidCredentials indicates wrong username/password
+	// #nosec G101
 	AuthErrorCodeInvalidCredentials = "INVALID_CREDENTIALS"
 
 	// AuthErrorCodeUserNotFound indicates user does not exist

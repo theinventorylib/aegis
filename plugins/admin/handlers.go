@@ -36,7 +36,7 @@ import (
 //	    "limit": 20
 //	  }
 //	}
-func (a *Admin) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Plugin) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 	pagination := core.ParsePagination(r)
 
 	// Use DB method
@@ -77,7 +77,7 @@ func (a *Admin) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 //	  "success": true,
 //	  "data": {"id": "user_123", "email": "user@example.com", "role": "admin", ...}
 //	}
-func (a *Admin) GetUserHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Plugin) GetUserHandler(w http.ResponseWriter, r *http.Request) {
 	userID := core.GetPathParam(r, "id")
 	if userID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
@@ -121,40 +121,8 @@ func (a *Admin) GetUserHandler(w http.ResponseWriter, r *http.Request) {
 //	  "success": true,
 //	  "message": "User disabled"
 //	}
-func (a *Admin) DisableUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := core.GetPathParam(r, "id")
-	if userID == "" {
-		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
-			Success: false,
-			Error:   "User ID required",
-		})
-		return
-	}
-
-	// Get user first
-	user, err := a.store.GetByID(r.Context(), userID)
-	if err != nil {
-		core.WriteJSON(w, http.StatusNotFound, &core.Response{
-			Success: false,
-			Error:   "User not found",
-		})
-		return
-	}
-
-	// Update disabled status
-	user.Disabled = true
-	if err := a.store.Update(r.Context(), user); err != nil {
-		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
-			Success: false,
-			Error:   "Failed to disable user",
-		})
-		return
-	}
-
-	core.WriteJSON(w, http.StatusOK, &core.Response{
-		Success: true,
-		Message: "User disabled",
-	})
+func (a *Plugin) DisableUserHandler(w http.ResponseWriter, r *http.Request) {
+	a.setUserDisabledStatus(w, r, true, "disable", "disabled")
 }
 
 // EnableUserHandler re-enables a disabled user account.
@@ -175,7 +143,13 @@ func (a *Admin) DisableUserHandler(w http.ResponseWriter, r *http.Request) {
 //	  "success": true,
 //	  "message": "User enabled"
 //	}
-func (a *Admin) EnableUserHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Plugin) EnableUserHandler(w http.ResponseWriter, r *http.Request) {
+	a.setUserDisabledStatus(w, r, false, "enable", "enabled")
+}
+
+// setUserDisabledStatus is a helper function that sets the disabled status of a user.
+// It handles the common logic for both DisableUserHandler and EnableUserHandler.
+func (a *Plugin) setUserDisabledStatus(w http.ResponseWriter, r *http.Request, disabled bool, action, pastTense string) {
 	userID := core.GetPathParam(r, "id")
 	if userID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
@@ -194,18 +168,18 @@ func (a *Admin) EnableUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user.Disabled = false
+	user.Disabled = disabled
 	if err := a.store.Update(r.Context(), user); err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
-			Error:   "Failed to enable user",
+			Error:   "Failed to " + action + " user",
 		})
 		return
 	}
 
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
-		Message: "User enabled",
+		Message: "User " + pastTense,
 	})
 }
 
@@ -227,7 +201,7 @@ func (a *Admin) EnableUserHandler(w http.ResponseWriter, r *http.Request) {
 //	  "success": true,
 //	  "message": "User deleted"
 //	}
-func (a *Admin) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Plugin) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	userID := core.GetPathParam(r, "id")
 	if userID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
@@ -279,7 +253,7 @@ func (a *Admin) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 //	  "success": true,
 //	  "message": "User banned"
 //	}
-func (a *Admin) BanUserHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Plugin) BanUserHandler(w http.ResponseWriter, r *http.Request) {
 	userID := core.GetPathParam(r, "id")
 	if userID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
@@ -338,7 +312,7 @@ func (a *Admin) BanUserHandler(w http.ResponseWriter, r *http.Request) {
 //	  "success": true,
 //	  "message": "User unbanned"
 //	}
-func (a *Admin) UnbanUserHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Plugin) UnbanUserHandler(w http.ResponseWriter, r *http.Request) {
 	userID := core.GetPathParam(r, "id")
 	if userID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
@@ -381,7 +355,7 @@ func (a *Admin) UnbanUserHandler(w http.ResponseWriter, r *http.Request) {
 //	    "totalUsers": 1234
 //	  }
 //	}
-func (a *Admin) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Plugin) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
 	stats, err := a.store.GetStats(r.Context())
 	if err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
@@ -411,7 +385,7 @@ func (a *Admin) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
 //
 // Returns:
 //   - error: If database operation fails
-func (a *Admin) AssignRole(ctx context.Context, userID string, role string) error {
+func (a *Plugin) AssignRole(ctx context.Context, userID string, role string) error {
 	return a.store.AssignRole(ctx, userID, role)
 }
 
@@ -424,7 +398,7 @@ func (a *Admin) AssignRole(ctx context.Context, userID string, role string) erro
 // Returns:
 //   - string: User's role (empty string if no role assigned)
 //   - error: If database operation fails
-func (a *Admin) GetUserRole(ctx context.Context, userID string) (string, error) {
+func (a *Plugin) GetUserRole(ctx context.Context, userID string) (string, error) {
 	return a.store.GetRole(ctx, userID)
 }
 
@@ -437,7 +411,7 @@ func (a *Admin) GetUserRole(ctx context.Context, userID string) (string, error) 
 //
 // Returns:
 //   - error: If database operation fails
-func (a *Admin) RemoveRole(ctx context.Context, userID string, role string) error {
+func (a *Plugin) RemoveRole(ctx context.Context, userID string, role string) error {
 	return a.store.RemoveRole(ctx, userID, role)
 }
 
@@ -452,7 +426,7 @@ func (a *Admin) RemoveRole(ctx context.Context, userID string, role string) erro
 // Returns:
 //   - User: User with admin fields populated
 //   - error: If user not found or database error
-func (a *Admin) GetAdminUser(ctx context.Context, userID string) (User, error) {
+func (a *Plugin) GetAdminUser(ctx context.Context, userID string) (User, error) {
 	// Get user from store
 	user, err := a.store.GetByID(ctx, userID)
 	if err != nil {

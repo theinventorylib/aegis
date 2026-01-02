@@ -46,6 +46,7 @@ func NewDefaultAdminStore(db *sql.DB) *DefaultAdminStore {
 
 // UserStore implementation
 
+// Create creates a new user.
 func (s *DefaultAdminStore) Create(ctx context.Context, user User) (User, error) {
 	params := sqlc.CreateUserParams{
 		ID:        user.ID,
@@ -64,6 +65,7 @@ func (s *DefaultAdminStore) Create(ctx context.Context, user User) (User, error)
 	return user, nil
 }
 
+// GetByEmail retrieves a user by email.
 func (s *DefaultAdminStore) GetByEmail(ctx context.Context, email string) (User, error) {
 	u, err := s.q.GetUserByEmail(ctx, toNullString(email))
 	if err != nil {
@@ -72,6 +74,7 @@ func (s *DefaultAdminStore) GetByEmail(ctx context.Context, email string) (User,
 	return sqlcUserToUser(u), nil
 }
 
+// GetByID retrieves a user by ID.
 func (s *DefaultAdminStore) GetByID(ctx context.Context, id string) (User, error) {
 	u, err := s.q.GetUserByID(ctx, id)
 	if err != nil {
@@ -80,6 +83,7 @@ func (s *DefaultAdminStore) GetByID(ctx context.Context, id string) (User, error
 	return sqlcUserToUser(u), nil
 }
 
+// Update updates user information.
 func (s *DefaultAdminStore) Update(ctx context.Context, user User) error {
 	params := sqlc.UpdateUserParams{
 		ID:        user.ID,
@@ -93,6 +97,7 @@ func (s *DefaultAdminStore) Update(ctx context.Context, user User) error {
 	return s.q.UpdateUser(ctx, params)
 }
 
+// Delete removes a user.
 func (s *DefaultAdminStore) Delete(ctx context.Context, id string) error {
 	return s.q.DeleteUser(ctx, sqlc.DeleteUserParams{
 		ID:        id,
@@ -101,10 +106,18 @@ func (s *DefaultAdminStore) Delete(ctx context.Context, id string) error {
 }
 
 func (s *DefaultAdminStore) List(ctx context.Context, offset, limit int) ([]User, error) {
-	users, err := s.q.ListUsers(ctx, sqlc.ListUsersParams{
+	// Handle pagination with safe int32 conversion (G115)
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	params := sqlc.ListUsersParams{
 		Offset: int32(offset),
 		Limit:  int32(limit),
-	})
+	}
+	users, err := s.q.ListUsers(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +128,7 @@ func (s *DefaultAdminStore) List(ctx context.Context, offset, limit int) ([]User
 	return result, nil
 }
 
+// Count returns the total number of users.
 func (s *DefaultAdminStore) Count(ctx context.Context) (int, error) {
 	count, err := s.q.CountUsers(ctx)
 	return int(count), err
@@ -122,6 +136,7 @@ func (s *DefaultAdminStore) Count(ctx context.Context) (int, error) {
 
 // AdminStore additional methods
 
+// AssignRole assigns a role to a user.
 func (s *DefaultAdminStore) AssignRole(ctx context.Context, userID string, role string) error {
 	return s.q.UpdateUserRole(ctx, sqlc.UpdateUserRoleParams{
 		ID:        userID,
@@ -130,6 +145,7 @@ func (s *DefaultAdminStore) AssignRole(ctx context.Context, userID string, role 
 	})
 }
 
+// GetRole retrieves a user's role.
 func (s *DefaultAdminStore) GetRole(ctx context.Context, userID string) (string, error) {
 	role, err := s.q.GetRole(ctx, userID)
 	if err != nil {
@@ -138,12 +154,14 @@ func (s *DefaultAdminStore) GetRole(ctx context.Context, userID string) (string,
 	return role, nil
 }
 
+// RemoveRole removes a role from a user.
 func (s *DefaultAdminStore) RemoveRole(ctx context.Context, userID string, role string) error {
 	// In this implementation, we just set role back to 'user'
 	// We ignore the 'role' argument if we only support one role per user
 	return s.AssignRole(ctx, userID, "user")
 }
 
+// ListUsersRaw lists users returning raw map data.
 func (s *DefaultAdminStore) ListUsersRaw(ctx context.Context, offset, limit int) ([]map[string]interface{}, error) {
 	users, err := s.q.ListUsersRaw(ctx, sqlc.ListUsersRawParams{
 		Offset: int32(offset),
@@ -166,6 +184,7 @@ func (s *DefaultAdminStore) ListUsersRaw(ctx context.Context, offset, limit int)
 	return result, nil
 }
 
+// GetUserRaw retrieves a single user as raw map data.
 func (s *DefaultAdminStore) GetUserRaw(ctx context.Context, userID string) (map[string]interface{}, error) {
 	u, err := s.q.GetUserRaw(ctx, userID)
 	if err != nil {
@@ -181,6 +200,7 @@ func (s *DefaultAdminStore) GetUserRaw(ctx context.Context, userID string) (map[
 	}, nil
 }
 
+// BanUser bans a user.
 func (s *DefaultAdminStore) BanUser(ctx context.Context, userID, reason string, expiry *time.Time) error {
 	var expiryStr sql.NullString
 	if expiry != nil {
@@ -194,6 +214,7 @@ func (s *DefaultAdminStore) BanUser(ctx context.Context, userID, reason string, 
 	})
 }
 
+// UnbanUser unbans a user.
 func (s *DefaultAdminStore) UnbanUser(ctx context.Context, userID string) error {
 	return s.q.UnbanUser(ctx, sqlc.UnbanUserParams{
 		ID:        userID,
@@ -201,6 +222,7 @@ func (s *DefaultAdminStore) UnbanUser(ctx context.Context, userID string) error 
 	})
 }
 
+// GetStats retrieves system statistics.
 func (s *DefaultAdminStore) GetStats(ctx context.Context) (StatsResponse, error) {
 	count, err := s.q.CountUsers(ctx)
 	if err != nil {

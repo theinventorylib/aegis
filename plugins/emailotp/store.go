@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// EmailOTPStore defines the interface for Email OTP verification storage operations.
+// Store defines the interface for Email OTP verification storage operations.
 //
 // This interface provides email-specific user management operations:
 //   - User creation with email addresses
@@ -13,7 +13,7 @@ import (
 //
 // Thread Safety:
 // Implementations must be safe for concurrent use.
-type EmailOTPStore interface {
+type Store interface {
 	// ========== User Management ==========
 
 	// CreateUser creates a new user with an email address.

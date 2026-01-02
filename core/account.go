@@ -122,13 +122,13 @@ func (s *AccountService) UpdatePassword(ctx context.Context, userID, newPassword
 		// Log the error but don't fail the password update
 		// Session invalidation is best-effort - if it fails, existing sessions remain valid
 		// until they expire naturally, but the password has been changed successfully
-		s.auditLogger.LogAuthEvent(ctx, "session_deletion_failed", userID, "", "", false, map[string]interface{}{
+		_ = s.auditLogger.LogAuthEvent(ctx, "session_deletion_failed", userID, "", "", false, map[string]interface{}{
 			"error":  err.Error(),
 			"reason": "password_change",
 		})
 	}
 
-	s.auditLogger.LogAuthEvent(ctx, AuditEventPasswordChanged, userID, "", "", true, nil)
+	_ = s.auditLogger.LogAuthEvent(ctx, AuditEventPasswordChanged, userID, "", "", true, nil)
 	return nil
 }
 
@@ -156,6 +156,7 @@ func (s *AccountService) GetPasswordAccount(ctx context.Context, userID string) 
 	return auth.Account{}, sql.ErrNoRows
 }
 
+// DeleteAccount deletes a user account by its ID.
 func (s *AccountService) DeleteAccount(ctx context.Context, id string) error {
 	return s.accountStore.Delete(ctx, id)
 }

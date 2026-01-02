@@ -39,7 +39,7 @@ func NewSchemaExporter(config SchemaExporterConfig) *SchemaExporter {
 
 // Export writes schemas to disk
 func (e *SchemaExporter) Export() error {
-	if err := os.MkdirAll(e.outputDir, 0755); err != nil {
+	if err := os.MkdirAll(e.outputDir, 0750); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
@@ -242,5 +242,5 @@ Original schemas are available in the Aegis repository:
 
 func (e *SchemaExporter) writeFile(filename, content string) error {
 	path := filepath.Join(e.outputDir, filename)
-	return os.WriteFile(path, []byte(content), 0644)
+	return os.WriteFile(path, []byte(content), 0600)
 }

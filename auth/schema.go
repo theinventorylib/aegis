@@ -1,4 +1,4 @@
-// This file provides schema export functionality for different database dialects.
+// Package auth provides schema export functionality for different database dialects.
 // The actual SQL schemas are embedded from internal files and can be accessed
 // programmatically for documentation, CLI tools, or custom migration systems.
 //
@@ -104,10 +104,7 @@ func GetSchema(dialect Dialect) (*Schema, error) {
 		return nil, fmt.Errorf("unsupported dialect: %s", dialect)
 	}
 
-	info, err := parseSchemaInfo(sql)
-	if err != nil {
-		return nil, fmt.Errorf("parse schema info: %w", err)
-	}
+	info := parseSchemaInfo(sql)
 
 	return &Schema{
 		Dialect: dialect,
@@ -119,13 +116,14 @@ func GetSchema(dialect Dialect) (*Schema, error) {
 // parseSchemaInfo returns default metadata for the schema.
 // Currently this returns static metadata. In the future, this could parse
 // metadata comments from the SQL file itself.
-func parseSchemaInfo(_ string) (SchemaInfo, error) {
+func parseSchemaInfo(_ string) SchemaInfo {
+	// Simple parser/regex could go here, for now returns default
 	return SchemaInfo{
 		Package:      "github.com/theinventorylib/aegis/auth",
 		Version:      0, // Version tracking not yet implemented
 		Description:  "",
 		Dependencies: []Dependency{},
-	}, nil
+	}
 }
 
 // PackageName returns the package identifier for the auth schema.

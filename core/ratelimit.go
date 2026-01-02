@@ -369,7 +369,7 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 
 			if !allowed {
 				// Audit log rate limit hit
-				limiter.auditLogger.LogAuthEvent(r.Context(), AuditEventRateLimitHit, "", getClientIP(r), r.UserAgent(), false, map[string]interface{}{
+				_ = limiter.auditLogger.LogAuthEvent(r.Context(), AuditEventRateLimitHit, "", getClientIP(r), r.UserAgent(), false, map[string]interface{}{
 					"key":       key,
 					"path":      r.URL.Path,
 					"method":    r.Method,

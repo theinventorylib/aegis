@@ -172,7 +172,7 @@ func exportCmd() {
 	}
 
 	// Create exporter
-	exporterObj := exporter.NewExporter(exporter.ExporterConfig{
+	exporterObj := exporter.NewExporter(exporter.Config{
 		Format:    expFormat,
 		Dialect:   plugins.Dialect(dialectStr),
 		OutputDir: *output,

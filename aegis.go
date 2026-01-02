@@ -687,7 +687,7 @@ func (a *Aegis) GetPlugins() []plugins.Plugin {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	var regs []pluginRegistration
+	regs := make([]pluginRegistration, 0, len(a.plugins))
 	for _, reg := range a.plugins {
 		regs = append(regs, reg)
 	}
@@ -697,7 +697,7 @@ func (a *Aegis) GetPlugins() []plugins.Plugin {
 		return regs[i].priority < regs[j].priority
 	})
 
-	var result []plugins.Plugin
+	result := make([]plugins.Plugin, 0, len(regs))
 	for _, reg := range regs {
 		result = append(result, reg.plugin)
 	}
@@ -778,13 +778,13 @@ func (w *pluginAegisWrapper) GetAuthService() *core.AuthService {
 }
 
 func (w *pluginAegisWrapper) GetLogger() config.Logger {
-	return w.Aegis.config.Logger
+	return w.config.Logger
 }
 
 func (w *pluginAegisWrapper) GetRateLimiter() *core.RateLimiter {
-	return w.Aegis.rateLimiter
+	return w.rateLimiter
 }
 
 func (w *pluginAegisWrapper) DB() *sql.DB {
-	return w.Aegis.config.DB
+	return w.config.DB
 }

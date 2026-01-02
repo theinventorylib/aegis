@@ -114,7 +114,7 @@ func SetupTestDB(t testing.TB, cfg *TestConfig) *sql.DB {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Skipf("Skipping test: database not available: %v", err)
 		return nil
 	}
@@ -166,7 +166,7 @@ func SetupTestRedis(t testing.TB, cfg *TestConfig) *redis.Client {
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		client.Close()
+		_ = client.Close()
 		t.Skipf("Skipping test: Redis not available: %v", err)
 		return nil
 	}

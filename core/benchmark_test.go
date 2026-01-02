@@ -4,39 +4,55 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time" // Added for time.Now() and time.Since()
+)
+
+// Test constants for commonly used strings (goconst)
+const (
+	benchTestPassword     = "TestPassword123!"
+	benchSecurePassword   = "SecureP@ssw0rd123"
+	benchTestSessionToken = "test_session_token_abc123"
+	// The following lines from the user's edit are syntactically incorrect for constant declarations.
+	// benchTestP	password := benchTestPassword
+	// benchSecureP	password := benchSecurePassword
 )
 
 // BenchmarkHashPassword benchmarks password hashing performance.
 // Target: < 500ms, Critical threshold: < 1s
 func BenchmarkHashPassword(b *testing.B) {
-	password := "TestPassword123!"
+	password := benchTestPassword
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		HashPassword(password, 0, 0, 0, 0)
+		_, _ = HashPassword(password, 0, 0, 0, 0)
 	}
 }
 
 // BenchmarkVerifyPassword benchmarks password verification performance.
 // Target: < 500ms, Critical threshold: < 1s
 func BenchmarkVerifyPassword(b *testing.B) {
-	password := "TestPassword123!"
+	password := benchTestPassword
 	hash, _ := HashPassword(password, 0, 0, 0, 0)
+
+	// Declared correctDurations to make the user's edit syntactically correct.
+	var correctDurations []time.Duration
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		VerifyPassword(password, hash)
+		start := time.Now()
+		_, _ = VerifyPassword(password, hash)
+		correctDurations = append(correctDurations, time.Since(start))
 	}
 }
 
 // BenchmarkVerifyPassword_WrongPassword benchmarks verification with wrong password.
 func BenchmarkVerifyPassword_WrongPassword(b *testing.B) {
-	password := "TestPassword123!"
+	password := benchTestPassword
 	hash, _ := HashPassword(password, 0, 0, 0, 0)
 	wrongPassword := "WrongPassword456!"
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		VerifyPassword(wrongPassword, hash)
+		_, _ = VerifyPassword(wrongPassword, hash)
 	}
 }
 
@@ -84,7 +100,7 @@ func BenchmarkRateLimiter_Allow(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		limiter.Allow(ctx, fmt.Sprintf("key_%d", i%1000))
+		_, _, _ = limiter.Allow(ctx, fmt.Sprintf("key_%d", i%1000))
 	}
 }
 
@@ -98,7 +114,7 @@ func BenchmarkRateLimiter_Allow_SameKey(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		limiter.Allow(ctx, "constant_key")
+		_, _, _ = limiter.Allow(ctx, "constant_key")
 	}
 }
 
@@ -115,7 +131,7 @@ func BenchmarkLoginAttemptTracker_RecordFailedAttempt(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tracker.RecordFailedAttempt(ctx, fmt.Sprintf("user_%d", i%1000))
+		_, _, _ = tracker.RecordFailedAttempt(ctx, fmt.Sprintf("user_%d", i%1000))
 	}
 }
 
@@ -128,7 +144,7 @@ func BenchmarkLoginAttemptTracker_IsLockedOut(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tracker.IsLockedOut(ctx, fmt.Sprintf("user_%d", i%1000))
+		_, _, _ = tracker.IsLockedOut(ctx, fmt.Sprintf("user_%d", i%1000))
 	}
 }
 
@@ -138,18 +154,18 @@ func BenchmarkValidateEmail(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ValidateEmail(email)
+		_ = ValidateEmail(email)
 	}
 }
 
 // BenchmarkValidatePassword benchmarks password validation.
 func BenchmarkValidatePassword(b *testing.B) {
-	password := "SecureP@ssw0rd123"
+	password := benchSecurePassword
 	policy := DefaultPasswordPolicyConfig()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ValidatePassword(password, policy)
+		_ = ValidatePassword(password, policy)
 	}
 }
 
@@ -167,8 +183,8 @@ func BenchmarkCookieManager_SetSessionCookie(b *testing.B) {
 
 // BenchmarkConstantTimeCompare benchmarks constant-time string comparison.
 func BenchmarkConstantTimeCompare(b *testing.B) {
-	a := "test_session_token_abc123"
-	bStr := "test_session_token_abc123"
+	a := benchTestSessionToken
+	bStr := benchTestSessionToken
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -178,7 +194,7 @@ func BenchmarkConstantTimeCompare(b *testing.B) {
 
 // BenchmarkConstantTimeCompare_Mismatch benchmarks constant-time comparison with mismatch.
 func BenchmarkConstantTimeCompare_Mismatch(b *testing.B) {
-	a := "test_session_token_abc123"
+	a := benchTestSessionToken
 	bStr := "different_session_token_xyz"
 
 	b.ResetTimer()
@@ -209,7 +225,7 @@ func BenchmarkRateLimiter_Allow_Parallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			limiter.Allow(ctx, fmt.Sprintf("key_%d", i%1000))
+			_, _, _ = limiter.Allow(ctx, fmt.Sprintf("key_%d", i%1000))
 			i++
 		}
 	})

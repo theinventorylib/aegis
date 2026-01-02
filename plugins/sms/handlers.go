@@ -277,7 +277,7 @@ func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.plugin.SendOTP(r.Context(), req.PhoneNumber, req.UserID, req.Purpose); err != nil {
+	if err := h.plugin.SendOTP(r.Context(), req.PhoneNumber, req.Purpose); err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   err.Error(),
@@ -341,7 +341,7 @@ func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	valid, err := h.plugin.VerifyOTP(r.Context(), req.PhoneNumber, req.Code, req.Purpose)
+	valid, err := h.plugin.VerifyOTP(r.Context(), req.PhoneNumber, req.Code)
 	if err != nil || !valid {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,

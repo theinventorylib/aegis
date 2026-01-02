@@ -48,7 +48,7 @@ func GenerateRandomSuffix(length int) string {
 	for i := range result {
 		// Use crypto/rand for proper randomness
 		b := make([]byte, 1)
-		rand.Read(b)
+		_, _ = rand.Read(b)
 		result[i] = charset[int(b[0])%len(charset)]
 	}
 	return string(result)

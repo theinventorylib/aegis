@@ -67,7 +67,7 @@ type Plugin struct {
 	// otpLength specifies OTP code length (default: 6 digits)
 	otpLength int
 	// store handles phone-specific database operations
-	store SMSStore
+	store Store
 	// logger for SMS sending events (nil-safe)
 	logger config.Logger
 	// accountService manages password authentication
@@ -112,7 +112,7 @@ type Config struct {
 //	  OTPExpiry: 15 * time.Minute,
 //	  OTPLength: 8,
 //	}, nil, plugins.DialectPostgres)
-func New(cfg *Config, store *SMSStore, dialect ...plugins.Dialect) *Plugin {
+func New(cfg *Config, store *Store, dialect ...plugins.Dialect) *Plugin {
 	if cfg == nil {
 		cfg = &Config{} // Initialize cfg to avoid nil pointer dereference
 	}
@@ -130,6 +130,7 @@ func New(cfg *Config, store *SMSStore, dialect ...plugins.Dialect) *Plugin {
 	}
 
 	return &Plugin{
+		store:     *store,
 		provider:  cfg.Provider,
 		otpExpiry: cfg.OTPExpiry,
 		otpLength: cfg.OTPLength,
@@ -300,7 +301,7 @@ func (p *Plugin) GetSchemas() []plugins.Schema {
 }
 
 // SendOTP generates and sends an OTP via SMS
-func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, userID, purpose string) error {
+func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, purpose string) error {
 
 	// Generate OTP code using shared utility
 	code, err := core.GenerateOTPCode(p.otpLength)
@@ -346,7 +347,7 @@ func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, userID, purpose strin
 }
 
 // VerifyOTP verifies an OTP code
-func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, code, purpose string) (bool, error) {
+func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, code string) (bool, error) {
 	// Check if provider supports OTP operations
 	if p.provider != nil {
 		// Use provider's OTP verification
@@ -378,8 +379,8 @@ func (p *Plugin) GetUserByPhone(ctx context.Context, phone string) (*auth.User, 
 	}
 	// Convert from our User type to auth.User
 	return &auth.User{
-		ID:        user.User.ID,
-		Avatar:    user.User.Avatar,
+		ID:        user.ID,
+		Avatar:    user.Avatar,
 		Name:      user.User.Name,
 		Email:     user.User.Email,
 		CreatedAt: user.User.CreatedAt,

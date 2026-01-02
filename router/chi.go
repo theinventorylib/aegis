@@ -1,3 +1,16 @@
+// Package router provides router adapters for the Aegis authentication framework.
+//
+// This package contains implementations of the Router interface for popular
+// Go HTTP routers, allowing Aegis to integrate with various routing libraries.
+//
+// Currently supported routers:
+//   - Chi: A lightweight, idiomatic HTTP router for Go
+//
+// Usage:
+//
+//	mux := chi.NewRouter()
+//	router := router.NewChiRouter(mux)
+//	aegis.New(ctx, config.WithRouter(router), ...)
 package router
 
 import (
@@ -48,25 +61,25 @@ func NewChiRouter(mux *chi.Mux) *ChiRouter {
 // GET registers a GET route handler.
 // Implements Router.GET by delegating to chi.Mux.Get.
 func (r *ChiRouter) GET(path string, handler http.HandlerFunc) {
-	r.Mux.Get(path, handler)
+	r.Get(path, handler)
 }
 
 // POST registers a POST route handler.
 // Implements Router.POST by delegating to chi.Mux.Post.
 func (r *ChiRouter) POST(path string, handler http.HandlerFunc) {
-	r.Mux.Post(path, handler)
+	r.Post(path, handler)
 }
 
 // PUT registers a PUT route handler.
 // Implements Router.PUT by delegating to chi.Mux.Put.
 func (r *ChiRouter) PUT(path string, handler http.HandlerFunc) {
-	r.Mux.Put(path, handler)
+	r.Put(path, handler)
 }
 
 // PATCH registers a PATCH route handler.
 // Implements Router.PATCH by delegating to chi.Mux.Patch.
 func (r *ChiRouter) PATCH(path string, handler http.HandlerFunc) {
-	r.Mux.Patch(path, handler)
+	r.Patch(path, handler)
 }
 
 // DELETE registers a DELETE route handler.
@@ -75,7 +88,7 @@ func (r *ChiRouter) PATCH(path string, handler http.HandlerFunc) {
 // Note: This adapts chi's lowercase Delete method to the uppercase DELETE
 // method required by the Router interface.
 func (r *ChiRouter) DELETE(path string, handler http.HandlerFunc) {
-	r.Mux.Delete(path, handler)
+	r.Delete(path, handler)
 }
 
 // Use adds middleware to the router.

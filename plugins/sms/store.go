@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// SMSStore defines the interface for SMS verification storage operations.
+// Store defines the interface for SMS OTP verification storage operations.
 //
 // This interface provides phone-specific user management operations:
 //   - User creation with phone numbers
@@ -13,7 +13,7 @@ import (
 //
 // Thread Safety:
 // Implementations must be safe for concurrent use.
-type SMSStore interface {
+type Store interface {
 	// ========== User Management ==========
 
 	// CreateUser creates a new user with a phone number.

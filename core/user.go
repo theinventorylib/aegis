@@ -191,14 +191,17 @@ func (s *UserService) DeleteUser(ctx context.Context, id string) error {
 	return s.userStore.Delete(ctx, id)
 }
 
+// GetUserByID retrieves a user by their unique ID.
 func (s *UserService) GetUserByID(ctx context.Context, id string) (auth.User, error) {
 	return s.userStore.GetByID(ctx, id)
 }
 
+// GetUserByEmail retrieves a user by their email address.
 func (s *UserService) GetUserByEmail(ctx context.Context, email string) (auth.User, error) {
 	return s.userStore.GetByEmail(ctx, email)
 }
 
+// UpdateUser updates an existing user's information.
 func (s *UserService) UpdateUser(ctx context.Context, user auth.User) error {
 	return s.userStore.Update(ctx, user)
 }

@@ -299,7 +299,7 @@ func (m *mockUserStore) List(ctx context.Context, offset, limit int) ([]auth.Use
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	var users []auth.User
+	users := make([]auth.User, 0, len(m.users))
 	for _, user := range m.users {
 		users = append(users, user)
 	}

@@ -1,10 +1,44 @@
 package organizations
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/theinventorylib/aegis/core"
 )
+
+// orgRoleChecker is a function type for checking organization role requirements.
+type orgRoleChecker func(ctx context.Context, userID, orgID string) (bool, error)
+
+// requireOrganizationRole is a helper function that creates middleware for organization role checks.
+// It handles the common logic for member, admin, and owner middleware.
+func (p *Plugin) requireOrganizationRole(checker orgRoleChecker) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Get user from context (populated by AuthMiddleware)
+			user, err := core.GetUser(r.Context())
+			if err != nil {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			orgID := core.GetPathParam(r, "id")
+			if orgID == "" {
+				http.Error(w, "Organization ID required", http.StatusBadRequest)
+				return
+			}
+
+			// Check role using the provided checker function
+			hasRole, err := checker(r.Context(), user.ID, orgID)
+			if err != nil || !hasRole {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 
 // RequireOrganizationMemberMiddleware enforces organization membership.
 //
@@ -32,31 +66,7 @@ import (
 //	    ),
 //	)
 func (p *Plugin) RequireOrganizationMemberMiddleware() func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Get user from context (populated by AuthMiddleware)
-			user, err := core.GetUser(r.Context())
-			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			orgID := core.GetPathParam(r, "id")
-			if orgID == "" {
-				http.Error(w, "Organization ID required", http.StatusBadRequest)
-				return
-			}
-
-			// Check if user is organization member
-			isMember, err := p.store.IsOrganizationMember(r.Context(), user.ID, orgID)
-			if err != nil || !isMember {
-				http.Error(w, "Forbidden", http.StatusForbidden)
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
-	}
+	return p.requireOrganizationRole(p.store.IsOrganizationMember)
 }
 
 // RequireOrganizationAdminMiddleware enforces admin or owner privileges.
@@ -80,31 +90,7 @@ func (p *Plugin) RequireOrganizationMemberMiddleware() func(http.Handler) http.H
 //  3. Check if user has owner OR admin role
 //  4. If yes → continue, if no → 403 Forbidden
 func (p *Plugin) RequireOrganizationAdminMiddleware() func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Get user from context (populated by AuthMiddleware)
-			user, err := core.GetUser(r.Context())
-			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			orgID := core.GetPathParam(r, "id")
-			if orgID == "" {
-				http.Error(w, "Organization ID required", http.StatusBadRequest)
-				return
-			}
-
-			// Check if user is owner or admin
-			isOwnerOrAdmin, err := p.store.IsOwnerOrAdmin(r.Context(), user.ID, orgID)
-			if err != nil || !isOwnerOrAdmin {
-				http.Error(w, "Forbidden", http.StatusForbidden)
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
-	}
+	return p.requireOrganizationRole(p.store.IsOwnerOrAdmin)
 }
 
 // RequireOrganizationOwnerMiddleware enforces owner-only access.
@@ -132,29 +118,5 @@ func (p *Plugin) RequireOrganizationAdminMiddleware() func(http.Handler) http.Ha
 // Only one owner per organization is recommended. Multiple owners complicate
 // permission management and deletion workflows.
 func (p *Plugin) RequireOrganizationOwnerMiddleware() func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Get user from context (populated by AuthMiddleware)
-			user, err := core.GetUser(r.Context())
-			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			orgID := core.GetPathParam(r, "id")
-			if orgID == "" {
-				http.Error(w, "Organization ID required", http.StatusBadRequest)
-				return
-			}
-
-			// Check if user is owner
-			isOwner, err := p.store.IsOwner(r.Context(), user.ID, orgID)
-			if err != nil || !isOwner {
-				http.Error(w, "Forbidden", http.StatusForbidden)
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
-	}
+	return p.requireOrganizationRole(p.store.IsOwner)
 }

@@ -134,7 +134,7 @@ type SessionStore interface {
 
 	// DeleteByUserID removes all sessions for a user (used during password change
 	// or when forcing all sessions to be logged out).
-	DeleteByUserID(ctx context.Context, userId string) error
+	DeleteByUserID(ctx context.Context, userID string) error
 
 	// CleanupExpired removes all expired sessions.
 	// This should be called periodically to prevent storage bloat.
