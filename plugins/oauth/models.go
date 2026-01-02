@@ -123,7 +123,7 @@ type ProviderConfig struct {
 	OverrideUserInfo      bool // Update user info on each sign-in
 
 	// Custom Functions (optional)
-	GetUserInfo func(*Tokens) (*User, error)           // Custom user info fetcher
+	GetUserInfo func(*Tokens) (*User, error)                // Custom user info fetcher
 	MapProfile  func(map[string]interface{}) (*User, error) // Profile mapper
 }
 
