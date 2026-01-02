@@ -4,33 +4,73 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/theinventorylib/aegis/db"
-	"github.com/theinventorylib/aegis/models"
+	"github.com/theinventorylib/aegis/auth"
 )
 
-// SessionService handles session management
+// SessionService manages user session lifecycle including creation, validation,
+// refresh, and invalidation. It provides optional Redis-based caching for
+// high-performance session lookups in high-traffic applications.
+//
+// Key features:
+//   - Token-based authentication with access and refresh tokens
+//   - Optional Redis caching layer for fast session validation
+//   - Session expiry and refresh token rotation
+//   - IP address and user agent tracking for security auditing
+//   - Bulk session invalidation (logout all devices)
+//
+// The service is safe for concurrent use and should be shared across handlers.
 type SessionService struct {
-	db                db.Provider
-	config            *SessionConfig
-	redisClient       *redis.Client
-	bearerAuthEnabled bool         // Controls whether Bearer token auth is enabled
-	mu                sync.RWMutex // Protects bearerAuthEnabled
+	// userStore retrieves user data during session validation
+	userStore auth.UserStore
+
+	// sessionStore persists sessions to the database
+	sessionStore auth.SessionStore
+
+	// config holds session duration and Redis settings
+	config *SessionConfig
+
+	// cookieManager handles secure cookie operations
+	cookieManager *CookieManager
+
+	// redisClient enables session caching (nil if caching disabled)
+	redisClient *redis.Client
+
+	// bearerAuthEnabled indicates if bearer token auth is supported
+	bearerAuthEnabled bool
+
+	// mu protects concurrent access to bearerAuthEnabled
+	mu sync.RWMutex
+
+	// auditLogger records session creation and validation events
+	auditLogger AuditLogger
 }
 
-// NewSessionService creates a new session service
-func NewSessionService(database db.Provider, cfg *SessionConfig) *SessionService {
+// NewSessionService creates a new session service with optional Redis caching.
+//
+// Parameters:
+//   - userStore: Storage for user lookups during session validation
+//   - sessionStore: Storage for session persistence
+//   - cfg: Session configuration (expiry, Redis settings). Uses defaults if nil.
+//   - auditLogger: Logger for security events. Uses no-op if nil.
+//
+// If cfg.Redis is provided, a Redis client is created for session caching.
+// This significantly improves performance by avoiding database queries for
+// every authenticated request.
+func NewSessionService(userStore auth.UserStore, sessionStore auth.SessionStore, cfg *SessionConfig, auditLogger AuditLogger) *SessionService {
 	if cfg == nil {
 		cfg = DefaultSessionConfig()
 	}
+	if auditLogger == nil {
+		auditLogger = &NoOpAuditLogger{}
+	}
 
 	var redisClient *redis.Client
-
-	// Initialize Redis if configured
 	if cfg.Redis != nil {
 		redisClient = redis.NewClient(&redis.Options{
 			Addr:     fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
@@ -40,43 +80,48 @@ func NewSessionService(database db.Provider, cfg *SessionConfig) *SessionService
 	}
 
 	return &SessionService{
-		db:          database,
-		config:      cfg,
-		redisClient: redisClient,
+		userStore:     userStore,
+		sessionStore:  sessionStore,
+		config:        cfg,
+		cookieManager: NewCookieManager(cfg),
+		redisClient:   redisClient,
+		auditLogger:   auditLogger,
 	}
 }
 
-// GetRedisClient returns the Redis client (if configured)
-func (s *SessionService) GetRedisClient() *redis.Client {
-	return s.redisClient
-}
+// CreateSession creates a new authenticated session for a user.
+//
+// Generates cryptographically secure random tokens for both session access
+// and refresh tokens. The session is persisted to the database and optionally
+// cached in Redis for fast subsequent lookups.
+//
+// Parameters:
+//   - ctx: Request context for cancellation
+//   - user: The authenticated user to create a session for
+//   - ipAddress: Client IP address for security auditing
+//   - userAgent: Client user agent for security auditing
+//
+// Returns the created session with populated Token and RefreshToken fields.
+// These tokens should be sent to the client (typically via HTTP-only cookies
+// or Authorization header).
+//
+// Logs a successful login audit event upon session creation.
+func (s *SessionService) CreateSession(ctx context.Context, user *auth.User, ipAddress, userAgent string) (*auth.Session, error) {
+	uid := user.GetID()
 
-// CreateSession creates a new session for a user
-func (s *SessionService) CreateSession(ctx context.Context, user *models.User, ipAddress, userAgent string) (*models.Session, error) {
-	var token, refreshToken string
-	var expiresAt time.Time
-
-	// Fallback to simple random token generation
-	var err error
-	token, err = generateRandomToken()
+	token, err := generateRandomToken()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate access token: %w", err)
+		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate access token", err)
 	}
-	refreshToken, err = generateRandomToken()
+	refreshToken, err := generateRandomToken()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate refresh token", err)
 	}
-	expiresAt = time.Now().Add(s.config.SessionExpiry)
+	expiresAt := time.Now().Add(s.config.SessionExpiry)
 
-	// Generate a session ID; avoid panicking on entropy failures by returning an error
-	sid, err := GenerateSessionID()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate session id: %w", err)
-	}
-
-	session := &models.Session{
-		ID:           sid,
-		UserID:       user.ID,
+	session := auth.Session{
+		ID:           GenerateID(),
+		UserID:       uid,
 		Token:        token,
 		RefreshToken: refreshToken,
 		ExpiresAt:    expiresAt,
@@ -85,135 +130,220 @@ func (s *SessionService) CreateSession(ctx context.Context, user *models.User, i
 		UserAgent:    userAgent,
 	}
 
-	if err := s.db.CreateSession(ctx, session); err != nil {
-		return nil, fmt.Errorf("failed to create session: %w", err)
+	if err := s.sessionStore.Create(ctx, session); err != nil {
+		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to create session", err)
 	}
 
-	return session, nil
+	if s.redisClient != nil {
+		s.cacheSession(ctx, &session)
+	}
+
+	s.auditLogger.LogAuthEvent(ctx, AuditEventLoginSuccess, uid, ipAddress, userAgent, true, nil)
+	return &session, nil
 }
 
-// ValidateSession validates a session token
-func (s *SessionService) ValidateSession(ctx context.Context, tokenString string) (*models.Session, *models.User, error) {
-	var userID string
+// ValidateSession validates a session token and returns the session and user.
+//
+// The validation flow:
+//  1. Check Redis cache if available (fast path)
+//  2. Fall back to database lookup if not cached
+//  3. Verify session hasn't expired
+//  4. Load associated user data
+//  5. Cache the session in Redis for future requests
+//
+// This method is called on every authenticated request, so caching is critical
+// for performance in production deployments.
+//
+// Parameters:
+//   - ctx: Request context for cancellation
+//   - tokenString: The session token to validate
+//
+// Returns:
+//   - *auth.Session: The valid session
+//   - *auth.User: The user associated with this session
+//   - error: AuthErrorCodeTokenExpired if expired, AuthErrorCodeSessionInvalid
+//     if not found, AuthErrorCodeUserNotFound if user was deleted
+func (s *SessionService) ValidateSession(ctx context.Context, tokenString string) (*auth.Session, *auth.User, error) {
+	var session *auth.Session
+	var err error
 
-	// Fallback: validate by database lookup only
-	session, err := s.db.GetSession(ctx, tokenString)
+	if s.redisClient != nil {
+		session, err = s.getSessionFromCache(ctx, tokenString)
+		if err == nil && session != nil {
+			if time.Now().After(session.ExpiresAt) {
+				s.invalidateSessionCache(ctx, session)
+				return nil, nil, NewAuthError(AuthErrorCodeTokenExpired, "session expired")
+			}
+			user, err := s.userStore.GetByID(ctx, session.UserID)
+			if err != nil {
+				return nil, nil, NewAuthErrorWithCause(AuthErrorCodeUserNotFound, "user not found", err)
+			}
+			return session, &user, nil
+		}
+	}
+
+	dbSession, err := s.sessionStore.GetByToken(ctx, tokenString)
 	if err != nil {
-		return nil, nil, fmt.Errorf("session not found: %w", err)
+		return nil, nil, NewAuthErrorWithCause(AuthErrorCodeSessionInvalid, "session not found", err)
 	}
 
-	// Check if session is expired
+	session = &dbSession
 	if time.Now().After(session.ExpiresAt) {
-		return nil, nil, fmt.Errorf("session expired")
+		return nil, nil, NewAuthError(AuthErrorCodeTokenExpired, "session expired")
 	}
 
-	userID = session.UserID
-
-	// Check if session is expired (additional check for plugin tokens)
-	if time.Now().After(session.ExpiresAt) {
-		return nil, nil, fmt.Errorf("session expired")
+	if s.redisClient != nil {
+		s.cacheSession(ctx, session)
 	}
 
-	// Get user
-	user, err := s.db.GetUserByID(ctx, userID)
+	user, err := s.userStore.GetByID(ctx, session.UserID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("user not found: %w", err)
+		return nil, nil, NewAuthErrorWithCause(AuthErrorCodeUserNotFound, "user not found", err)
 	}
 
-	return session, user, nil
+	return session, &user, nil
 }
 
-// DeleteSession deletes a session and blacklists the token
+// cacheSession stores a session in Redis for fast validation lookups.
+//
+// Caching strategy:
+//   - Session token -> session data (TTL = session expiry)
+//   - Refresh token -> session data (TTL = refresh expiry)
+//   - User ID -> set of session IDs (for bulk invalidation)
+//
+// This allows:
+//   - Fast session validation without database queries
+//   - Refresh token lookup
+//   - Efficient "logout all devices" by invalidating all user sessions
+//
+// This method is a no-op if Redis is not configured.
+func (s *SessionService) cacheSession(ctx context.Context, session *auth.Session) {
+	if s.redisClient == nil || session == nil {
+		return
+	}
+	sessionJSON, _ := json.Marshal(session)
+	ttl := time.Until(session.ExpiresAt)
+	if ttl <= 0 {
+		return
+	}
+	_ = s.redisClient.Set(ctx, RedisSessionPrefix+session.Token, sessionJSON, ttl).Err()
+	if session.RefreshToken != "" {
+		_ = s.redisClient.Set(ctx, RedisRefreshTokenPrefix+session.RefreshToken, sessionJSON, s.config.RefreshExpiry).Err()
+	}
+	_ = s.redisClient.SAdd(ctx, RedisUserSessionsPrefix+session.UserID, session.ID).Err()
+}
+
+// invalidateSessionCache removes session from Redis cache
+func (s *SessionService) invalidateSessionCache(ctx context.Context, session *auth.Session) {
+	if s.redisClient == nil || session == nil {
+		return
+	}
+	_ = s.redisClient.Del(ctx, RedisSessionPrefix+session.Token).Err()
+	if session.RefreshToken != "" {
+		_ = s.redisClient.Del(ctx, RedisRefreshTokenPrefix+session.RefreshToken).Err()
+	}
+	_ = s.redisClient.SRem(ctx, RedisUserSessionsPrefix+session.UserID, session.ID).Err()
+}
+
+// getSessionFromCache retrieves session from Redis cache
+func (s *SessionService) getSessionFromCache(ctx context.Context, token string) (*auth.Session, error) {
+	res, err := s.redisClient.Get(ctx, RedisSessionPrefix+token).Result()
+	if err != nil {
+		return nil, err
+	}
+	var session auth.Session
+	if err := json.Unmarshal([]byte(res), &session); err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+// DeleteSession deletes a session and invalidates cache
 func (s *SessionService) DeleteSession(ctx context.Context, token string) error {
-	// Delete from database
-	return s.db.DeleteSession(ctx, token)
+	session, _ := s.sessionStore.GetByToken(ctx, token)
+	err := s.sessionStore.Delete(ctx, token)
+	if err == nil {
+		s.invalidateSessionCache(ctx, &session)
+		s.auditLogger.LogAuthEvent(ctx, AuditEventLogout, session.UserID, session.IPAddress, session.UserAgent, true, nil)
+	}
+	return err
 }
 
 // RefreshSession refreshes a session using a refresh token
-func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string) (*models.Session, error) {
-	// Get session by refresh token
-	session, sErr := s.db.GetSessionByRefreshToken(ctx, refreshToken)
-	if sErr != nil {
-		return nil, fmt.Errorf("invalid refresh token: %w", sErr)
+func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string) (*auth.Session, error) {
+	session, err := s.sessionStore.GetByRefreshToken(ctx, refreshToken)
+	if err != nil {
+		return nil, NewAuthErrorWithCause(AuthErrorCodeTokenInvalid, "invalid refresh token", err)
 	}
 
-	// Fallback: generate new simple tokens
-	var err error
-	session.Token, err = generateRandomToken()
+	s.invalidateSessionCache(ctx, &session)
+
+	token, err := generateRandomToken()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate access token: %w", err)
+		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate access token", err)
 	}
-	session.RefreshToken, err = generateRandomToken()
+	newRefreshToken, err := generateRandomToken()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate refresh token", err)
 	}
+	session.Token = token
+	session.RefreshToken = newRefreshToken
 	session.ExpiresAt = time.Now().Add(s.config.SessionExpiry)
 
-	if err := s.db.UpdateSession(ctx, session); err != nil {
-		return nil, fmt.Errorf("failed to update session: %w", err)
+	if err := s.sessionStore.Update(ctx, session); err != nil {
+		return nil, err
 	}
 
-	return session, nil
-}
-
-// GenerateSessionID generates a random ID for sessions
-func GenerateSessionID() (string, error) {
-	// Try to read cryptographically secure random bytes; return an error if unavailable
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("failed to generate session id: %w", err)
+	if s.redisClient != nil {
+		s.cacheSession(ctx, &session)
 	}
-	return base64.URLEncoding.EncodeToString(bytes), nil
+
+	return &session, nil
 }
 
-// generateRandomToken generates a random token for fallback authentication
 func generateRandomToken() (string, error) {
-	bytes := make([]byte, 32)
+	bytes := make([]byte, TokenLength)
 	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("failed to generate random token: %w", err)
+		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
-// GetConfig returns the session configuration (useful for middleware)
-func (s *SessionService) GetConfig() *SessionConfig {
-	return s.config
-}
-
-// GetDB returns the database provider (useful for handlers)
-func (s *SessionService) GetDB() db.Provider {
-	return s.db
-}
-
-// EnableBearerAuth enables Bearer token authentication.
-// This should be called by the bearer plugin during initialization.
 func (s *SessionService) EnableBearerAuth() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.bearerAuthEnabled = true
 }
 
-// IsBearerAuthEnabled returns whether Bearer token authentication is enabled.
-// The core AuthMiddleware checks this before attempting to extract Bearer tokens.
 func (s *SessionService) IsBearerAuthEnabled() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.bearerAuthEnabled
 }
 
-// CreateSessionForPlugin creates a new session (interface implementation for plugins)
-// func (s *SessionService) CreateSessionForPlugin(ctx context.Context, user models.User, ipAddress, userAgent string) (interface{}, error) {
-// 	// context, ok := ctx.(context.Context)
-// 	// if !ok {
-// 	// 	return nil, fmt.Errorf("invalid context type")
-// 	// }
-// 	// u, ok := user.(*User)
-// 	// if !ok {
-// 	// 	return nil, fmt.Errorf("invalid user type")
-// 	// }
-// 	session, err := s.CreateSession(ctx, user, ipAddress, userAgent)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return session, nil
-// }
+func (s *SessionService) GetConfig() *SessionConfig        { return s.config }
+func (s *SessionService) GetCookieManager() *CookieManager { return s.cookieManager }
+func (s *SessionService) GetRedisClient() *redis.Client    { return s.redisClient }
+
+// Logout deletes a session by token (alias for DeleteSession)
+func (s *SessionService) Logout(ctx context.Context, token string) error {
+	return s.DeleteSession(ctx, token)
+}
+
+// GetUserSessions retrieves all active sessions for a user
+func (s *SessionService) GetUserSessions(ctx context.Context, userID string) ([]*auth.Session, error) {
+	sessions, err := s.sessionStore.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*auth.Session, len(sessions))
+	for i := range sessions {
+		result[i] = &sessions[i]
+	}
+	return result, nil
+}
+
+// DeleteUserSessions deletes all sessions for a user
+func (s *SessionService) DeleteUserSessions(ctx context.Context, userID string) error {
+	return s.sessionStore.DeleteByUserID(ctx, userID)
+}

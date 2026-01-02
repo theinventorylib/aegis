@@ -7,20 +7,6 @@
 
 ---
 
-## 📚 Documentation
-
-**[Visit the Full Documentation Site](https://theinventorylib.github.io/aegis/)** (or browse the [`docs/`](./docs) folder locally).
-
-### Quick Links
-
-- [**Getting Started**](./docs/getting-started.md)
-- [**Core Concepts**](./docs/core-concepts.md)
-- [**Plugins**](./docs/plugins.md)
-- [**CLI Reference**](./docs/cli.md)
-- [**Contributing**](./docs/contributing.md)
-
----
-
 ## ✨ Features
 
 ### Core Authentication
@@ -60,7 +46,7 @@ go install github.com/theinventorylib/aegis/cmd/aegis@latest
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see [CONTRIBUTING](./docs/contributing.md) for details.
+We welcome contributions! See [.github/COMMIT_GUIDE.md](./.github/COMMIT_GUIDE.md) for commit conventions and [.github/RELEASE.md](./.github/RELEASE.md) for release process.
 
 ## 📄 License
 

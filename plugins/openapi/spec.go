@@ -1,4 +1,4 @@
-// Package openapi provides OpenAPI 3.0 documentation generation for Aegis.
+// Package openapi provides OpenAPI 3.0 specification types and generation.
 package openapi
 
 import (
@@ -7,17 +7,41 @@ import (
 )
 
 // Spec represents an OpenAPI 3.0 specification document.
+//
+// This is the root object of an OpenAPI 3.0 document, containing all
+// metadata, paths, components, and security definitions.
+//
+// Spec Structure:
+//   - OpenAPI: Version ("3.0.3")
+//   - Info: API metadata (title, version, description)
+//   - Servers: API server URLs (dev, staging, production)
+//   - Paths: All API endpoints and operations
+//   - Components: Reusable schemas, security schemes
+//   - Security: Global security requirements
+//   - Tags: Endpoint categorization
 type Spec struct {
-	OpenAPI    string                `json:"openapi"`
-	Info       Info                  `json:"info"`
-	Servers    []Server              `json:"servers,omitempty"`
-	Paths      map[string]*PathItem  `json:"paths"`
-	Components *Components           `json:"components,omitempty"`
-	Security   []SecurityRequirement `json:"security,omitempty"`
-	Tags       []Tag                 `json:"tags,omitempty"`
+	OpenAPI    string                `json:"openapi"`              // OpenAPI version (3.0.3)
+	Info       Info                  `json:"info"`                 // API metadata
+	Servers    []Server              `json:"servers,omitempty"`    // Server URLs
+	Paths      map[string]*PathItem  `json:"paths"`                // API endpoints
+	Components *Components           `json:"components,omitempty"` // Reusable components
+	Security   []SecurityRequirement `json:"security,omitempty"`   // Global security
+	Tags       []Tag                 `json:"tags,omitempty"`       // Endpoint tags
 }
 
 // Info provides metadata about the API.
+//
+// Example:
+//
+//	info := Info{
+//	  Title:       "Aegis API",
+//	  Version:     "1.0.0",
+//	  Description: "Authentication API",
+//	  Contact: &Contact{
+//	    Name:  "API Support",
+//	    Email: "support@example.com",
+//	  },
+//	}
 type Info struct {
 	Title          string   `json:"title"`
 	Description    string   `json:"description,omitempty"`
@@ -68,6 +92,24 @@ type PathItem struct {
 }
 
 // Operation describes a single API operation on a path.
+//
+// This represents an HTTP method (GET, POST, etc.) on a specific path.
+// Each operation defines:
+//   - Request requirements (parameters, body)
+//   - Response definitions (status codes, schemas)
+//   - Security requirements
+//   - Metadata (tags, summary, description)
+//
+// Example:
+//
+//	op := &Operation{
+//	  Tags:        []string{"Authentication"},
+//	  Summary:     "Login",
+//	  Description: "Authenticate user with email and password",
+//	  RequestBody: &RequestBody{...},
+//	  Responses:   map[string]*Response{...},
+//	  Security:    []SecurityRequirement{{"cookieAuth": []string{}}},
+//	}
 type Operation struct {
 	Tags        []string              `json:"tags,omitempty"`
 	Summary     string                `json:"summary,omitempty"`

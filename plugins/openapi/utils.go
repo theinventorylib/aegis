@@ -1,7 +1,21 @@
 package openapi
 
+// ========== SCHEMA UTILITY FUNCTIONS ==========
+//
+// These functions provide a fluent API for building OpenAPI schemas.
+// They are used internally by the spec generator and can be used by
+// plugins to manually define custom schemas.
+
 // addCommonSchemas adds common reusable schemas to the spec.
-// Now uses auto-generation from actual Go types to ensure schemas stay in sync.
+//
+// This function adds standard response schemas:
+//   - Error: {"success": false, "error": "message"}
+//   - Success: {"success": true, "message": "message"}
+//
+// These schemas are referenced by core routes and plugins.
+//
+// Note: User and Session schemas are auto-registered from Go types
+// during Init() to ensure they stay in sync with model definitions.
 func addCommonSchemas(spec *Spec) {
 	// Error response schema - manually defined as it's a simple structure
 	spec.AddSchema("Error", ObjectSchema("Error response", map[string]*Schema{
@@ -20,6 +34,19 @@ func addCommonSchemas(spec *Spec) {
 }
 
 // addCoreRoutes adds core Aegis authentication routes to the spec.
+//
+// This function documents the core authentication endpoints that are
+// always available in Aegis:
+//   - POST /refresh - Refresh session with refresh token
+//   - POST /logout  - Invalidate current session
+//
+// These routes are added during plugin initialization and serve as
+// baseline documentation. Plugin routes are added dynamically via
+// route metadata collection.
+//
+// Parameters:
+//   - spec: OpenAPI spec to add routes to
+//   - basePath: Base path for routes (e.g., "/auth")
 func addCoreRoutes(spec *Spec, basePath string) {
 	// Session refresh endpoint
 	spec.AddPath(basePath+"/refresh", &PathItem{

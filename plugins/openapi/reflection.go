@@ -8,7 +8,13 @@ import (
 	"time"
 )
 
-// Regular expressions for parsing validation tags
+// Regular expressions for parsing validation tags.
+//
+// These patterns extract validation constraints from Go struct tags:
+//   - lengthRegex: Length(3,50) -> min=3, max=50
+//   - matchRegex: Match(^[a-z]+$) -> pattern=^[a-z]+$
+//   - inRegex: In(active,inactive) -> enum=[active,inactive]
+//   - minMaxRegex: Min(1), Max(100) -> minimum=1, maximum=100
 var (
 	lengthRegex = regexp.MustCompile(`Length\((\d+),\s*(\d+)\)`)
 	matchRegex  = regexp.MustCompile(`Match\(([^)]+)\)`)
@@ -16,7 +22,42 @@ var (
 	minMaxRegex = regexp.MustCompile(`(Min|Max)\((\d+)\)`)
 )
 
-// GenerateSchema creates an OpenAPI schema from a Go struct instance.
+// GenerateSchema creates an OpenAPI schema from a Go struct instance using reflection.
+//
+// This function analyzes the struct's type information to automatically generate
+// a JSON Schema compatible with OpenAPI 3.0.
+//
+// Schema Generation:
+//  1. Inspect struct fields and types
+//  2. Parse JSON tags for field names
+//  3. Parse validation tags for constraints
+//  4. Determine required fields (non-omitempty, validation:"Required")
+//  5. Generate nested schemas for complex types
+//
+// Supported Types:
+//   - Primitives: string, int, bool, float
+//   - Complex: struct, array, map
+//   - Special: time.Time (date-time format)
+//
+// Validation Tags:
+//   - validation:"Required" -> required field
+//   - validation:"Length(3,50)" -> minLength/maxLength
+//   - validation:"Min(1),Max(100)" -> minimum/maximum
+//   - validation:"Match(^[a-z]+$)" -> pattern
+//
+// Parameters:
+//   - v: Go struct instance or pointer to struct
+//
+// Returns:
+//   - *Schema: OpenAPI schema with properties and constraints
+//
+// Example:
+//
+//	type User struct {
+//	  Name  string `json:"name" validation:"Required,Length(1,100)"`
+//	  Email string `json:"email" validation:"Required,Match(^.+@.+$)"`
+//	}
+//	schema := GenerateSchema(User{})
 func GenerateSchema(v interface{}) *Schema {
 	t := reflect.TypeOf(v)
 	if t.Kind() == reflect.Ptr {

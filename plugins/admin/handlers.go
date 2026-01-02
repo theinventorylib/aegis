@@ -1,19 +1,46 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/theinventorylib/aegis/core"
 )
 
-// ListUsersHandler lists all users
-func (p *Plugin) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
+// ========== USER MANAGEMENT HANDLERS ==========
+//
+// All handlers require admin role via RequireAdminMiddleware.
+// They provide CRUD operations for user account management.
+
+// ListUsersHandler lists all users with pagination.
+//
+// Returns raw database records to support flexible admin UIs without schema changes.
+//
+// Endpoint:
+//   - Method: GET
+//   - Path: /admin/users?page=1&limit=20
+//   - Auth: Required (admin role)
+//
+// Query Parameters:
+//   - page: Page number (default: 1)
+//   - limit: Page size (default: 20, max: 100)
+//
+// Response (200 OK):
+//
+//	{
+//	  "success": true,
+//	  "data": {
+//	    "users": [{"id": "user_1", "email": "user@example.com", ...}],
+//	    "page": 1,
+//	    "limit": 20
+//	  }
+//	}
+func (a *Admin) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 	pagination := core.ParsePagination(r)
 
 	// Use DB method
-	users, err := p.db.ListUsersRaw(r.Context(), pagination.Offset, pagination.Limit)
+	users, err := a.store.ListUsersRaw(r.Context(), pagination.Offset, pagination.Limit)
 	if err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
@@ -32,15 +59,35 @@ func (p *Plugin) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetUserHandler gets a specific user
-func (p *Plugin) GetUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.PathValue("id")
+// GetUserHandler retrieves detailed information for a specific user.
+//
+// Returns raw database record for flexible admin UI rendering.
+//
+// Endpoint:
+//   - Method: GET
+//   - Path: /admin/users/:id
+//   - Auth: Required (admin role)
+//
+// Path Parameters:
+//   - id: User ID
+//
+// Response (200 OK):
+//
+//	{
+//	  "success": true,
+//	  "data": {"id": "user_123", "email": "user@example.com", "role": "admin", ...}
+//	}
+func (a *Admin) GetUserHandler(w http.ResponseWriter, r *http.Request) {
+	userID := core.GetPathParam(r, "id")
 	if userID == "" {
-		http.Error(w, "User ID required", http.StatusBadRequest)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "User ID required",
+		})
 		return
 	}
 
-	user, err := p.db.GetUserRaw(r.Context(), userID)
+	user, err := a.store.GetUserRaw(r.Context(), userID)
 	if err != nil {
 		core.WriteJSON(w, http.StatusNotFound, &core.Response{
 			Success: false,
@@ -55,16 +102,37 @@ func (p *Plugin) GetUserHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DisableUserHandler disables a user
-func (p *Plugin) DisableUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.PathValue("id")
+// DisableUserHandler disables a user account.
+//
+// Disabled users cannot log in but their data is preserved.
+// This is a soft action compared to deletion.
+//
+// Endpoint:
+//   - Method: POST
+//   - Path: /admin/users/:id/disable
+//   - Auth: Required (admin role)
+//
+// Path Parameters:
+//   - id: User ID
+//
+// Response (200 OK):
+//
+//	{
+//	  "success": true,
+//	  "message": "User disabled"
+//	}
+func (a *Admin) DisableUserHandler(w http.ResponseWriter, r *http.Request) {
+	userID := core.GetPathParam(r, "id")
 	if userID == "" {
-		http.Error(w, "User ID required", http.StatusBadRequest)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "User ID required",
+		})
 		return
 	}
 
 	// Get user first
-	user, err := p.db.GetUserByID(r.Context(), userID)
+	user, err := a.store.GetByID(r.Context(), userID)
 	if err != nil {
 		core.WriteJSON(w, http.StatusNotFound, &core.Response{
 			Success: false,
@@ -75,7 +143,7 @@ func (p *Plugin) DisableUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Update disabled status
 	user.Disabled = true
-	if err := p.db.UpdateUser(r.Context(), user); err != nil {
+	if err := a.store.Update(r.Context(), user); err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   "Failed to disable user",
@@ -83,24 +151,41 @@ func (p *Plugin) DisableUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Kill sessions
-	_ = p.db.DeleteUserSessions(r.Context(), userID)
-
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "User disabled",
 	})
 }
 
-// EnableUserHandler enables a user
-func (p *Plugin) EnableUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.PathValue("id")
+// EnableUserHandler re-enables a disabled user account.
+//
+// Allows previously disabled users to log in again.
+//
+// Endpoint:
+//   - Method: POST
+//   - Path: /admin/users/:id/enable
+//   - Auth: Required (admin role)
+//
+// Path Parameters:
+//   - id: User ID
+//
+// Response (200 OK):
+//
+//	{
+//	  "success": true,
+//	  "message": "User enabled"
+//	}
+func (a *Admin) EnableUserHandler(w http.ResponseWriter, r *http.Request) {
+	userID := core.GetPathParam(r, "id")
 	if userID == "" {
-		http.Error(w, "User ID required", http.StatusBadRequest)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "User ID required",
+		})
 		return
 	}
 
-	user, err := p.db.GetUserByID(r.Context(), userID)
+	user, err := a.store.GetByID(r.Context(), userID)
 	if err != nil {
 		core.WriteJSON(w, http.StatusNotFound, &core.Response{
 			Success: false,
@@ -110,7 +195,7 @@ func (p *Plugin) EnableUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.Disabled = false
-	if err := p.db.UpdateUser(r.Context(), user); err != nil {
+	if err := a.store.Update(r.Context(), user); err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   "Failed to enable user",
@@ -124,15 +209,35 @@ func (p *Plugin) EnableUserHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DeleteUserHandler deletes a user
-func (p *Plugin) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.PathValue("id")
+// DeleteUserHandler permanently deletes a user account.
+//
+// This is a destructive operation. Consider disabling users instead to preserve data.
+//
+// Endpoint:
+//   - Method: DELETE
+//   - Path: /admin/users/:id
+//   - Auth: Required (admin role)
+//
+// Path Parameters:
+//   - id: User ID
+//
+// Response (200 OK):
+//
+//	{
+//	  "success": true,
+//	  "message": "User deleted"
+//	}
+func (a *Admin) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+	userID := core.GetPathParam(r, "id")
 	if userID == "" {
-		http.Error(w, "User ID required", http.StatusBadRequest)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "User ID required",
+		})
 		return
 	}
 
-	if err := p.db.DeleteUser(r.Context(), userID); err != nil {
+	if err := a.store.Delete(r.Context(), userID); err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   "Failed to delete user",
@@ -146,20 +251,50 @@ func (p *Plugin) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// BanUserHandler bans a user
-func (p *Plugin) BanUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.PathValue("id")
+// ========== BAN MANAGEMENT HANDLERS ==========
+
+// BanUserHandler bans a user with a reason and optional expiry date.
+//
+// Bans prevent users from accessing the platform. Increments ban_counter for
+// tracking repeat offenders.
+//
+// Endpoint:
+//   - Method: POST
+//   - Path: /admin/users/:id/ban
+//   - Auth: Required (admin role)
+//
+// Path Parameters:
+//   - id: User ID
+//
+// Request Body:
+//
+//	{
+//	  "reason": "Spam",
+//	  "expiresAt": "2024-12-31T23:59:59Z"  // Optional, null for permanent
+//	}
+//
+// Response (200 OK):
+//
+//	{
+//	  "success": true,
+//	  "message": "User banned"
+//	}
+func (a *Admin) BanUserHandler(w http.ResponseWriter, r *http.Request) {
+	userID := core.GetPathParam(r, "id")
 	if userID == "" {
-		http.Error(w, "User ID required", http.StatusBadRequest)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "User ID required",
+		})
 		return
 	}
 
-	var req struct {
-		Reason    string    `json:"reason"`
-		ExpiresAt time.Time `json:"expiresAt"`
-	}
+	var req BanUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "Invalid request",
+		})
 		return
 	}
 
@@ -171,12 +306,7 @@ func (p *Plugin) BanUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var expiry interface{}
-	if !req.ExpiresAt.IsZero() {
-		expiry = req.ExpiresAt
-	}
-
-	if err := p.db.BanUser(r.Context(), userID, req.Reason, expiry); err != nil {
+	if err := a.store.BanUser(r.Context(), userID, req.Reason, req.ExpiresAt); err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   "Failed to ban user",
@@ -184,24 +314,41 @@ func (p *Plugin) BanUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Kill sessions
-	_ = p.db.DeleteUserSessions(r.Context(), userID)
-
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "User banned",
 	})
 }
 
-// UnbanUserHandler unbans a user
-func (p *Plugin) UnbanUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.PathValue("id")
+// UnbanUserHandler removes the ban from a user account.
+//
+// Allows banned users to access the platform again.
+//
+// Endpoint:
+//   - Method: POST
+//   - Path: /admin/users/:id/unban
+//   - Auth: Required (admin role)
+//
+// Path Parameters:
+//   - id: User ID
+//
+// Response (200 OK):
+//
+//	{
+//	  "success": true,
+//	  "message": "User unbanned"
+//	}
+func (a *Admin) UnbanUserHandler(w http.ResponseWriter, r *http.Request) {
+	userID := core.GetPathParam(r, "id")
 	if userID == "" {
-		http.Error(w, "User ID required", http.StatusBadRequest)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "User ID required",
+		})
 		return
 	}
 
-	if err := p.db.UnbanUser(r.Context(), userID); err != nil {
+	if err := a.store.UnbanUser(r.Context(), userID); err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
 			Error:   "Failed to unban user",
@@ -215,135 +362,27 @@ func (p *Plugin) UnbanUserHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// AddOrganizationHandler creates a new organization
-func (p *Plugin) AddOrganizationHandler(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name    string `json:"name"`
-		Slug    string `json:"slug"`
-		OwnerID string `json:"ownerId"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
+// ========== STATISTICS HANDLERS ==========
 
-	if req.Name == "" || req.Slug == "" || req.OwnerID == "" {
-		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
-			Success: false,
-			Error:   "Name, slug, and ownerId are required",
-		})
-		return
-	}
-
-	id := core.GenerateID()
-	org, err := p.db.CreateOrganization(r.Context(), id, req.Name, req.Slug, req.OwnerID)
-	if err != nil {
-		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
-			Success: false,
-			Error:   "Failed to create organization",
-		})
-		return
-	}
-
-	core.WriteJSON(w, http.StatusCreated, &core.Response{
-		Success: true,
-		Data:    org,
-	})
-}
-
-// ListOrganizationsHandler lists all organizations
-func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request) {
-	pagination := core.ParsePagination(r)
-
-	orgs, err := p.db.ListOrganizations(r.Context(), pagination.Offset, pagination.Limit)
-	if err != nil {
-		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
-			Success: false,
-			Error:   "Failed to list organizations",
-		})
-		return
-	}
-
-	core.WriteJSON(w, http.StatusOK, &core.Response{
-		Success: true,
-		Data: map[string]interface{}{
-			"organizations": orgs,
-			"page":          pagination.Page,
-			"limit":         pagination.Limit,
-		},
-	})
-}
-
-// GetOrganizationHandler gets a specific organization
-func (p *Plugin) GetOrganizationHandler(w http.ResponseWriter, r *http.Request) {
-	orgID := r.PathValue("id")
-	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
-		return
-	}
-
-	org, err := p.db.GetOrganization(r.Context(), orgID)
-	if err != nil {
-		core.WriteJSON(w, http.StatusNotFound, &core.Response{
-			Success: false,
-			Error:   "Organization not found",
-		})
-		return
-	}
-
-	core.WriteJSON(w, http.StatusOK, &core.Response{
-		Success: true,
-		Data:    org,
-	})
-}
-
-// BanOrganizationHandler bans an organization
-func (p *Plugin) BanOrganizationHandler(w http.ResponseWriter, r *http.Request) {
-	orgID := r.PathValue("id")
-	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
-		return
-	}
-
-	if err := p.db.BanOrganization(r.Context(), orgID); err != nil {
-		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
-			Success: false,
-			Error:   "Failed to ban organization",
-		})
-		return
-	}
-
-	core.WriteJSON(w, http.StatusOK, &core.Response{
-		Success: true,
-		Message: "Organization banned",
-	})
-}
-
-// DeleteOrganizationHandler deletes an organization
-func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Request) {
-	orgID := r.PathValue("id")
-	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
-		return
-	}
-
-	if err := p.db.DeleteOrganization(r.Context(), orgID); err != nil {
-		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
-			Success: false,
-			Error:   "Failed to delete organization",
-		})
-		return
-	}
-
-	core.WriteJSON(w, http.StatusOK, &core.Response{
-		Success: true,
-		Message: "Organization deleted",
-	})
-}
-
-// GetStatsHandler returns platform statistics
-func (p *Plugin) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
-	stats, err := p.db.GetStats(r.Context())
+// GetStatsHandler returns platform statistics.
+//
+// Provides high-level metrics for admin dashboards.
+//
+// Endpoint:
+//   - Method: GET
+//   - Path: /admin/stats
+//   - Auth: Required (admin role)
+//
+// Response (200 OK):
+//
+//	{
+//	  "success": true,
+//	  "data": {
+//	    "totalUsers": 1234
+//	  }
+//	}
+func (a *Admin) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
+	stats, err := a.store.GetStats(r.Context())
 	if err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
@@ -356,4 +395,69 @@ func (p *Plugin) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Data:    stats,
 	})
+}
+
+// ========== ROLE MANAGEMENT HELPERS ==========
+//
+// These methods provide programmatic access to role management,
+// useful for integration with other plugins or custom logic.
+
+// AssignRole assigns a role to a user programmatically.
+//
+// Parameters:
+//   - ctx: Request context
+//   - userID: Target user ID
+//   - role: Role to assign (e.g., "admin", "moderator")
+//
+// Returns:
+//   - error: If database operation fails
+func (a *Admin) AssignRole(ctx context.Context, userID string, role string) error {
+	return a.store.AssignRole(ctx, userID, role)
+}
+
+// GetUserRole retrieves the role of a user programmatically.
+//
+// Parameters:
+//   - ctx: Request context
+//   - userID: Target user ID
+//
+// Returns:
+//   - string: User's role (empty string if no role assigned)
+//   - error: If database operation fails
+func (a *Admin) GetUserRole(ctx context.Context, userID string) (string, error) {
+	return a.store.GetRole(ctx, userID)
+}
+
+// RemoveRole removes a role from a user programmatically.
+//
+// Parameters:
+//   - ctx: Request context
+//   - userID: Target user ID
+//   - role: Role to remove
+//
+// Returns:
+//   - error: If database operation fails
+func (a *Admin) RemoveRole(ctx context.Context, userID string, role string) error {
+	return a.store.RemoveRole(ctx, userID, role)
+}
+
+// GetAdminUser retrieves a user with admin-specific information.
+//
+// This includes role, ban status, and ban details.
+//
+// Parameters:
+//   - ctx: Request context
+//   - userID: Target user ID
+//
+// Returns:
+//   - User: User with admin fields populated
+//   - error: If user not found or database error
+func (a *Admin) GetAdminUser(ctx context.Context, userID string) (User, error) {
+	// Get user from store
+	user, err := a.store.GetByID(ctx, userID)
+	if err != nil {
+		return User{}, err
+	}
+
+	return user, nil
 }

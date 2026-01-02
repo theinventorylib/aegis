@@ -1,49 +1,135 @@
 package admin
 
-import "github.com/theinventorylib/aegis/plugins"
+import (
+	"embed"
+	"fmt"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 
-// GetMigrations returns plugin migrations
-func (p *Plugin) GetMigrations() []plugins.Migration {
-	return []plugins.Migration{
-		{
-			Version:     "001",
-			Description: "Add RBAC and ban management fields to user table",
-			Up: `
--- Add role-based access control field
-ALTER TABLE auth.user ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
-ALTER TABLE auth.user ADD CONSTRAINT user_role_check CHECK (role IN ('user', 'admin'));
+	"github.com/theinventorylib/aegis/plugins"
+)
 
--- Add ban management fields
-ALTER TABLE auth.user ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE auth.user ADD COLUMN IF NOT EXISTS ban_reason TEXT;
-ALTER TABLE auth.user ADD COLUMN IF NOT EXISTS ban_expiry TIMESTAMP WITH TIME ZONE;
-ALTER TABLE auth.user ADD COLUMN IF NOT EXISTS ban_counter INTEGER NOT NULL DEFAULT 0;
+//go:embed internal/sql/*/*.sql
+var schemaFS embed.FS
 
--- Create index for role lookups
-CREATE INDEX IF NOT EXISTS idx_user_role ON auth.user(role);
+//go:embed migrations/*/*.sql
+var migrationFS embed.FS
 
--- Create index for ban status
-CREATE INDEX IF NOT EXISTS idx_user_banned ON auth.user(banned) WHERE banned = true;
-
--- Create index for ban expiry (for automatic unbanning)
-CREATE INDEX IF NOT EXISTS idx_user_ban_expiry ON auth.user(ban_expiry) WHERE ban_expiry IS NOT NULL;
-`,
-			Down: `
--- Remove indexes
-DROP INDEX IF EXISTS auth.idx_user_ban_expiry;
-DROP INDEX IF EXISTS auth.idx_user_banned;
-DROP INDEX IF EXISTS auth.idx_user_role;
-
--- Remove ban management fields
-ALTER TABLE auth.user DROP COLUMN IF EXISTS ban_counter;
-ALTER TABLE auth.user DROP COLUMN IF EXISTS ban_expiry;
-ALTER TABLE auth.user DROP COLUMN IF EXISTS ban_reason;
-ALTER TABLE auth.user DROP COLUMN IF EXISTS banned;
-
--- Remove role field and constraint
-ALTER TABLE auth.user DROP CONSTRAINT IF EXISTS user_role_check;
-ALTER TABLE auth.user DROP COLUMN IF EXISTS role;
-`,
-		},
+// GetMigrations returns all database migrations for the admin plugin.
+//
+// This function loads migrations from embedded SQL files and returns them in
+// version order. The initial schema is always treated as version 001.
+//
+// Version Numbering:
+//   - Version 001: Initial schema from internal/sql/<dialect>/schema.sql
+//   - Version 002+: Additional migrations from migrations/<dialect>/<version>_<description>.<up|down>.sql
+//
+// Migration File Format:
+//   - Up migration: 002_add_ban_fields.up.sql
+//   - Down migration: 002_add_ban_fields.down.sql
+//
+// Parameters:
+//   - dialect: Database dialect (postgres, mysql, sqlite)
+//
+// Returns:
+//   - []plugins.Migration: Sorted list of migrations (oldest first)
+//   - error: If schema files cannot be read or parsed
+func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
+	// Load initial schema as version 001
+	schemaPath := fmt.Sprintf("internal/sql/%s/schema.sql", dialect)
+	schemaContent, err := schemaFS.ReadFile(schemaPath)
+	if err != nil {
+		return nil, fmt.Errorf("read schema file for %s: %w", dialect, err)
 	}
+	initial := plugins.Migration{
+		Version:     1,
+		Description: "initial",
+		Up:          string(schemaContent),
+		Down:        "", // No down migration for initial schema
+	}
+
+	migrations := make(map[int]*plugins.Migration)
+	migrations[1] = &initial
+
+	// Load additional migrations from migrations/<dialect>/ directory
+	dir := fmt.Sprintf("migrations/%s", dialect)
+	entries, err := migrationFS.ReadDir(dir)
+	if err != nil {
+		// If no migrations directory exists, return only initial schema
+		if strings.Contains(err.Error(), "no such file") {
+			return []plugins.Migration{initial}, nil
+		}
+		return nil, fmt.Errorf("read migrations dir for %s: %w", dialect, err)
+	}
+
+	// Parse migration files and build version map
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".sql") {
+			continue
+		}
+
+		// Parse filename format: <version>_<description>.<up|down>.sql
+		// Example: 002_add_ban_fields.up.sql
+		parts := strings.SplitN(name, "_", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		versionStr := parts[0]
+		rest := parts[1]
+
+		// Parse description and migration type
+		// rest format: description.type.sql
+		descParts := strings.SplitN(rest, ".", 2)
+		if len(descParts) != 2 {
+			continue
+		}
+		description := descParts[0]
+		typeExt := descParts[1] // type.sql
+
+		if !strings.HasSuffix(typeExt, ".sql") {
+			continue
+		}
+		migType := strings.TrimSuffix(typeExt, ".sql") // "up" or "down"
+
+		// Parse version number (must be >= 002)
+		version, err := strconv.Atoi(versionStr)
+		if err != nil || version < 2 { // Skip version 001 (handled by schema)
+			continue
+		}
+
+		content, err := migrationFS.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil, fmt.Errorf("read migration file %s: %w", name, err)
+		}
+		sql := string(content)
+
+		if migrations[version] == nil {
+			migrations[version] = &plugins.Migration{Version: version, Description: description}
+		}
+		switch migType {
+		case "up":
+			migrations[version].Up = sql
+		case "down":
+			migrations[version].Down = sql
+		}
+	}
+
+	// Convert map to slice
+	var result []plugins.Migration
+	for _, mig := range migrations {
+		result = append(result, *mig)
+	}
+
+	// Sort by version
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Version < result[j].Version
+	})
+
+	return result, nil
 }

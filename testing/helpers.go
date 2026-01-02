@@ -1,369 +1,358 @@
-// Package testing provides testing utilities and helpers for Aegis authentication framework.
+// Package testing provides shared test utilities for Aegis integration tests.
+//
+// This package contains helper functions for setting up test infrastructure:
+//   - Database setup and teardown
+//   - Redis setup and teardown
+//   - Aegis instance creation
+//   - Test user/session creation
+//
+// These helpers are designed for integration tests that require real database
+// and Redis connections. For unit tests, use mock implementations instead.
+//
+// Example usage:
+//
+//	func TestIntegration_UserFlow(t *testing.T) {
+//		aegis := testing.SetupTestAegis(t)
+//		user := testing.CreateTestUser(t, aegis, "test@example.com", "Password123!")
+//
+//		// Run test...
+//	}
 package testing
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
+	"database/sql"
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
-	"github.com/theinventorylib/aegis"
-	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/models"
-	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/server"
+	"github.com/redis/go-redis/v9"
 )
 
-// TestAegis provides a configured Aegis instance for testing.
-type TestAegis struct {
-	*aegis.Aegis
-	DB     *core.MockDB
-	Router *TestRouter
-	Config *config.Config
+// TestConfig holds configuration for test setup.
+type TestConfig struct {
+	// DatabaseURL is the connection string for the test database.
+	// Default: uses DATABASE_URL environment variable or in-memory SQLite.
+	DatabaseURL string
+
+	// RedisURL is the connection string for test Redis.
+	// Default: uses REDIS_URL environment variable or localhost:6379.
+	RedisURL string
+
+	// RedisDB is the Redis database number for tests (to isolate test data).
+	// Default: 1 (separate from production DB 0)
+	RedisDB int
+
+	// SkipRedis skips Redis setup if true.
+	// Useful for tests that don't require Redis.
+	SkipRedis bool
+
+	// SkipDatabase skips database setup if true.
+	// Useful for pure unit tests.
+	SkipDatabase bool
 }
 
-// TestRouter wraps a real router for testing.
-type TestRouter struct {
-	server.Router
-	routes map[string]http.HandlerFunc
-}
-
-// NewTestRouter creates a new test router.
-func NewTestRouter() *TestRouter {
-	mux := http.NewServeMux()
-	return &TestRouter{
-		Router: server.NewDefaultRouter(mux),
-		routes: make(map[string]http.HandlerFunc),
+// DefaultTestConfig returns the default test configuration.
+func DefaultTestConfig() *TestConfig {
+	return &TestConfig{
+		DatabaseURL:  getEnvOrDefault("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/aegis_test?sslmode=disable"),
+		RedisURL:     getEnvOrDefault("REDIS_URL", "localhost:6379"),
+		RedisDB:      1, // Use DB 1 for tests to isolate from production
+		SkipRedis:    false,
+		SkipDatabase: false,
 	}
 }
 
-// Setup creates a fully configured test Aegis instance.
+// getEnvOrDefault returns the environment variable value or a default.
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// SetupTestDB creates a test database connection.
 //
-// Example:
+// This function:
+//   - Opens a database connection using the configured URL
+//   - Verifies the connection is alive
+//   - Registers cleanup to close the connection after the test
 //
-//	func TestMyFeature(t *testing.T) {
-//	    testAegis := testing.Setup(t)
-//	    defer testAegis.Cleanup()
+// If connection fails, the test is skipped (for CI environments without DB).
 //
-//	    // Use testAegis.Aegis for testing
-//	}
-func Setup(t *testing.T, opts ...config.Option) *TestAegis {
+// Parameters:
+//   - t: Testing instance for cleanup registration
+//   - cfg: Optional configuration (uses DefaultTestConfig if nil)
+//
+// Returns:
+//   - *sql.DB: Database connection (or nil if skipped)
+func SetupTestDB(t testing.TB, cfg *TestConfig) *sql.DB {
 	t.Helper()
 
-	mockDB := core.NewMockDB()
-	router := NewTestRouter()
-
-	// Default test options
-	defaultOpts := []config.Option{
-		config.WithDB(mockDB, "postgres"),
-		config.WithRouter(router),
-		config.WithAPIOnlyMode(true),           // Skip CSRF for tests
-		config.WithSessionExpiry(24 * 60 * 60), // 24 hours
+	if cfg == nil {
+		cfg = DefaultTestConfig()
 	}
 
-	// Merge with user options
-	allOpts := append(defaultOpts, opts...)
-
-	// Create Aegis instance
-	cfg := config.Default()
-	for _, opt := range allOpts {
-		opt(cfg)
+	if cfg.SkipDatabase {
+		return nil
 	}
 
-	auth, err := aegis.New(allOpts...)
+	db, err := sql.Open("postgres", cfg.DatabaseURL)
 	if err != nil {
-		t.Fatalf("Failed to create test Aegis instance: %v", err)
+		t.Skipf("Skipping test: failed to open database: %v", err)
+		return nil
 	}
 
-	return &TestAegis{
-		Aegis:  auth,
-		DB:     mockDB,
-		Router: router,
-		Config: cfg,
-	}
-}
+	// Set connection pool settings for tests
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(5 * time.Minute)
 
-// Cleanup performs cleanup after tests.
-func (ta *TestAegis) Cleanup() {
-	// Close database if needed
-	if ta.DB != nil {
-		_ = ta.DB.Close()
-	}
-}
+	// Verify connection
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-// CreateTestUser creates a test user in the database.
-func (ta *TestAegis) CreateTestUser(t *testing.T, id string) *models.User {
-	t.Helper()
-
-	// Store in mock database using the actual API
-	ctx := context.Background()
-	createdUser, err := ta.DB.CreateUser(ctx)
-	if err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		t.Skipf("Skipping test: database not available: %v", err)
+		return nil
 	}
 
-	// Override ID if needed
-	createdUser.ID = id
-	_ = ta.DB.UpdateUser(ctx, createdUser)
-
-	return createdUser
-}
-
-// CreateTestSession creates a test session for a user.
-func (ta *TestAegis) CreateTestSession(t *testing.T, userID string) *models.Session {
-	t.Helper()
-
-	session := &models.Session{
-		Token:        "test-token-" + userID,
-		RefreshToken: "test-refresh-" + userID,
-		UserID:       userID,
-		ExpiresAt:    time.Now().Add(24 * time.Hour),
-		CreatedAt:    time.Now(),
-	}
-
-	// Insert using mock database API
-	ctx := context.Background()
-	err := ta.DB.CreateSession(ctx, session)
-	if err != nil {
-		t.Fatalf("Failed to create test session: %v", err)
-	}
-
-	return session
-}
-
-// Request creates an HTTP test request.
-func (ta *TestAegis) Request(t *testing.T, method, path string, _ string) *httptest.ResponseRecorder {
-	t.Helper()
-
-	req := httptest.NewRequest(method, path, nil)
-	rec := httptest.NewRecorder()
-
-	// Use the router's HTTP handler
-	handler := ta.Router.Router.(interface {
-		ServeHTTP(http.ResponseWriter, *http.Request)
-	})
-	handler.ServeHTTP(rec, req)
-
-	return rec
-}
-
-// AuthenticatedRequest creates an authenticated HTTP test request.
-func (ta *TestAegis) AuthenticatedRequest(t *testing.T, method, path, token string) *httptest.ResponseRecorder {
-	t.Helper()
-
-	req := httptest.NewRequest(method, path, nil)
-	req.AddCookie(&http.Cookie{
-		Name:  "aegis_session",
-		Value: token,
-	})
-	rec := httptest.NewRecorder()
-
-	handler := ta.Router.Router.(interface {
-		ServeHTTP(http.ResponseWriter, *http.Request)
-	})
-	handler.ServeHTTP(rec, req)
-
-	return rec
-}
-
-// PluginTestSuite provides a testing framework for plugins.
-type PluginTestSuite struct {
-	Plugin  plugins.Plugin
-	Aegis   *TestAegis
-	Context context.Context
-	T       *testing.T
-}
-
-// NewPluginTestSuite creates a new plugin test suite.
-//
-// Example:
-//
-//	func TestMyPlugin(t *testing.T) {
-//	    plugin := myplugin.New(&myplugin.Config{})
-//	    suite := testing.NewPluginTestSuite(t, plugin)
-//	    defer suite.Cleanup()
-//
-//	    suite.TestInit()
-//	    suite.TestRoutes()
-//	}
-func NewPluginTestSuite(t *testing.T, plugin plugins.Plugin) *PluginTestSuite {
-	t.Helper()
-
-	testAegis := Setup(t)
-	ctx := context.Background()
-
-	return &PluginTestSuite{
-		Plugin:  plugin,
-		Aegis:   testAegis,
-		Context: ctx,
-		T:       t,
-	}
-}
-
-// Cleanup cleans up test resources.
-func (pts *PluginTestSuite) Cleanup() {
-	pts.Aegis.Cleanup()
-}
-
-// TestInit tests plugin initialization.
-func (pts *PluginTestSuite) TestInit(t *testing.T) {
-	t.Helper()
-
-	err := pts.Plugin.Init(pts.Context, pts.Aegis.Aegis)
-	if err != nil {
-		t.Fatalf("Plugin Init failed: %v", err)
-	}
-
-	t.Logf("✓ Plugin %s initialized successfully", pts.Plugin.Name())
-}
-
-// TestMetadata tests plugin metadata methods.
-func (pts *PluginTestSuite) TestMetadata(t *testing.T) {
-	t.Helper()
-
-	name := pts.Plugin.Name()
-	if name == "" {
-		t.Error("Plugin Name() returned empty string")
-	}
-
-	version := pts.Plugin.Version()
-	if version == "" {
-		t.Error("Plugin Version() returned empty string")
-	}
-
-	description := pts.Plugin.Description()
-	if description == "" {
-		t.Error("Plugin Description() returned empty string")
-	}
-
-	t.Logf("✓ Plugin metadata: %s v%s - %s", name, version, description)
-}
-
-// TestMountRoutes tests route mounting.
-func (pts *PluginTestSuite) TestMountRoutes(t *testing.T) {
-	t.Helper()
-
-	// This is a basic check - plugin should not panic
-	defer func() {
-		if r := recover(); r != nil {
-			t.Fatalf("Plugin MountRoutes panicked: %v", r)
+	// Register cleanup
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
 		}
-	}()
+	})
 
-	pts.Plugin.MountRoutes(pts.Aegis.Router, "/test")
-	t.Logf("✓ Plugin routes mounted successfully")
+	return db
 }
 
-// TestMigrations tests that migrations are valid.
-func (pts *PluginTestSuite) TestMigrations(t *testing.T) {
+// SetupTestRedis creates a test Redis client.
+//
+// This function:
+//   - Creates a Redis client using the configured URL
+//   - Verifies the connection is alive
+//   - Flushes the test database on cleanup
+//   - Registers cleanup to close the connection
+//
+// If connection fails, the test is skipped (for CI environments without Redis).
+//
+// Parameters:
+//   - t: Testing instance for cleanup registration
+//   - cfg: Optional configuration (uses DefaultTestConfig if nil)
+//
+// Returns:
+//   - *redis.Client: Redis client (or nil if skipped)
+func SetupTestRedis(t testing.TB, cfg *TestConfig) *redis.Client {
 	t.Helper()
 
-	migrations := pts.Plugin.GetMigrations()
-	t.Logf("✓ Plugin provides %d migrations", len(migrations))
-}
-
-// RunAllTests runs all standard plugin tests.
-func (pts *PluginTestSuite) RunAllTests() {
-	pts.T.Run("Metadata", func(t *testing.T) { pts.TestMetadata(t) })
-	pts.T.Run("Init", func(t *testing.T) { pts.TestInit(t) })
-	pts.T.Run("MountRoutes", func(t *testing.T) { pts.TestMountRoutes(t) })
-	pts.T.Run("Migrations", func(t *testing.T) { pts.TestMigrations(t) })
-}
-
-// MockPlugin is a simple plugin for testing.
-type MockPlugin struct {
-	InitFunc        func(ctx context.Context, a plugins.Aegis) error
-	MountRoutesFunc func(router server.Router, prefix string)
-	name            string
-	version         string
-	description     string
-}
-
-// NewMockPlugin creates a new mock plugin.
-func NewMockPlugin(name string) *MockPlugin {
-	return &MockPlugin{
-		name:            name,
-		version:         "1.0.0",
-		description:     "Mock plugin for testing",
-		InitFunc:        func(_ context.Context, _ plugins.Aegis) error { return nil },
-		MountRoutesFunc: func(_ server.Router, _ string) {},
+	if cfg == nil {
+		cfg = DefaultTestConfig()
 	}
-}
 
-// Name returns the plugin name.
-func (m *MockPlugin) Name() string { return m.name }
-
-// Version returns the plugin version.
-func (m *MockPlugin) Version() string { return m.version }
-
-// Description returns the plugin description.
-func (m *MockPlugin) Description() string { return m.description }
-
-// Init initializes the plugin.
-func (m *MockPlugin) Init(ctx context.Context, a plugins.Aegis) error {
-	if m.InitFunc != nil {
-		return m.InitFunc(ctx, a)
+	if cfg.SkipRedis {
+		return nil
 	}
-	return nil
-}
 
-// GetMigrations returns the plugin migrations.
-func (m *MockPlugin) GetMigrations() []plugins.Migration {
-	return nil
-}
+	client := redis.NewClient(&redis.Options{
+		Addr: cfg.RedisURL,
+		DB:   cfg.RedisDB, // Use separate DB for tests
+	})
 
-// MountRoutes mounts the plugin routes.
-func (m *MockPlugin) MountRoutes(router server.Router, prefix string) {
-	if m.MountRoutesFunc != nil {
-		m.MountRoutesFunc(router, prefix)
+	// Verify connection
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		client.Close()
+		t.Skipf("Skipping test: Redis not available: %v", err)
+		return nil
 	}
+
+	// Register cleanup
+	t.Cleanup(func() {
+		// Flush test database
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := client.FlushDB(ctx).Err(); err != nil {
+			t.Logf("Warning: failed to flush Redis test DB: %v", err)
+		}
+
+		if err := client.Close(); err != nil {
+			t.Logf("Warning: failed to close Redis: %v", err)
+		}
+	})
+
+	return client
 }
 
-// Dependencies returns the plugin dependencies.
-func (m *MockPlugin) Dependencies() []plugins.Dependency {
-	return nil
-}
-
-// RequiresTables returns the required database tables.
-func (m *MockPlugin) RequiresTables() []string {
-	return nil
-}
-
-// ProvidesAuthMethods returns the authentication methods provided by the plugin.
-func (m *MockPlugin) ProvidesAuthMethods() []string {
-	return nil
-}
-
-// AssertPluginRegistered checks that a plugin is registered.
-func AssertPluginRegistered(t *testing.T, aegis *aegis.Aegis, pluginName string) {
+// CleanDatabase removes all test data from the database.
+//
+// This function truncates all Aegis tables to provide a clean state.
+// It should be called before each test that requires database isolation.
+//
+// Parameters:
+//   - t: Testing instance
+//   - db: Database connection
+func CleanDatabase(t testing.TB, db *sql.DB) {
 	t.Helper()
 
-	plugin, ok := aegis.GetPlugin(pluginName)
-	if !ok {
-		t.Fatalf("Plugin %s not registered", pluginName)
-	}
-	if plugin == nil {
-		t.Fatalf("Plugin %s is nil", pluginName)
+	if db == nil {
+		return
 	}
 
-	t.Logf("✓ Plugin %s is registered", pluginName)
+	tables := []string{
+		"aegis_verification_tokens",
+		"aegis_sessions",
+		"aegis_accounts",
+		"aegis_users",
+		// Plugin tables (if used)
+		"aegis_oauth_states",
+		"aegis_oauth_accounts",
+		"aegis_jwt_tokens",
+		"aegis_email_otps",
+		"aegis_sms_otps",
+		"aegis_organization_members",
+		"aegis_organizations",
+		"aegis_admin_users",
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Disable foreign key checks temporarily for truncation
+	_, _ = db.ExecContext(ctx, "SET session_replication_role = 'replica';")
+
+	for _, table := range tables {
+		_, err := db.ExecContext(ctx, fmt.Sprintf("TRUNCATE TABLE %s CASCADE;", table))
+		if err != nil {
+			// Table might not exist, which is fine
+			t.Logf("Note: could not truncate %s: %v", table, err)
+		}
+	}
+
+	// Re-enable foreign key checks
+	_, _ = db.ExecContext(ctx, "SET session_replication_role = 'origin';")
 }
 
-// AssertPluginNotRegistered checks that a plugin is not registered.
-func AssertPluginNotRegistered(t *testing.T, aegis *aegis.Aegis, pluginName string) {
+// RunMigrations runs database migrations for testing.
+//
+// This function executes all Aegis migrations to set up the schema.
+// It should be called once per test database setup.
+//
+// Parameters:
+//   - t: Testing instance
+//   - db: Database connection
+//   - dialect: Database dialect ("postgres", "mysql", "sqlite")
+func RunMigrations(t testing.TB, db *sql.DB, dialect string) {
 	t.Helper()
 
-	_, ok := aegis.GetPlugin(pluginName)
-	if ok {
-		t.Fatalf("Plugin %s should not be registered", pluginName)
+	if db == nil {
+		return
 	}
 
-	t.Logf("✓ Plugin %s is not registered", pluginName)
+	// Note: This is a placeholder. In a real implementation, you would
+	// import and run the actual migration functions from the auth and
+	// plugin packages.
+	//
+	// Example:
+	//   auth.RunMigrations(ctx, db, dialect)
+	//   oauth.RunMigrations(ctx, db, dialect)
+	//   jwt.RunMigrations(ctx, db, dialect)
+
+	t.Log("Migrations would be run here in a full integration test setup")
 }
 
-// WithTestDB returns a config option that uses the provided test database.
-func WithTestDB(testDB *core.MockDB) config.Option {
-	return config.WithDB(testDB, "postgres")
+// GenerateTestEmail generates a unique test email address.
+//
+// This is useful for tests that need unique email addresses to avoid
+// conflicts with uniqueness constraints.
+//
+// Returns:
+//   - string: Unique email address in format "test_<timestamp>@example.com"
+func GenerateTestEmail() string {
+	return fmt.Sprintf("test_%d@example.com", time.Now().UnixNano())
+}
+
+// GenerateTestPassword generates a valid test password.
+//
+// The password meets all common strength requirements:
+//   - At least 12 characters
+//   - Contains uppercase letter
+//   - Contains lowercase letter
+//   - Contains number
+//   - Contains special character
+//
+// Returns:
+//   - string: Valid test password
+func GenerateTestPassword() string {
+	return "TestP@ssw0rd123!"
+}
+
+// AssertEventually retries an assertion until it passes or times out.
+//
+// This is useful for testing asynchronous operations where the result
+// may not be immediately available.
+//
+// Parameters:
+//   - t: Testing instance
+//   - timeout: Maximum time to wait
+//   - interval: Time between retries
+//   - assertion: Function that returns true when assertion passes
+//   - msgAndArgs: Optional message and arguments for failure
+func AssertEventually(t testing.TB, timeout, interval time.Duration, assertion func() bool, msgAndArgs ...interface{}) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if assertion() {
+			return
+		}
+		time.Sleep(interval)
+	}
+
+	if len(msgAndArgs) > 0 {
+		t.Fatalf("Assertion did not pass within %v: %v", timeout, fmt.Sprint(msgAndArgs...))
+	} else {
+		t.Fatalf("Assertion did not pass within %v", timeout)
+	}
+}
+
+// RequireNoError fails the test immediately if err is not nil.
+//
+// Parameters:
+//   - t: Testing instance
+//   - err: Error to check
+//   - msgAndArgs: Optional message and arguments for failure
+func RequireNoError(t testing.TB, err error, msgAndArgs ...interface{}) {
+	t.Helper()
+
+	if err != nil {
+		if len(msgAndArgs) > 0 {
+			t.Fatalf("Unexpected error: %v - %v", err, fmt.Sprint(msgAndArgs...))
+		} else {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+	}
+}
+
+// RequireError fails the test immediately if err is nil.
+//
+// Parameters:
+//   - t: Testing instance
+//   - err: Error to check
+//   - msgAndArgs: Optional message and arguments for failure
+func RequireError(t testing.TB, err error, msgAndArgs ...interface{}) {
+	t.Helper()
+
+	if err == nil {
+		if len(msgAndArgs) > 0 {
+			t.Fatalf("Expected error but got nil: %v", fmt.Sprint(msgAndArgs...))
+		} else {
+			t.Fatal("Expected error but got nil")
+		}
+	}
 }

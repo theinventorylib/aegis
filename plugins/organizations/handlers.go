@@ -8,8 +8,28 @@ import (
 )
 
 // ========== ORGANIZATION HANDLERS ==========
+//
+// These HTTP handlers implement organization CRUD operations with role-based
+// access control. All handlers require authentication via RequireAuthMiddleware.
+//
+// Permission Requirements:
+//   - Create: Any authenticated user
+//   - List/Get: Organization member (any role)
+//   - Update: Admin or owner
+//   - Delete: Owner only
 
 // validateOrgAccess validates user authentication and organization membership.
+//
+// This helper method checks if the authenticated user has access to the organization
+// specified in the URL path. It's used by handlers that require member-level access.
+//
+// Parameters:
+//   - w: HTTP response writer
+//   - r: HTTP request with user context and path parameter ":id"
+//
+// Returns:
+//   - orgID: Organization ID from path if valid
+//   - ok: true if user is authenticated and is organization member
 func (p *Plugin) validateOrgAccess(w http.ResponseWriter, r *http.Request) (orgID string, ok bool) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
@@ -17,7 +37,7 @@ func (p *Plugin) validateOrgAccess(w http.ResponseWriter, r *http.Request) (orgI
 		return "", false
 	}
 
-	orgID = r.URL.Query().Get("id")
+	orgID = core.GetPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return "", false
@@ -31,7 +51,39 @@ func (p *Plugin) validateOrgAccess(w http.ResponseWriter, r *http.Request) (orgI
 	return orgID, true
 }
 
-// CreateOrganizationHandler creates a new organization
+// CreateOrganizationHandler creates a new organization with the user as owner.
+//
+// This endpoint allows any authenticated user to create an organization. The creator
+// is automatically assigned the "owner" role with full administrative privileges.
+//
+// Endpoint:
+//   - Method: POST
+//   - Path: /organizations
+//   - Auth: Required (any authenticated user)
+//
+// Request Body:
+//
+//	{
+//	  "name": "Acme Corporation",
+//	  "slug": "acme-corp"
+//	}
+//
+// Validation:
+//   - name: Required, 1-100 characters
+//   - slug: Required, 3-50 characters, lowercase alphanumeric with hyphens only
+//
+// Response (201 Created):
+//
+//	{
+//	  "success": true,
+//	  "organization": {
+//	    "id": "org_abc123",
+//	    "name": "Acme Corporation",
+//	    "slug": "acme-corp",
+//	    "createdAt": "2024-01-01T00:00:00Z",
+//	    "updatedAt": "2024-01-01T00:00:00Z"
+//	  }
+//	}
 func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
@@ -47,7 +99,7 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := req.Validate(); err != nil {
-		core.WriteValidationError(w, err)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
 
@@ -63,7 +115,25 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// ListOrganizationsHandler lists user's organizations
+// ListOrganizationsHandler lists all organizations the user is a member of.
+//
+// This endpoint returns all organizations where the user has any membership
+// (owner, admin, or member role).
+//
+// Endpoint:
+//   - Method: GET
+//   - Path: /organizations
+//   - Auth: Required
+//
+// Response (200 OK):
+//
+//	{
+//	  "success": true,
+//	  "organizations": [
+//	    {"id": "org_1", "name": "Acme Corp", "slug": "acme", ...},
+//	    {"id": "org_2", "name": "Tech Inc", "slug": "tech", ...}
+//	  ]
+//	}
 func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
@@ -83,7 +153,30 @@ func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// GetOrganizationHandler gets a specific organization.
+// GetOrganizationHandler retrieves details of a specific organization.
+//
+// This endpoint returns organization metadata. Requires membership in the organization.
+//
+// Endpoint:
+//   - Method: GET
+//   - Path: /organizations/:id
+//   - Auth: Required (must be organization member)
+//
+// Path Parameters:
+//   - id: Organization ID
+//
+// Response (200 OK):
+//
+//	{
+//	  "success": true,
+//	  "organization": {
+//	    "id": "org_abc123",
+//	    "name": "Acme Corporation",
+//	    "slug": "acme-corp",
+//	    "createdAt": "2024-01-01T00:00:00Z",
+//	    "updatedAt": "2024-01-01T00:00:00Z"
+//	  }
+//	}
 func (p *Plugin) GetOrganizationHandler(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := p.validateOrgAccess(w, r)
 	if !ok {
@@ -110,7 +203,7 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	orgID := r.URL.Query().Get("id")
+	orgID := core.GetPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
@@ -129,7 +222,7 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := req.Validate(); err != nil {
-		core.WriteValidationError(w, err)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
 
@@ -152,7 +245,7 @@ func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	orgID := r.URL.Query().Get("id")
+	orgID := core.GetPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
@@ -184,7 +277,7 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	orgID := r.URL.Query().Get("id")
+	orgID := core.GetPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
@@ -203,7 +296,7 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	if err := req.Validate(); err != nil {
-		core.WriteValidationError(w, err)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
 
@@ -230,7 +323,7 @@ func (p *Plugin) ListOrganizationMembersHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	members, err := p.getOrganizationMembers(r.Context(), orgID)
+	members, err := p.listOrganizationMembers(r.Context(), orgID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -250,8 +343,8 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	orgID := r.URL.Query().Get("id")
-	userID := r.URL.Query().Get("userId")
+	orgID := core.GetPathParam(r, "id")
+	userID := core.GetPathParam(r, "userId")
 
 	if orgID == "" || userID == "" {
 		http.Error(w, "Organization ID and User ID required", http.StatusBadRequest)
@@ -271,7 +364,7 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := req.Validate(); err != nil {
-		core.WriteValidationError(w, err)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
 
@@ -280,7 +373,7 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := p.updateOrganizationMemberRole(r.Context(), orgID, userID, req.Role); err != nil {
+	if err := p.updateMemberRole(r.Context(), orgID, userID, req.Role); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -299,8 +392,8 @@ func (p *Plugin) RemoveOrganizationMemberHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	orgID := r.URL.Query().Get("id")
-	userID := r.URL.Query().Get("userId")
+	orgID := core.GetPathParam(r, "id")
+	userID := core.GetPathParam(r, "userId")
 
 	if orgID == "" || userID == "" {
 		http.Error(w, "Organization ID and User ID required", http.StatusBadRequest)
@@ -338,7 +431,7 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orgID := r.URL.Query().Get("id")
+	orgID := core.GetPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
@@ -357,7 +450,7 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := req.Validate(); err != nil {
-		core.WriteValidationError(w, err)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
 
@@ -380,7 +473,7 @@ func (p *Plugin) ListTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teams, err := p.getOrganizationTeams(r.Context(), orgID)
+	teams, err := p.listTeams(r.Context(), orgID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -400,7 +493,7 @@ func (p *Plugin) GetTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teamID := r.URL.Query().Get("teamId")
+	teamID := core.GetPathParam(r, "teamId")
 	if teamID == "" {
 		http.Error(w, "Team ID required", http.StatusBadRequest)
 		return
@@ -431,7 +524,7 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teamID := r.URL.Query().Get("teamId")
+	teamID := core.GetPathParam(r, "teamId")
 	if teamID == "" {
 		http.Error(w, "Team ID required", http.StatusBadRequest)
 		return
@@ -456,7 +549,7 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := req.Validate(); err != nil {
-		core.WriteValidationError(w, err)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
 
@@ -479,7 +572,7 @@ func (p *Plugin) DeleteTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teamID := r.URL.Query().Get("teamId")
+	teamID := core.GetPathParam(r, "teamId")
 	if teamID == "" {
 		http.Error(w, "Team ID required", http.StatusBadRequest)
 		return
@@ -517,7 +610,7 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teamID := r.URL.Query().Get("teamId")
+	teamID := core.GetPathParam(r, "teamId")
 	if teamID == "" {
 		http.Error(w, "Team ID required", http.StatusBadRequest)
 		return
@@ -542,7 +635,7 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := req.Validate(); err != nil {
-		core.WriteValidationError(w, err)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
 
@@ -571,7 +664,7 @@ func (p *Plugin) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	teamID := r.URL.Query().Get("teamId")
+	teamID := core.GetPathParam(r, "teamId")
 	if teamID == "" {
 		http.Error(w, "Team ID required", http.StatusBadRequest)
 		return
@@ -588,7 +681,7 @@ func (p *Plugin) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	members, err := p.getTeamMembers(r.Context(), teamID)
+	members, err := p.listTeamMembers(r.Context(), teamID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -608,8 +701,8 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	teamID := r.URL.Query().Get("teamId")
-	userID := r.URL.Query().Get("userId")
+	teamID := core.GetPathParam(r, "teamId")
+	userID := core.GetPathParam(r, "userId")
 
 	if teamID == "" || userID == "" {
 		http.Error(w, "Team ID and User ID required", http.StatusBadRequest)
@@ -635,7 +728,7 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := req.Validate(); err != nil {
-		core.WriteValidationError(w, err)
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
 
@@ -658,8 +751,8 @@ func (p *Plugin) RemoveTeamMemberHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	teamID := r.URL.Query().Get("teamId")
-	userID := r.URL.Query().Get("userId")
+	teamID := core.GetPathParam(r, "teamId")
+	userID := core.GetPathParam(r, "userId")
 
 	if teamID == "" || userID == "" {
 		http.Error(w, "Team ID and User ID required", http.StatusBadRequest)

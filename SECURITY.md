@@ -9,7 +9,7 @@ Aegis uses Argon2id for password hashing with secure defaults. For production de
 #### Recommended Parameters
 
 ```go
-aegis.New(
+aegis.New(ctx,
     // Argon2id is configured by default with secure parameters
     // Memory: 64 MB, Time: 1 iteration, Threads: 4, KeyLength: 32 bytes
     
@@ -37,7 +37,7 @@ aegis.New(
 #### Session Expiry
 
 ```go
-aegis.New(
+aegis.New(ctx,
     config.WithSessionExpiry(24 * time.Hour),   // Default: 24 hours
     config.WithRefreshExpiry(7 * 24 * time.Hour), // Default: 7 days
 )
@@ -54,9 +54,9 @@ aegis.New(
 #### Cookie Security Flags
 
 ```go
-aegis.New(
+aegis.New(ctx,
     config.WithCookieSecure(true),    // Default: true (REQUIRED in production)
-    config.WithCookieHTTPOnly(true),  // Default: true (prevents XSS)
+    // CookieHTTPOnly is always true by default (prevents XSS)
     config.WithCookieSameSite("Strict"), // Default: "Lax"
     config.WithCookieDomain(".example.com"), // Set for subdomain sharing
 )
@@ -77,21 +77,21 @@ aegis.New(
 #### Web Applications
 
 ```go
-aegis.New(
-    config.WithCSRFSecret([]byte("your-random-32-byte-secret")),
-    // CSRFSecret is REQUIRED for web apps
+aegis.New(ctx,
+    config.WithSecret([]byte("your-random-32-byte-secret")),
+    // CSRF protection is automatically enabled for web apps
 )
 ```
 
 **Requirements**:
-- Secret MUST be cryptographically random (32+ bytes)
-- Secret MUST be different from JWT secret
+- Master secret MUST be cryptographically random (32+ bytes)
+- CSRF secret is automatically derived from master secret
 - Store in environment variables, NOT in code
 
 #### API-Only Applications
 
 ```go
-aegis.New(
+aegis.New(ctx,
     config.WithAPIOnlyMode(true), // Skips CSRF requirement
 )
 ```
@@ -108,7 +108,7 @@ Only use API mode if:
 If using Redis for session storage:
 
 ```go
-aegis.New(
+aegis.New(ctx,
     config.WithRedis(
         "redis-server.internal", // Use internal/private network
         6379,
@@ -132,11 +132,7 @@ aegis.New(
 ```go
 import "github.com/theinventorylib/aegis/plugins/jwt"
 
-jwtPlugin := jwt.New(&jwt.Config{
-    DB: database,
-    // JWT configuration
-})
-
+jwtPlugin := jwt.New(nil) // Uses default store
 aegis.Use(ctx, jwtPlugin)
 ```
 
@@ -155,14 +151,19 @@ aegis.Use(ctx, jwtPlugin)
 #### Connection Security
 
 ```go
+import "database/sql"
+import _ "github.com/lib/pq" // PostgreSQL driver
+
 // PostgreSQL with SSL
 connString := "postgres://user:pass@localhost:5432/db?sslmode=require"
-aegis.New(config.WithPostgres(connString))
+db, _ := sql.Open("postgres", connString)
 
-// OR bring your own *sql.DB with custom security
-sqlDB, _ := sql.Open("postgres", connString)
 // Configure connection pool, timeouts, etc.
-aegis.New(config.WithDB(sqlDB, db.PostgreSQL))
+db.SetMaxOpenConns(25)
+db.SetMaxIdleConns(5)
+db.SetConnMaxLifetime(5 * time.Minute)
+
+aegis.New(ctx, config.WithDB(db), ...)
 ```
 
 **Database Security Checklist**:
@@ -180,7 +181,7 @@ aegis.New(config.WithDB(sqlDB, db.PostgreSQL))
 ```go
 import "log/slog"
 
-aegis.New(
+aegis.New(ctx,
     config.WithLogger(slog.Default()),
 )
 ```
@@ -225,15 +226,25 @@ export AEGIS_JWT_SIGNING_KEY="jwt-private-key"
 ### 9. Rate Limiting
 
 ```go
-import "github.com/theinventorylib/aegis/plugins/ratelimit"
+import (
+    "time"
+    "github.com/theinventorylib/aegis/config"
+    "github.com/theinventorylib/aegis/core"
+)
 
-// Protect authentication endpoints from brute force
-rateLimitPlugin := ratelimit.New(&ratelimit.Config{
-    RequestsPerMinute: 100,
-    Burst: 20,
-})
+// Enable rate limiting with defaults (100 requests per minute per IP)
+aegis.New(ctx,
+    config.WithRateLimiting(),
+)
 
-aegis.Use(ctx, rateLimitPlugin)
+// Or with custom configuration:
+aegis.New(ctx,
+    config.WithRateLimitConfig(&core.RateLimitConfig{
+        RequestsPerWindow: 100,
+        WindowDuration:    time.Minute,
+        ByIP:              true,
+    }),
+)
 ```
 
 **Rate Limiting Guidelines**:

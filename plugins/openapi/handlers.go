@@ -3,17 +3,30 @@ package openapi
 import (
 	"net/http"
 
-	"github.com/theinventorylib/aegis/server"
+	"github.com/theinventorylib/aegis/router"
 )
 
 // Handler handles HTTP requests for OpenAPI documentation.
+//
+// This handler serves:
+//   - OpenAPI specification in JSON format
+//   - Scalar interactive documentation UI
 type Handler struct {
+	// plugin holds the OpenAPI plugin instance
 	plugin *Plugin
-	router server.Router
+	// router provides route metadata for spec generation
+	router router.Router
 }
 
 // NewHandler creates a new OpenAPI handler.
-func NewHandler(plugin *Plugin, router server.Router) *Handler {
+//
+// Parameters:
+//   - plugin: Initialized OpenAPI plugin
+//   - router: Router instance for metadata collection
+//
+// Returns:
+//   - *Handler: Handler ready for route registration
+func NewHandler(plugin *Plugin, router router.Router) *Handler {
 	return &Handler{
 		plugin: plugin,
 		router: router,
@@ -21,6 +34,27 @@ func NewHandler(plugin *Plugin, router server.Router) *Handler {
 }
 
 // ServeSpec serves the OpenAPI specification as JSON.
+//
+// This endpoint:
+//  1. Collects latest route metadata from router
+//  2. Updates OpenAPI spec with new routes
+//  3. Serializes spec to JSON
+//  4. Serves with CORS headers for documentation tools
+//
+// Endpoint:
+//   - Method: GET
+//   - Path: /openapi.json
+//   - Auth: Public
+//
+// Response:
+//   - Content-Type: application/json
+//   - Access-Control-Allow-Origin: * (for Swagger UI, Postman, etc.)
+//
+// Use Cases:
+//   - Generate client SDKs
+//   - Import into Postman/Insomnia
+//   - Validate API contracts
+//   - Feed documentation generators
 func (h *Handler) ServeSpec(w http.ResponseWriter, _ *http.Request) {
 	// Get latest metadata from router
 	metadata := h.router.GetRouteMetadata()
@@ -43,6 +77,25 @@ func (h *Handler) ServeSpec(w http.ResponseWriter, _ *http.Request) {
 }
 
 // ServeScalarUI serves the Scalar documentation UI.
+//
+// Scalar Features:
+//   - Interactive API explorer
+//   - Request/response examples
+//   - Try-it-out functionality
+//   - Authentication testing
+//   - Schema visualization
+//
+// Endpoint:
+//   - Method: GET
+//   - Path: /docs
+//   - Auth: Public
+//
+// Implementation:
+// Uses CDN-hosted Scalar UI (https://cdn.jsdelivr.net/npm/@scalar/api-reference)
+// Loads spec from ./openapi.json endpoint.
+//
+// Example:
+// Navigate to http://localhost:8080/auth/docs to view interactive documentation.
 func (h *Handler) ServeScalarUI(w http.ResponseWriter, _ *http.Request) {
 	// Scalar UI HTML with CDN-hosted assets
 	html := `<!DOCTYPE html>

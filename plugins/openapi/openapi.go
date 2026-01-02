@@ -1,4 +1,32 @@
-// Package openapi provides OpenAPI 3.0 documentation generation for Aegis.
+// Package openapi provides automatic OpenAPI 3.0 specification generation for Aegis.
+//
+// This plugin generates interactive API documentation with:
+//   - OpenAPI 3.0.3 specification (JSON)
+//   - Scalar documentation UI (interactive browser interface)
+//   - Automatic schema generation from Go structs
+//   - Security scheme definitions (cookie, bearer)
+//   - Route metadata collection and transformation
+//
+// Documentation Features:
+//   - Auto-generates schemas from Go types using reflection
+//   - Parses validation tags for schema constraints
+//   - Supports request/response body documentation
+//   - Security requirements (protected vs public routes)
+//   - Tag-based organization
+//
+// Route Structure:
+//   - GET /openapi.json - OpenAPI specification (JSON)
+//   - GET /docs         - Scalar documentation UI (if enabled)
+//
+// Usage:
+//
+//	cfg := &openapi.Config{
+//	  Title:          "My API",
+//	  Version:        "1.0.0",
+//	  EnableScalarUI: true,
+//	}
+//	plugin := openapi.New(cfg)
+//	aegis.RegisterPlugin(plugin)
 package openapi
 
 import (
@@ -6,19 +34,46 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/theinventorylib/aegis/models"
+	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/server"
+	"github.com/theinventorylib/aegis/router"
 )
 
-// Plugin represents the OpenAPI documentation plugin.
+// Plugin provides automatic OpenAPI 3.0 documentation generation.
+//
+// This plugin integrates with the Aegis routing system to collect route metadata
+// and generate comprehensive API documentation with interactive UI.
+//
+// Features:
+//   - Real-time spec generation from route metadata
+//   - Thread-safe spec updates
+//   - Scalar UI integration for interactive documentation
+//   - Multiple security scheme support
+//   - Schema validation from Go struct tags
 type Plugin struct {
-	spec   *Spec
+	// spec holds the OpenAPI 3.0 specification
+	spec *Spec
+	// config holds plugin configuration
 	config *Config
-	mu     sync.RWMutex // Protects spec for thread-safe updates
+	// mu protects spec for thread-safe updates during spec regeneration
+	mu sync.RWMutex
 }
 
 // Config holds OpenAPI plugin configuration.
+//
+// Example:
+//
+//	cfg := &openapi.Config{
+//	  Title:          "Aegis Authentication API",
+//	  Version:        "1.0.0",
+//	  Description:    "Complete authentication API",
+//	  EnableScalarUI: true,
+//	  BasePath:       "/auth",
+//	  Servers: []openapi.Server{
+//	    {URL: "https://api.example.com", Description: "Production"},
+//	  },
+//	}
 type Config struct {
 	// Title for the API documentation
 	Title string
@@ -26,19 +81,30 @@ type Config struct {
 	Version string
 	// Description of the API
 	Description string
-	// Servers to include in the spec
+	// Servers to include in the spec (for multi-environment APIs)
 	Servers []Server
-	// Contact information
+	// Contact information for API maintainers
 	Contact *Contact
-	// License information
+	// License information for the API
 	License *License
 	// EnableScalarUI enables the Scalar documentation UI at /docs
 	EnableScalarUI bool
-	// BasePath for the API (e.g., "/auth")
+	// BasePath for the API (e.g., "/auth", "/api/v1")
 	BasePath string
 }
 
 // DefaultConfig returns default OpenAPI configuration.
+//
+// Default Settings:
+//   - Title: "Aegis Authentication API"
+//   - Version: "1.0.0"
+//   - ScalarUI: Enabled
+//   - BasePath: "/auth"
+//   - Server: http://localhost:8080 (development)
+//   - License: MIT
+//
+// Returns:
+//   - *Config: Default configuration ready for customization
 func DefaultConfig() *Config {
 	return &Config{
 		Title:          "Aegis Authentication API",
@@ -59,7 +125,28 @@ func DefaultConfig() *Config {
 	}
 }
 
-// New creates a new OpenAPI plugin.
+// New creates a new OpenAPI plugin with automatic schema generation.
+//
+// Initialization:
+//  1. Create base OpenAPI 3.0.3 spec
+//  2. Configure servers, contact, license
+//  3. Add security schemes (cookie, bearer)
+//  4. Add default tags (Authentication, Session)
+//  5. Add common schemas (Error, Success)
+//  6. Add core routes (refresh, logout)
+//
+// Parameters:
+//   - cfg: Plugin configuration (uses defaults if nil)
+//
+// Returns:
+//   - *Plugin: Configured plugin ready for initialization
+//
+// Example:
+//
+//	plugin := openapi.New(&openapi.Config{
+//	  Title:   "My API",
+//	  Version: "2.0.0",
+//	})
 func New(cfg *Config) *Plugin {
 	if cfg == nil {
 		cfg = DefaultConfig()
@@ -125,8 +212,10 @@ func (p *Plugin) Description() string {
 // Init initializes the OpenAPI plugin.
 func (p *Plugin) Init(_ context.Context, _ plugins.Aegis) error {
 	// Auto-register core model schemas from actual Go types
-	p.RegisterSchemaFromType("User", models.User{})
-	p.RegisterSchemaFromType("Session", models.Session{})
+	p.RegisterSchemaFromType(core.SchemaUser, auth.User{})
+	p.RegisterSchemaFromType(core.SchemaSession, auth.Session{})
+	p.RegisterSchemaFromType(core.SchemaLoginRequest, core.LoginRequest{})
+	p.RegisterSchemaFromType(core.SchemaRegisterRequest, core.RegisterRequest{})
 
 	return nil
 }
@@ -138,7 +227,7 @@ func (p *Plugin) GetMigrations() []plugins.Migration {
 }
 
 // MountRoutes registers HTTP routes for the plugin.
-func (p *Plugin) MountRoutes(router server.Router, prefix string) {
+func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	handler := NewHandler(p, router)
 
 	// Serve OpenAPI spec as JSON
@@ -151,7 +240,7 @@ func (p *Plugin) MountRoutes(router server.Router, prefix string) {
 }
 
 // UpdateSpec updates the OpenAPI spec with route metadata.
-func (p *Plugin) UpdateSpec(metadata []models.RouteMetadata) {
+func (p *Plugin) UpdateSpec(metadata []core.RouteMetadata) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -273,6 +362,12 @@ func (p *Plugin) ProvidesAuthMethods() []string {
 	return []string{}
 }
 
+// GetSchemas returns all schemas for all supported dialects
+func (p *Plugin) GetSchemas() []plugins.Schema {
+	// OpenAPI plugin doesn't have its own schema
+	return []plugins.Schema{}
+}
+
 // Dependencies returns plugin dependencies.
 func (p *Plugin) Dependencies() []plugins.Dependency {
 	return []plugins.Dependency{}
@@ -345,7 +440,7 @@ func (p *Plugin) GetSpec() *Spec {
 //
 // Example usage:
 //
-//	p.RegisterSchemaFromType("User", models.User{})
+//	p.RegisterSchemaFromType("User", core.User{})
 //	p.RegisterSchemaFromType("CreateOrganizationRequest", organizations.CreateOrganizationRequest{})
 func (p *Plugin) RegisterSchemaFromType(name string, example interface{}) {
 	schema := GenerateSchema(example)

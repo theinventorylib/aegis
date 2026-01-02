@@ -45,7 +45,6 @@ archives:
     files:
       - README.md
       - LICENSE
-      - cmd/aegis/README.md
 
 checksum:
   name_template: 'checksums.txt'

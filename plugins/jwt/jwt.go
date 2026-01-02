@@ -1,4 +1,91 @@
-// Package jwt implements JWT authentication plugin for Aegis.
+// Package jwt implements JWT (JSON Web Token) authentication for Aegis.
+//
+// This plugin provides stateless token-based authentication using industry-standard
+// JWT tokens with RSA signing. Features include:
+//
+//   - Token Generation: Access tokens (15min) and refresh tokens (7d)
+//   - RSA Signing: RS256 algorithm with database-backed key storage
+//   - Key Rotation: Automatic key rotation with configurable intervals
+//   - JWKS Endpoint: Public key discovery for token verification
+//   - Token Blacklist: Redis-backed token revocation
+//   - Refresh Flow: Secure token refresh without re-authentication
+//
+// JWT vs Session Tokens:
+//
+//	Session Tokens (core):
+//	  - Stateful: Requires database lookup on every request
+//	  - Revocable: Can be deleted from database immediately
+//	  - Simple: Just random strings, no cryptography
+//
+//	JWT Tokens (this plugin):
+//	  - Stateless: Can be verified without database (using public key)
+//	  - Self-contained: Includes user ID and expiry in token
+//	  - Distributed: Multiple services can verify without shared database
+//	  - Revocation: Requires blacklist (Redis) for immediate revocation
+//
+// Architecture:
+//
+//	Token Pair:
+//	  - Access Token: Short-lived (15min), used for API requests
+//	  - Refresh Token: Long-lived (7d), used to get new access tokens
+//
+//	Key Storage:
+//	  - Private keys: Stored in database, used for signing
+//	  - Public keys: Exposed via /jwt/.well-known/jwks.json (JWKS endpoint)
+//	  - Key rotation: Old keys retained for token verification
+//
+//	Token Flow:
+//	  1. User authenticates (email/password, OAuth, etc.)
+//	  2. POST /jwt/token → Get access + refresh token
+//	  3. Use access token in Authorization header
+//	  4. When access token expires, POST /jwt/refreshToken with refresh token
+//	  5. Get new access + refresh token pair
+//
+// Use Cases:
+//   - Microservices: Stateless authentication across services
+//   - Mobile apps: Long-lived refresh tokens
+//   - SPAs: JavaScript apps with token storage
+//   - Third-party integrations: Standard JWT format
+//
+// Security Considerations:
+//   - Access tokens are short-lived (minimize exposure window)
+//   - Refresh tokens are long-lived (balance UX vs security)
+//   - Token blacklist requires Redis (for logout/revocation)
+//   - HTTPS is REQUIRED (tokens are bearer credentials)
+//   - Store tokens securely (httpOnly cookies, secure storage, not localStorage)
+//
+// Example:
+//
+//	package main
+//
+//	import (
+//		"context"
+//		"github.com/theinventorylib/aegis"
+//		"github.com/theinventorylib/aegis/plugins/jwt"
+//	)
+//
+//	func main() {
+//		a, _ := aegis.New(context.Background(), ...)
+//
+//		// Configure JWT plugin
+//		jwtConfig := &jwt.Config{
+//			Issuer:              "myapp",
+//			AccessTokenExpiry:   15 * time.Minute,
+//			RefreshTokenExpiry:  7 * 24 * time.Hour,
+//			KeyRotationInterval: 24 * time.Hour,
+//		}
+//
+//		// Register JWT plugin
+//		a.Use(context.Background(), jwt.New(jwtConfig, nil, plugins.DialectPostgres))
+//
+//		a.MountRoutes("/auth")
+//		// Routes available:
+//		// POST /auth/jwt/token
+//		// POST /auth/jwt/getAccessToken
+//		// POST /auth/jwt/refreshToken
+//		// POST /auth/jwt/logout
+//		// GET  /auth/jwt/.well-known/jwks.json
+//	}
 package jwt
 
 import (
@@ -15,38 +102,85 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/redis/go-redis/v9"
+	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/db"
-	"github.com/theinventorylib/aegis/models"
 	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/server"
+	"github.com/theinventorylib/aegis/router"
 )
 
 const (
-	// TokenTypeAccess represents an access token type.
+	// TokenTypeAccess identifies an access token in JWT claims.
+	// Access tokens are short-lived and used for API requests.
 	TokenTypeAccess = "access"
-	// TokenTypeRefresh represents a refresh token type.
+
+	// TokenTypeRefresh identifies a refresh token in JWT claims.
+	// Refresh tokens are long-lived and used to obtain new access tokens.
 	TokenTypeRefresh = "refresh"
 )
 
-// Config holds JWT-specific configuration.
+// Config holds JWT plugin configuration.
+//
+// All durations should be balanced for security vs user experience:
+//   - Shorter access tokens: More secure (tokens expire quickly)
+//   - Longer refresh tokens: Better UX (less frequent re-authentication)
+//   - Frequent key rotation: More secure (limits key exposure)
+//   - Longer key retention: Required for old token validation
 type Config struct {
-	DB                  db.Provider   // Database provider for key storage
-	Secret              []byte        // Secret for key derivation (optional)
-	Issuer              string        // Token issuer
-	AccessTokenExpiry   time.Duration // Access token expiry duration
-	RefreshTokenExpiry  time.Duration // Refresh token expiry duration
-	KeyRotationInterval time.Duration // Key rotation interval
-	// KeySize is the RSA key size to generate (e.g., 2048, 3072). Only used for RSA keys.
+	// Issuer is the JWT "iss" claim identifying the token issuer.
+	// Should be your application name or domain (e.g., "myapp.com").
+	Issuer string
+
+	// AccessTokenExpiry is how long access tokens remain valid.
+	// Recommended: 15 minutes to 1 hour
+	// Shorter = more secure, longer = fewer refresh requests
+	AccessTokenExpiry time.Duration
+
+	// RefreshTokenExpiry is how long refresh tokens remain valid.
+	// Recommended: 7 days to 30 days
+	// Shorter = more secure, longer = better UX (less frequent logins)
+	RefreshTokenExpiry time.Duration
+
+	// KeyRotationInterval is how often to rotate signing keys.
+	// Recommended: 24 hours to 7 days
+	// More frequent rotation limits the impact of key compromise.
+	// Set to 0 to disable automatic rotation (manual rotation only).
+	KeyRotationInterval time.Duration
+
+	// KeySize is the RSA key size in bits (2048, 3072, or 4096).
+	// Only used for RSA algorithm.
+	// Recommended: 2048 (good balance of security and performance)
+	// 4096 provides higher security but slower signing/verification.
 	KeySize int
-	// KeyAlgorithm indicates the signing algorithm. Supported: "RSA" (RS256).
+
+	// KeyAlgorithm indicates the signing algorithm.
+	// Currently supported: "RSA" (uses RS256)
+	// Future: ECDSA (ES256), HMAC (HS256) for symmetric keys
 	KeyAlgorithm string
-	// KeyRetention is how long to keep rotated keys in storage. Must be greater than
-	// the maximum token lifetime to ensure old tokens can still be verified.
+
+	// KeyRetention is how long to keep rotated keys in storage.
+	// MUST be greater than the maximum token lifetime (RefreshTokenExpiry)
+	// to ensure old tokens can still be verified.
+	// Recommended: 30 days (covers refresh token lifetime + buffer)
 	KeyRetention time.Duration
 }
 
-// DefaultConfig returns default JWT configuration.
+// DefaultConfig returns production-ready JWT configuration with security best practices.
+//
+// Default values:
+//   - Issuer: "aegis"
+//   - Access token: 15 minutes (short-lived for security)
+//   - Refresh token: 7 days (balance between UX and security)
+//   - Key rotation: 24 hours (daily rotation limits key exposure)
+//   - Key size: 2048 bits (industry standard RSA key size)
+//   - Algorithm: RSA/RS256 (asymmetric signing)
+//   - Key retention: 30 days (covers refresh token lifetime)
+//
+// Customize for your use case:
+//
+//	config := jwt.DefaultConfig()
+//	config.Issuer = "myapp.com"
+//	config.AccessTokenExpiry = 1 * time.Hour  // Longer for internal APIs
+//	config.RefreshTokenExpiry = 30 * 24 * time.Hour  // 30 days for mobile apps
 func DefaultConfig() *Config {
 	return &Config{
 		Issuer:              "aegis",
@@ -61,26 +195,108 @@ func DefaultConfig() *Config {
 }
 
 // Plugin represents the JWT authentication plugin.
+//
+// This plugin manages the complete JWT token lifecycle:
+//   - Token generation (access + refresh pairs)
+//   - Token validation (signature + expiry)
+//   - Token refresh (new tokens from refresh token)
+//   - Key rotation (periodic key generation)
+//   - Key storage (database-backed JWKS)
+//   - Token blacklist (Redis-backed revocation)
+//
+// Architecture:
+//
+//	Components:
+//	  - store: Database storage for JWK keys
+//	  - handler: HTTP handlers for token endpoints
+//	  - config: Token expiry and key rotation settings
+//	  - redisClient: Token blacklist storage
+//	  - sessionService: Integration with core authentication
+//
+//	Keys:
+//	  - accessTokenPrivateKey: Signs access tokens
+//	  - accessTokenPublicKey: Verifies access tokens (exposed in JWKS)
+//	  - refreshTokenPrivateKey: Signs refresh tokens
+//	  - refreshTokenPublicKey: Verifies refresh tokens (not exposed)
+//
+//	Token Lifecycle:
+//	  1. Generate: CreateTokenPair() → JWT signed with private key
+//	  2. Use: Client includes token in Authorization header
+//	  3. Verify: ValidateToken() → Check signature with public key
+//	  4. Refresh: RefreshTokens() → Generate new pair from refresh token
+//	  5. Revoke: BlacklistToken() → Add to Redis blacklist
 type Plugin struct {
-	db                     *DB
-	handler                *Handler
-	config                 *Config
-	accessTokenPrivateKey  jwk.Key
-	accessTokenPublicKey   jwk.Key
+	// store provides database operations for JWK key storage
+	store JWTStore
+
+	// handler manages HTTP endpoints for token operations
+	handler *Handler
+
+	// config holds token expiry and key rotation settings
+	config *Config
+
+	// dialect specifies the database dialect (postgres, mysql, sqlite)
+	dialect plugins.Dialect
+
+	// accessTokenPrivateKey signs access tokens (kept secret)
+	accessTokenPrivateKey jwk.Key
+
+	// accessTokenPublicKey verifies access tokens (exposed in JWKS endpoint)
+	accessTokenPublicKey jwk.Key
+
+	// refreshTokenPrivateKey signs refresh tokens (kept secret)
 	refreshTokenPrivateKey jwk.Key
-	refreshTokenPublicKey  jwk.Key
-	redisClient            *redis.Client
-	sessionService         *core.SessionService // Added for middleware access
+
+	// refreshTokenPublicKey verifies refresh tokens (not exposed publicly)
+	refreshTokenPublicKey jwk.Key
+
+	// redisClient provides token blacklist storage for revocation
+	redisClient *redis.Client
+
+	// sessionService integrates with core authentication middleware
+	sessionService *core.SessionService
+
+	// logger provides structured logging (may be nil)
+	logger config.Logger
 }
 
-// New creates a new JWT plugin.
-func New(config *Config) *Plugin {
+// New creates a new JWT authentication plugin.
+//
+// Parameters:
+//   - config: JWT configuration (token expiry, key rotation, etc.)
+//     Pass nil to use DefaultConfig()
+//   - store: Custom JWK storage implementation
+//     Pass nil to use default SQL storage (recommended)
+//   - dialect: Database dialect (postgres, mysql, sqlite)
+//     Optional, defaults to postgres if not provided
+//
+// Example:
+//
+//	// Use default configuration
+//	jwtPlugin := jwt.New(nil, nil, plugins.DialectPostgres)
+//
+//	// Custom configuration
+//	config := &jwt.Config{
+//		Issuer:              "myapp.com",
+//		AccessTokenExpiry:   1 * time.Hour,
+//		RefreshTokenExpiry:  30 * 24 * time.Hour,
+//		KeyRotationInterval: 7 * 24 * time.Hour,
+//	}
+//	jwtPlugin := jwt.New(config, nil, plugins.DialectPostgres)
+func New(config *Config, store JWTStore, dialect ...plugins.Dialect) *Plugin {
 	if config == nil {
 		config = DefaultConfig()
 	}
 
+	d := plugins.DialectPostgres
+	if len(dialect) > 0 {
+		d = dialect[0]
+	}
+
 	return &Plugin{
-		config: config,
+		store:   store,
+		config:  config,
+		dialect: d,
 	}
 }
 
@@ -99,20 +315,64 @@ func (p *Plugin) Description() string {
 	return "JWT authentication plugin for token-based authentication with database-backed key storage and JWKS endpoint"
 }
 
-// Init initializes the plugin and integrates with SessionService.
+// Init initializes the JWT plugin and integrates with core authentication.
+//
+// Initialization steps:
+//  1. Initialize JWK storage (default SQL store if not provided)
+//  2. Get Redis client from SessionService (for token blacklist)
+//  3. Validate database schema (ensure jwk_keys table exists)
+//  4. Initialize signing keys (load from DB or generate new)
+//  5. Create HTTP handler for token endpoints
+//  6. Start automatic key rotation (if configured)
+//
+// Database Schema Validation:
+//
+// The plugin validates that the jwk_keys table exists with required columns:
+//   - kid (key ID, primary key)
+//   - key_data (JWK JSON)
+//   - algorithm (RS256, etc.)
+//   - use (sig for signing, enc for encryption)
+//   - created_at, expires_at
+//
+// Key Initialization:
+//
+// On first run, generates RSA key pairs for:
+//   - Access tokens (public key exposed in JWKS)
+//   - Refresh tokens (public key NOT exposed)
+//
+// On subsequent runs, loads existing keys from database.
+//
+// Parameters:
+//   - ctx: Context for initialization (can be cancelled)
+//   - aegis: Framework instance providing database, services, etc.
+//
+// Returns:
+//   - error: Schema validation errors, key generation errors
 func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
-	// Ensure DB provider is configured
-	if p.config.DB == nil {
-		return fmt.Errorf("JWT plugin requires a database provider in config")
+	// Get logger from aegis instance
+	p.logger = aegis.GetLogger()
+
+	// Initialize store if not provided
+	if p.store == nil {
+		p.store = NewDefaultJWTStore(aegis.DB())
 	}
 
-	// Create database handler
-	p.db = NewDB(p.config.DB)
-
 	// Get session service to get Redis client (for token blacklisting only)
-	sessionService := aegis.GetSessionService()
+	sessionService := aegis.GetAuthService().Session
 	p.sessionService = sessionService // Store for middleware access
 	p.redisClient = sessionService.GetRedisClient()
+
+	// Build schema requirements: basic table existence from RequiresTables + detailed checks
+	requirements := []plugins.SchemaRequirement{}
+	for _, table := range p.RequiresTables() {
+		requirements = append(requirements, plugins.ValidateTableExists(table))
+	}
+	requirements = append(requirements, GetSchemaRequirements(p.dialect)...)
+
+	// Validate JWT plugin schema requirements
+	if err := aegis.ValidateSchemaRequirements(ctx, requirements); err != nil {
+		return err
+	}
 
 	// Initialize keys (get or create from database)
 	if err := p.initializeKeys(ctx); err != nil {
@@ -122,105 +382,110 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	// Create handler for JWKS endpoint
 	p.handler = NewHandler(p)
 
+	// Auto-start key rotation if interval is configured
+	if p.config.KeyRotationInterval > 0 {
+		p.StartKeyRotation(ctx)
+	}
+
 	return nil
 }
 
 // MountRoutes registers HTTP routes for JWT endpoints with appropriate middleware.
-func (p *Plugin) MountRoutes(router server.Router, basePath string) {
+func (p *Plugin) MountRoutes(router router.Router, basePath string) {
 	// Create auth middleware for protected routes
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	// Protected endpoints - require active session/cookie authentication
 	router.POST(basePath+"/token", requireAuth(http.HandlerFunc(p.handler.HandleGetToken)).ServeHTTP)
-	router.RegisterRouteMetadata(models.RouteMetadata{
+	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        basePath + "/token",
 		Summary:     "Generate JWT token pair",
 		Description: "Generate access and refresh JWT tokens for the authenticated user",
 		Tags:        []string{"JWT"},
 		Protected:   true,
-		Responses: map[string]*models.ResponseMeta{
+		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Token pair generated successfully", Schema: "TokenPair"},
-			"401": {Description: "Not authenticated", Schema: models.SchemaError},
-			"500": {Description: "Failed to generate tokens", Schema: models.SchemaError},
+			"401": {Description: "Not authenticated", Schema: core.SchemaError},
+			"500": {Description: "Failed to generate tokens", Schema: core.SchemaError},
 		},
 	})
 
 	router.POST(basePath+"/getAccessToken", requireAuth(http.HandlerFunc(p.handler.HandleGetAccessToken)).ServeHTTP)
-	router.RegisterRouteMetadata(models.RouteMetadata{
+	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        basePath + "/getAccessToken",
 		Summary:     "Get access token",
 		Description: "Generate a new access token for the authenticated user",
 		Tags:        []string{"JWT"},
 		Protected:   true,
-		Responses: map[string]*models.ResponseMeta{
+		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Access token generated successfully", Schema: "AccessToken"},
-			"401": {Description: "Not authenticated", Schema: models.SchemaError},
-			"500": {Description: "Failed to generate token", Schema: models.SchemaError},
+			"401": {Description: "Not authenticated", Schema: core.SchemaError},
+			"500": {Description: "Failed to generate token", Schema: core.SchemaError},
 		},
 	})
 
 	router.POST(basePath+"/logout", requireAuth(http.HandlerFunc(p.handler.HandleLogout)).ServeHTTP)
-	router.RegisterRouteMetadata(models.RouteMetadata{
+	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        basePath + "/logout",
 		Summary:     "Logout and blacklist tokens",
 		Description: "Logout the user and blacklist their JWT tokens (requires Redis)",
 		Tags:        []string{"JWT"},
 		Protected:   true,
-		Responses: map[string]*models.ResponseMeta{
-			"200": {Description: "Successfully logged out and tokens blacklisted", Schema: models.SchemaSuccess},
-			"401": {Description: "Not authenticated", Schema: models.SchemaError},
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "Successfully logged out and tokens blacklisted", Schema: core.SchemaSuccess},
+			"401": {Description: "Not authenticated", Schema: core.SchemaError},
 		},
 	})
 
 	// Public endpoints - no authentication required
 	router.POST(basePath+"/refreshToken", p.handler.HandleRefreshToken) // Refresh token is the auth
-	router.RegisterRouteMetadata(models.RouteMetadata{
+	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        basePath + "/refreshToken",
 		Summary:     "Refresh JWT tokens",
 		Description: "Use a refresh token to obtain new access and refresh tokens",
 		Tags:        []string{"JWT"},
 		Protected:   false,
-		RequestBody: &models.RequestBodyMeta{
+		RequestBody: &core.RequestBodyMeta{
 			Description: "Refresh token",
 			Required:    true,
-			Schema:      "RefreshTokenRequest",
+			Schema:      core.SchemaRefreshTokenRequest,
 		},
-		Responses: map[string]*models.ResponseMeta{
+		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Tokens refreshed successfully", Schema: "TokenPair"},
-			"400": {Description: "Invalid request", Schema: models.SchemaError},
-			"401": {Description: "Invalid or expired refresh token", Schema: models.SchemaError},
+			"400": {Description: "Invalid request", Schema: core.SchemaError},
+			"401": {Description: "Invalid or expired refresh token", Schema: core.SchemaError},
 		},
 	})
 
 	router.GET("/.well-known/jwks.json", p.handler.HandleJWKS) // Public key discovery
-	router.RegisterRouteMetadata(models.RouteMetadata{
+	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "GET",
 		Path:        "/.well-known/jwks.json",
 		Summary:     "Get JWKS",
 		Description: "Retrieve the JSON Web Key Set for JWT verification",
 		Tags:        []string{"JWT"},
 		Protected:   false,
-		Responses: map[string]*models.ResponseMeta{
+		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "JWKS retrieved successfully", Schema: "JWKS"},
-			"500": {Description: "Failed to retrieve JWKS", Schema: models.SchemaError},
+			"500": {Description: "Failed to retrieve JWKS", Schema: core.SchemaError},
 		},
 	})
 
 	router.GET(basePath+"/jwks", p.handler.HandleJWKS) // Convenience endpoint
-	router.RegisterRouteMetadata(models.RouteMetadata{
+	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "GET",
 		Path:        basePath + "/jwks",
 		Summary:     "Get JWKS (convenience endpoint)",
 		Description: "Retrieve the JSON Web Key Set for JWT verification",
 		Tags:        []string{"JWT"},
 		Protected:   false,
-		Responses: map[string]*models.ResponseMeta{
+		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "JWKS retrieved successfully", Schema: "JWKS"},
-			"500": {Description: "Failed to retrieve JWKS", Schema: models.SchemaError},
+			"500": {Description: "Failed to retrieve JWKS", Schema: core.SchemaError},
 		},
 	})
 }
@@ -244,6 +509,30 @@ func (p *Plugin) RequiresTables() []string {
 // ProvidesAuthMethods returns authentication methods provided.
 func (p *Plugin) ProvidesAuthMethods() []string {
 	return []string{"jwt"}
+}
+
+// GetMigrations returns the plugin migrations
+func (p *Plugin) GetMigrations() []plugins.Migration {
+	migs, err := GetMigrations(p.dialect)
+	if err != nil {
+		return []plugins.Migration{}
+	}
+	return migs
+}
+
+// GetSchemas returns all schemas for all supported dialects
+func (p *Plugin) GetSchemas() []plugins.Schema {
+	var schemas []plugins.Schema
+
+	for _, dialect := range []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL} {
+		schema, err := GetSchema(dialect)
+		if err != nil {
+			continue
+		}
+		schemas = append(schemas, *schema)
+	}
+
+	return schemas
 }
 
 // initializeKeys loads or creates JWT signing keys from the database
@@ -271,7 +560,7 @@ func (p *Plugin) initializeKeys(ctx context.Context) error {
 // getOrCreateKeyPair retrieves or creates a key pair for the given type
 func (p *Plugin) getOrCreateKeyPair(ctx context.Context, keyType string) (jwk.Key, jwk.Key, error) {
 	// Try to get existing key from database
-	key, err := p.db.GetCurrentJWK(ctx, "RS256", "sig")
+	key, err := p.store.GetCurrentJWK(ctx, "RS256", "sig")
 	if err == nil {
 		pubKey, err := key.PublicKey()
 		if err != nil {
@@ -323,7 +612,7 @@ func (p *Plugin) rotateKeyPair(ctx context.Context, keyType string) (jwk.Key, jw
 		retention = p.config.KeyRetention
 	}
 	expiresAt := time.Now().Add(retention)
-	if err := p.db.CreateJWK(ctx, key, "RS256", "sig", &expiresAt); err != nil {
+	if err := p.store.StoreJWK(ctx, key, "RS256", "sig", &expiresAt); err != nil {
 		return nil, nil, fmt.Errorf("failed to store JWK: %w", err)
 	}
 
@@ -368,11 +657,8 @@ func (p *Plugin) generateToken(userID, tokenType string, duration time.Duration)
 	expiration := time.Now().Add(duration)
 
 	// Create token with claims (including unique JTI)
-	// Generate a unique token ID (JTI). This can fail if secure randomness is unavailable.
-	jti, err := core.GenerateSessionID()
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to generate token id: %w", err)
-	}
+	// Generate a unique token ID (JTI)
+	jti := core.GenerateID()
 
 	token, err := jwt.NewBuilder().
 		JwtID(jti). // Add unique token ID
@@ -615,8 +901,10 @@ func (p *Plugin) StartKeyRotation(ctx context.Context) {
 			case <-ticker.C:
 				// Use background context for rotation since ctx might be cancelled
 				if err := p.RotateKeys(context.Background()); err != nil {
-					// Log error but continue
-					_ = err
+					// Log error but continue - key rotation failure doesn't break existing tokens
+					if p.logger != nil {
+						p.logger.Error("JWT key rotation failed", "error", err)
+					}
 				}
 			case <-ctx.Done():
 				ticker.Stop()
@@ -651,5 +939,5 @@ func (p *Plugin) RotateKeys(ctx context.Context) error {
 
 // CleanupExpiredKeys removes expired keys from the database.
 func (p *Plugin) CleanupExpiredKeys(ctx context.Context) error {
-	return p.db.DeleteExpiredJWKS(ctx)
+	return p.store.DeleteExpiredJWKS(ctx)
 }

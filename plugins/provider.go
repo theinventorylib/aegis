@@ -3,25 +3,64 @@ package plugins
 
 import (
 	"context"
+	"database/sql"
 
+	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/server"
+	"github.com/theinventorylib/aegis/router"
 )
 
+// SchemaRequirement defines a schema validation requirement
+type SchemaRequirement = core.SchemaRequirement
+
+// ValidateTableExists creates a requirement to check if a table exists
+var ValidateTableExists = core.ValidateTableExists
+
+// ValidateColumnExists creates a requirement to check if a column exists in a table
+var ValidateColumnExists = core.ValidateColumnExists
+
 // Aegis is the interface that plugins use to interact with the Aegis framework.
-// This is a forward declaration to avoid import cycles.
-// The actual implementation is in the main aegis package.
+// Uses one generic parameter for the User model (U).
+// Account, Session, and Verification models are standard across the framework.
 type Aegis interface {
-	GetSessionService() *core.SessionService // Returns the session service for plugin integration
+	GetAuthService() *core.AuthService                                                      // Returns the auth service for user operations
+	GetLogger() config.Logger                                                               // Returns the configured logger (may be nil)
+	GetRateLimiter() *core.RateLimiter                                                      // Returns the rate limiter (may be nil)
+	DeriveSecret(purpose string) []byte                                                     // Derives a purpose-specific secret from the master secret
+	DB() *sql.DB                                                                            // Returns the database connection for schema validation
+	ValidateSchemaRequirements(ctx context.Context, requirements []SchemaRequirement) error // Validates schema requirements
 }
 
 // Migration represents a database migration for a plugin.
 type Migration struct {
-	Version     string // Migration version (e.g., "001", "002")
+	Version     int    // Migration version (e.g., 001, 002)
 	Description string // Human-readable description
 	Up          string // SQL for applying migration
 	Down        string // SQL for reverting migration
 }
+
+// SchemaInfo contains metadata about a schema
+type SchemaInfo struct {
+	Package     string
+	Version     int
+	Description string
+}
+
+// Schema represents the complete schema for a dialect
+type Schema struct {
+	Dialect Dialect
+	SQL     string
+	Info    SchemaInfo
+}
+
+// Dialect represents a database dialect
+type Dialect string
+
+const (
+	DialectPostgres Dialect = "postgres"
+	DialectMySQL    Dialect = "mysql"
+	DialectSQLite   Dialect = "sqlite"
+)
 
 // Dependency represents an external package dependency.
 type Dependency struct {
@@ -30,7 +69,8 @@ type Dependency struct {
 	Purpose string // Why this dependency is needed
 }
 
-// Plugin is the interface that all plugins must implement
+// Plugin is the interface that all plugins must implement.
+// Simplified to one generic parameter (U).
 type Plugin interface {
 	// Identity
 	Name() string        // Plugin identifier (e.g., "sms", "oauth", "email")
@@ -40,26 +80,46 @@ type Plugin interface {
 	// Lifecycle
 	Init(ctx context.Context, a Aegis) error // Initialize plugin with Aegis instance
 	GetMigrations() []Migration              // Return plugin-specific migrations
+	GetSchemas() []Schema                    // Return plugin-specific schemas for all dialects
 
 	// Routing
-	MountRoutes(router server.Router, prefix string) // Register HTTP routes
+	MountRoutes(router router.Router, prefix string) // Register HTTP routes
 
 	// Metadata
-	// Dependencies returns external Go package dependencies required by this plugin.
-	// This is INFORMATIONAL ONLY - Aegis does NOT validate or enforce these dependencies.
-	// Users are responsible for ensuring dependencies are available (via go.mod or build tools).
-	// Use this to document what packages must be imported for the plugin to function.
-	Dependencies() []Dependency
+	Dependencies() []Dependency    // Informational only
+	RequiresTables() []string      // Informational only
+	ProvidesAuthMethods() []string // Informational only
+}
 
-	// RequiresTables returns the names of database tables this plugin depends on.
-	// Format: "schema.table" (e.g., "auth.user", "auth.accounts")
-	// This is INFORMATIONAL ONLY - Aegis does NOT validate table existence.
-	// Users are responsible for running migrations in correct order.
-	// The exporter uses this to document dependencies but does NOT reorder migrations.
-	RequiresTables() []string
+// UserEnricher is an optional interface that plugins can implement to add
+// extension fields to the EnrichedUser. Plugins that implement this interface
+// will have their EnrichUser method called after authentication to populate
+// user-specific data (role, permissions, organizations, etc.).
+//
+// Example implementation:
+//
+//	func (a *Admin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error {
+//	    role, err := a.store.GetRole(ctx, user.User.ID)
+//	    if err == nil && role != "" {
+//	        user.Set("role", role)
+//	    }
+//	    return nil
+//	}
+type UserEnricher interface {
+	// EnrichUser adds plugin-specific data to the enriched user.
+	// Called after authentication to populate extension fields.
+	// Use simple field names (e.g., "role", not "admin:role").
+	EnrichUser(ctx context.Context, user *core.EnrichedUser) error
+}
 
-	// ProvidesAuthMethods returns authentication method names provided by this plugin.
-	// Examples: "oauth_google", "sms_otp", "email_magic_link", "password"
-	// This is used for documentation and plugin discovery.
-	ProvidesAuthMethods() []string
+// IsUserEnricher checks if a plugin implements the UserEnricher interface.
+func IsUserEnricher(p Plugin) bool {
+	_, ok := p.(UserEnricher)
+	return ok
+}
+
+// GetUserEnricher returns the UserEnricher interface if the plugin implements it.
+func GetUserEnricher(p Plugin) (UserEnricher, bool) {
+	ue, ok := p.(UserEnricher)
+	return ue, ok
 }

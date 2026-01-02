@@ -4,11 +4,11 @@ package config
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"time"
 
-	"github.com/theinventorylib/aegis/db"
-	"github.com/theinventorylib/aegis/server"
+	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/core"
+	"github.com/theinventorylib/aegis/router"
 )
 
 // Logger is an optional interface for logging Aegis lifecycle events.
@@ -22,7 +22,7 @@ type Logger interface {
 // Config holds the configuration for Aegis authentication framework.
 //
 // Required fields:
-//   - DB: Database provider (use WithDB, WithPostgres, or WithMySQL)
+//   - DB: sql.DB
 //   - Router: HTTP router (use WithRouter)
 //   - CSRFSecret: 32+ byte random secret (required for web apps, or use WithAPIOnlyMode)
 //
@@ -32,12 +32,13 @@ type Config struct {
 	// ========== REQUIRED DEPENDENCIES ==========
 
 	// DB is the database provider for storing users, sessions, and auth data.
-	// REQUIRED. Use WithDB, WithPostgres, or WithMySQL to set this.
-	DB db.Provider
+	// Use a pointer so nil can represent "not provided" and to avoid copying
+	// a large sql.DB value accidentally.
+	DB *sql.DB
 
 	// Router is the HTTP router for mounting authentication endpoints.
 	// REQUIRED. Use WithRouter to set this.
-	Router server.Router
+	Router router.Router
 
 	// ========== OPTIONAL OBSERVABILITY ==========
 
@@ -46,20 +47,19 @@ type Config struct {
 	// Default: nil (no logging)
 	Logger Logger
 
-	// ========== INTERNAL (DO NOT SET DIRECTLY) ==========
-
-	// dbError tracks database connection errors from WithPostgres/WithMySQL.
-	// Internal use only. DO NOT set directly.
-	dbError error
+	// AuditLogger is an optional audit logger for security events.
+	// OPTIONAL. Use WithAuditLogger to enable audit logging.
+	// Default: nil (no audit logging)
+	AuditLogger core.AuditLogger
 
 	// ========== SECURITY CONFIGURATION ==========
 
-	// CSRFSecret is the secret key for CSRF token generation.
-	// REQUIRED for web applications with browser-based sessions.
+	// Secret is the master secret for Aegis.
+	// REQUIRED for web applications (or use WithAPIOnlyMode for API-only apps).
 	// MUST be cryptographically random (32+ bytes recommended).
-	// OPTIONAL if using WithAPIOnlyMode(true).
-	// Use WithCSRFSecret to set this.
-	CSRFSecret []byte
+	// All plugin-specific secrets (CSRF, OAuth, JWT, etc.) are derived from this.
+	// Use WithSecret to set this.
+	Secret []byte
 
 	// SessionExpiry is the duration before a session token expires.
 	// REQUIRED (has default).
@@ -82,6 +82,12 @@ type Config struct {
 	// Set to ".example.com" to share cookies across subdomains.
 	// Use WithCookieDomain to set this.
 	CookieDomain string
+
+	// CookieName is the name of the session cookie.
+	// OPTIONAL.
+	// Default: "aegis_session"
+	// Use WithCookieName to customize.
+	CookieName string
 
 	// CookieSecure determines if cookies are sent only over HTTPS.
 	// REQUIRED (has default).
@@ -159,6 +165,38 @@ type Config struct {
 	// Default: nil (uses database for session storage)
 	// Use WithRedis to enable Redis sessions.
 	Redis *RedisConfig
+
+	// ========== AUTH CONFIGURATION ==========
+	// Auth holds authentication configuration.
+	// REQUIRED.
+	// Use WithCoreAuthConfig to set this.
+	Auth auth.Config
+
+	// CoreAuth holds core authentication configuration.
+	// OPTIONAL.
+	// Default: DefaultAuthConfig()
+	// Use WithCoreAuthConfig to set this.
+	CoreAuth *core.AuthConfig
+
+	// ========== RATE LIMITING ==========
+
+	// RateLimitEnabled enables rate limiting middleware.
+	// OPTIONAL.
+	// Default: false
+	// Use WithRateLimiting to enable.
+	RateLimitEnabled bool
+
+	// RateLimitConfig holds rate limiting configuration.
+	// OPTIONAL.
+	// Default: nil (uses DefaultRateLimitConfig() if enabled)
+	// Use WithRateLimiting or WithRateLimitConfig to configure.
+	RateLimitConfig *core.RateLimitConfig
+
+	// LoginAttemptConfig holds login attempt tracking configuration.
+	// OPTIONAL.
+	// Default: nil (uses DefaultLoginAttemptConfig() if rate limiting enabled)
+	// Use WithLoginAttemptConfig to configure.
+	LoginAttemptConfig *core.LoginAttemptConfig
 }
 
 // RedisConfig holds configuration for Redis session storage.
@@ -186,36 +224,33 @@ type RedisConfig struct {
 // Default returns a Config with sensible defaults
 func Default() *Config {
 	return &Config{
-		SessionExpiry:   24 * time.Hour,
-		RefreshExpiry:   7 * 24 * time.Hour,
-		CookieHTTPOnly:  true,
-		CookieSecure:    true,
-		CookieSameSite:  "Lax",
-		Argon2Time:      1,
-		Argon2Memory:    64 * 1024, // 64 MB
-		Argon2Threads:   4,
-		Argon2KeyLength: 32,
+		SessionExpiry:   core.DefaultSessionExpiry,
+		RefreshExpiry:   core.DefaultRefreshExpiry,
+		CookieName:      core.DefaultCookieName,
+		CookieHTTPOnly:  core.DefaultCookieHTTPOnly,
+		CookieSecure:    core.DefaultCookieSecure,
+		CookieSameSite:  core.DefaultCookieSameSite,
+		Argon2Time:      core.DefaultArgon2Time,
+		Argon2Memory:    core.DefaultArgon2Memory,
+		Argon2Threads:   core.DefaultArgon2Threads,
+		Argon2KeyLength: core.DefaultArgon2KeyLength,
+		CoreAuth:        core.DefaultAuthConfig(),
 	}
 }
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	// Check for database connection errors from WithPostgres/WithMySQL
-	if c.dbError != nil {
-		return fmt.Errorf("database configuration error: %w", c.dbError)
+	if c.DB == nil {
+		return errors.New("database (DB) is required")
 	}
 
-	// Verify required dependencies with explicit errors
-	if c.DB == nil {
-		return errors.New("database provider is required: use WithDB, WithPostgres, or WithMySQL")
-	}
 	if c.Router == nil {
 		return errors.New("router is required: use WithRouter")
 	}
 
-	// CSRF secret only required for web apps (not API-only mode)
-	if !c.APIMode && len(c.CSRFSecret) == 0 {
-		return errors.New("CSRF secret is required (or set APIMode=true for API-only apps)")
+	// Secret only required for web apps (not API-only mode)
+	if !c.APIMode && len(c.Secret) == 0 {
+		return errors.New("secret is required (use WithSecret) or set APIMode=true for API-only apps")
 	}
 
 	// Validate security-sensitive parameters
@@ -246,101 +281,56 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// DeriveSecret derives a purpose-specific secret from the master secret.
+// This uses HKDF-SHA256 to cryptographically separate secrets for different purposes.
+// Returns nil if no master secret is configured.
+//
+// Plugins should define their own purpose strings (e.g., "oauth-state", "jwt-signing").
+// This ensures cryptographic separation between different uses.
+//
+// Example:
+//
+//	oauthSecret := cfg.DeriveSecret("oauth-state")
+//	jwtSecret := cfg.DeriveSecret("jwt-signing")
+func (c *Config) DeriveSecret(purpose string) []byte {
+	if len(c.Secret) == 0 {
+		return nil
+	}
+	return core.DeriveSecret(c.Secret, purpose, core.DefaultSecretLength)
+}
+
 // Option is a functional option for configuring Aegis
 type Option func(*Config)
 
-// WithDB sets the database provider from a standard *sql.DB connection
-// db: a *sql.DB connection from any driver (pgx, lib/pq, mysql, sqlite, etc.)
-// dialect: the SQL dialect for query syntax (db.PostgreSQL, db.MySQL, db.SQLite)
+// WithRouter sets the HTTP router for Aegis.
+// router: an implementation of server.Router (ChiRouter, DefaultRouter, etc.)
 //
 // Example:
 //
-//	import "database/sql"
-//	import _ "github.com/lib/pq"
+//	mux := http.NewServeMux()
+//	router := server.NewDefaultRouter(mux)
 //
-//	sqlDB, _ := sql.Open("postgres", connString)
-//	aegis.New(config.WithDB(sqlDB, db.PostgreSQL), ...)
-func WithDB(sqlDB interface{}, dialect db.Dialect) Option {
-	return func(c *Config) {
-		// Support both *sql.DB and db.Provider for flexibility
-		switch v := sqlDB.(type) {
-		case *sql.DB:
-			c.DB = db.NewSQLProvider(v, dialect, c.IDGenerator)
-		case db.Provider:
-			// Allow passing DBProvider directly for advanced use cases
-			c.DB = v
-		}
-	}
-}
-
-// WithPostgres creates a PostgreSQL database provider from a connection string
-// This is a convenience helper that uses the lib/pq driver
-//
-// Example:
-//
-//	aegis.New(
-//	    config.WithPostgres("postgres://user:pass@localhost:5432/db?sslmode=disable"),
-//	    ...
-//	)
-//
-// For more control over the connection, use WithDB with your own *sql.DB
-func WithPostgres(connString string) Option {
-	return func(c *Config) {
-		sqlDB, err := sql.Open("postgres", connString)
-		if err != nil {
-			// Store error to be caught during Validate()
-			c.dbError = fmt.Errorf("failed to open postgres connection: %w", err)
-			return
-		}
-		// Test the connection
-		if err := sqlDB.Ping(); err != nil {
-			c.dbError = fmt.Errorf("failed to ping postgres database: %w", err)
-			_ = sqlDB.Close() // Ignore close error, ping already failed
-			return
-		}
-		c.DB = db.NewSQLProvider(sqlDB, db.PostgreSQL, c.IDGenerator)
-	}
-}
-
-// WithMySQL creates a MySQL database provider from a connection string
-// This is a convenience helper that uses the go-sql-driver/mysql driver
-//
-// Example:
-//
-//	aegis.New(
-//	    config.WithMySQL("user:password@tcp(127.0.0.1:3306)/dbname?parseTime=true"),
-//	    ...
-//	)
-//
-// For more control over the connection, use WithDB with your own *sql.DB
-func WithMySQL(connString string) Option {
-	return func(c *Config) {
-		sqlDB, err := sql.Open("mysql", connString)
-		if err != nil {
-			c.dbError = fmt.Errorf("failed to open mysql connection: %w", err)
-			return
-		}
-		// Test the connection
-		if err := sqlDB.Ping(); err != nil {
-			c.dbError = fmt.Errorf("failed to ping mysql database: %w", err)
-			_ = sqlDB.Close() // Ignore close error, ping already failed
-			return
-		}
-		c.DB = db.NewSQLProvider(sqlDB, db.MySQL, c.IDGenerator)
-	}
-}
-
-// WithRouter sets the router
-func WithRouter(router server.Router) Option {
+//	aegis.New(config.WithRouter(router), ...)
+func WithRouter(router router.Router) Option {
 	return func(c *Config) {
 		c.Router = router
 	}
 }
 
-// WithCSRFSecret sets the CSRF protection secret
-func WithCSRFSecret(secret []byte) Option {
+// WithSecret sets the master secret for Aegis.
+// All plugin-specific secrets (CSRF, OAuth state, JWT, etc.) are derived from this.
+// The secret should be at least 32 bytes of cryptographically random data.
+//
+// Example:
+//
+//	// Generate a secure secret (do this once and store securely)
+//	secret := make([]byte, 32)
+//	crypto/rand.Read(secret)
+//
+//	aegis.New(config.WithSecret(secret), ...)
+func WithSecret(secret []byte) Option {
 	return func(c *Config) {
-		c.CSRFSecret = secret
+		c.Secret = secret
 	}
 }
 
@@ -362,6 +352,14 @@ func WithRefreshExpiry(duration time.Duration) Option {
 func WithCookieDomain(domain string) Option {
 	return func(c *Config) {
 		c.CookieDomain = domain
+	}
+}
+
+// WithCookieName sets the session cookie name
+// Default is "aegis_session"
+func WithCookieName(name string) Option {
+	return func(c *Config) {
+		c.CookieName = name
 	}
 }
 
@@ -424,5 +422,185 @@ func WithAPIOnlyMode(enabled bool) Option {
 func WithLogger(logger Logger) Option {
 	return func(c *Config) {
 		c.Logger = logger
+	}
+}
+
+// WithAuditLogger sets an optional audit logger for security events.
+// The audit logger will receive events for authentication attempts, user actions, etc.
+// Example: WithAuditLogger(&MyAuditLogger{})
+func WithAuditLogger(logger core.AuditLogger) Option {
+	return func(c *Config) {
+		c.AuditLogger = logger
+	}
+}
+
+// WithAuthConfig sets the core authentication configuration
+func WithAuthConfig(authConfig *core.AuthConfig) Option {
+	return func(c *Config) {
+		c.CoreAuth = authConfig
+	}
+}
+
+// WithRateLimiting enables rate limiting with default configuration.
+// Rate limiting helps protect against brute-force attacks and DoS.
+// By default, it allows 100 requests per minute per IP.
+//
+// Example:
+//
+//	aegis.New(config.WithRateLimiting(), ...)
+func WithRateLimiting() Option {
+	return func(c *Config) {
+		c.RateLimitEnabled = true
+		if c.RateLimitConfig == nil {
+			c.RateLimitConfig = core.DefaultRateLimitConfig()
+		}
+		if c.LoginAttemptConfig == nil {
+			c.LoginAttemptConfig = core.DefaultLoginAttemptConfig()
+		}
+	}
+}
+
+// WithRateLimitConfig sets custom rate limiting configuration.
+// This also enables rate limiting.
+//
+// Example:
+//
+//	cfg := &core.RateLimitConfig{
+//	    RequestsPerWindow: 50,
+//	    WindowDuration:    time.Minute,
+//	    ByIP:              true,
+//	}
+//	aegis.New(config.WithRateLimitConfig(cfg), ...)
+func WithRateLimitConfig(cfg *core.RateLimitConfig) Option {
+	return func(c *Config) {
+		c.RateLimitEnabled = true
+		c.RateLimitConfig = cfg
+		if c.LoginAttemptConfig == nil {
+			c.LoginAttemptConfig = core.DefaultLoginAttemptConfig()
+		}
+	}
+}
+
+// WithPasswordPolicy sets custom password validation policies.
+// This controls password strength requirements for user registration.
+//
+// Example:
+//
+//	policy := &core.PasswordPolicyConfig{
+//	    MinLength:      12,
+//	    RequireUpper:   true,
+//	    RequireLower:   true,
+//	    RequireDigit:   true,
+//	    RequireSpecial: true,
+//	    MaxLength:      256,
+//	}
+//	aegis.New(config.WithPasswordPolicy(policy), ...)
+func WithPasswordPolicy(policy *core.PasswordPolicyConfig) Option {
+	return func(c *Config) {
+		if c.CoreAuth == nil {
+			c.CoreAuth = core.DefaultAuthConfig()
+		}
+		c.CoreAuth.PasswordPolicy = policy
+	}
+}
+
+// WithUserFields configures which extension fields are included in user API responses.
+// Use this to control what plugin data (role, permissions, organizations, etc.)
+// appears in user responses.
+//
+// If not configured, all extension fields from plugins are included by default.
+//
+// Example - Include only specific fields:
+//
+//	aegis.New(
+//	    config.WithUserFields([]string{"role", "permissions", "organizations"}),
+//	    ...
+//	)
+//
+// This produces JSON responses like:
+//
+//	{
+//	    "id": "user_123",
+//	    "email": "user@example.com",
+//	    "role": "admin",
+//	    "permissions": ["read", "write"],
+//	    "organizations": ["org1", "org2"]
+//	}
+//
+// Note: Session endpoints (/session/validate) always return both session and
+// enriched user data. This config only filters which extension fields appear
+// in the user portion of responses.
+func WithUserFields(fields []string) Option {
+	return func(c *Config) {
+		if c.CoreAuth == nil {
+			c.CoreAuth = core.DefaultAuthConfig()
+		}
+		if c.CoreAuth.UserFields == nil {
+			c.CoreAuth.UserFields = core.DefaultUserFieldsConfig()
+		}
+		c.CoreAuth.UserFields.Fields = fields
+	}
+}
+
+// WithDB sets the database connection for Aegis.
+// This is required for storing users, sessions, and authentication data.
+//
+// Example:
+//
+//	db, _ := sql.Open("postgres", "postgres://user:pass@localhost:5432/db?sslmode=require")
+//	aegis.New(ctx, config.WithDB(db), ...)
+func WithDB(db *sql.DB) Option {
+	return func(c *Config) {
+		c.DB = db
+	}
+}
+
+// WithArgon2Time sets the number of iterations for Argon2id password hashing.
+// Higher values increase security but also CPU time for password operations.
+// Default: 1. Recommended: 1-3 depending on latency requirements.
+//
+// Example:
+//
+//	aegis.New(ctx, config.WithArgon2Time(2), ...)
+func WithArgon2Time(time uint32) Option {
+	return func(c *Config) {
+		c.Argon2Time = time
+	}
+}
+
+// WithArgon2Memory sets the memory cost in KB for Argon2id password hashing.
+// Higher values increase security but also memory usage.
+// Default: 65536 (64 MB). Recommended: 64-256 MB depending on resources.
+//
+// Example:
+//
+//	aegis.New(ctx, config.WithArgon2Memory(128*1024), ...) // 128 MB
+func WithArgon2Memory(memory uint32) Option {
+	return func(c *Config) {
+		c.Argon2Memory = memory
+	}
+}
+
+// WithArgon2Threads sets the parallelism for Argon2id password hashing.
+// Default: 4 threads.
+//
+// Example:
+//
+//	aegis.New(ctx, config.WithArgon2Threads(4), ...)
+func WithArgon2Threads(threads uint8) Option {
+	return func(c *Config) {
+		c.Argon2Threads = threads
+	}
+}
+
+// WithArgon2KeyLength sets the output key length for Argon2id.
+// Default: 32 bytes (256-bit security). Generally should not be changed.
+//
+// Example:
+//
+//	aegis.New(ctx, config.WithArgon2KeyLength(32), ...)
+func WithArgon2KeyLength(length uint32) Option {
+	return func(c *Config) {
+		c.Argon2KeyLength = length
 	}
 }
