@@ -1,0 +1,59 @@
+# Binaries for programs and plugins
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# Build artifacts
+dist/
+*.tar.gz
+*.zip
+
+# CLI binary
+aegis
+!aegis/
+
+# cmd/aegis/aegis
+# !cmd/
+# !cmd/aegis/main.go
+# !cmd/aegis/README.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+
+# Environment
+.env
+.env.local
+*.local
+
+# Coverage
+*.coverprofile
+coverage.html
+coverage.out
+
+# Temporary files
+tmp/
+temp/
