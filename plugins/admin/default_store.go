@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"database/sql"
+	"math"
 	"time"
 
 	"github.com/theinventorylib/aegis/plugins/admin/internal/gen/sqlc"
@@ -115,11 +116,11 @@ func (s *DefaultAdminStore) List(ctx context.Context, offset, limit int) ([]User
 		limit = 10
 	}
 	// Ensure values are within int32 range
-	if offset > 2147483647 {
-		offset = 2147483647
+	if offset > math.MaxInt32 {
+		offset = math.MaxInt32
 	}
-	if limit > 2147483647 {
-		limit = 2147483647
+	if limit > math.MaxInt32 {
+		limit = math.MaxInt32
 	}
 	params := sqlc.ListUsersParams{
 		Offset: int32(offset), // #nosec G115 - bounds checked above
@@ -178,11 +179,11 @@ func (s *DefaultAdminStore) ListUsersRaw(ctx context.Context, offset, limit int)
 	if limit <= 0 {
 		limit = 10
 	}
-	if offset > 2147483647 {
-		offset = 2147483647
+	if offset > math.MaxInt32 {
+		offset = math.MaxInt32
 	}
-	if limit > 2147483647 {
-		limit = 2147483647
+	if limit > math.MaxInt32 {
+		limit = math.MaxInt32
 	}
 	users, err := s.q.ListUsersRaw(ctx, sqlc.ListUsersRawParams{
 		Offset: int32(offset), // #nosec G115 - bounds checked above
