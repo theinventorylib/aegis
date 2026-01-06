@@ -160,7 +160,7 @@ type Config struct {
 //	    },
 //	}
 //	plugin := oauth.New(cfg, nil, plugins.DialectPostgres)
-func New(cfg *Config, store *Store, dialect ...plugins.Dialect) *Plugin {
+func New(cfg *Config, store Store, dialect ...plugins.Dialect) *Plugin {
 	if cfg == nil {
 		cfg = &Config{}
 	}
@@ -171,7 +171,7 @@ func New(cfg *Config, store *Store, dialect ...plugins.Dialect) *Plugin {
 	}
 
 	plugin := &Plugin{
-		store:           *store,
+		store:           store,
 		providerConfigs: make(map[string]ProviderConfig),
 		gothProviders:   make(map[string]goth.Provider),
 		baseCallbackURL: cfg.CallbackURL,

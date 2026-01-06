@@ -112,7 +112,7 @@ type Config struct {
 //	  OTPExpiry: 15 * time.Minute,
 //	  OTPLength: 8,
 //	}, nil, plugins.DialectPostgres)
-func New(cfg *Config, store *Store, dialect ...plugins.Dialect) *Plugin {
+func New(cfg *Config, store Store, dialect ...plugins.Dialect) *Plugin {
 	if cfg == nil {
 		cfg = &Config{} // Initialize cfg to avoid nil pointer dereference
 	}
@@ -130,7 +130,7 @@ func New(cfg *Config, store *Store, dialect ...plugins.Dialect) *Plugin {
 	}
 
 	return &Plugin{
-		store:     *store,
+		store:     store,
 		provider:  cfg.Provider,
 		otpExpiry: cfg.OTPExpiry,
 		otpLength: cfg.OTPLength,

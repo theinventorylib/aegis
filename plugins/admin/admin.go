@@ -76,13 +76,13 @@ type Plugin struct {
 //
 //	admin := admin.New(nil, plugins.DialectPostgres)
 //	aegis.RegisterPlugin(admin)
-func New(store *Store, dialect ...plugins.Dialect) *Plugin {
+func New(store Store, dialect ...plugins.Dialect) *Plugin {
 	d := plugins.DialectPostgres
 	if len(dialect) > 0 {
 		d = dialect[0]
 	}
 	return &Plugin{
-		store:   *store,
+		store:   store,
 		dialect: d,
 	}
 }

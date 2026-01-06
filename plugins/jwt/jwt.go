@@ -283,7 +283,7 @@ type Plugin struct {
 //		KeyRotationInterval: 7 * 24 * time.Hour,
 //	}
 //	jwtPlugin := jwt.New(config, nil, plugins.DialectPostgres)
-func New(config *Config, store *Store, dialect ...plugins.Dialect) *Plugin {
+func New(config *Config, store Store, dialect ...plugins.Dialect) *Plugin {
 	if config == nil {
 		config = DefaultConfig()
 	}
@@ -294,7 +294,7 @@ func New(config *Config, store *Store, dialect ...plugins.Dialect) *Plugin {
 	}
 
 	return &Plugin{
-		store:   *store,
+		store:   store,
 		config:  config,
 		dialect: d,
 	}
