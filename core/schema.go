@@ -31,8 +31,8 @@ type SchemaValidator struct {
 // SchemaRequirement defines a single schema validation check.
 //
 // Each requirement represents one validation rule (table exists, column exists,
-// index exists, etc.). The validator executes the Query and expects at least
-// one row to be returned for the requirement to pass.
+// index exists, etc.). The validator executes the Query and expects it to
+// succeed without error for the requirement to pass.
 type SchemaRequirement struct {
 	// Name is a human-readable identifier for this requirement
 	// Example: "Table 'users' exists", "Column 'accounts.password_hash' exists"
@@ -45,8 +45,8 @@ type SchemaRequirement struct {
 	Table string
 
 	// Query is the SQL query to execute
-	// Should return at least one row if the requirement is met
-	// Example: "SELECT 1 FROM users LIMIT 1"
+	// Should succeed without error if the requirement is met
+	// Example: "SELECT 1 FROM users WHERE 1=0"
 	Query string
 
 	// Description explains what the validation failure means
@@ -97,8 +97,8 @@ func (v *SchemaValidator) ValidateRequirements(ctx context.Context, requirements
 
 // validateRequirement validates a single schema requirement.
 //
-// Executes the requirement's Query and checks if at least one row is returned.
-// If the query returns no rows, the requirement is considered failed.
+// Executes the requirement's Query and checks if it succeeds without error.
+// If the query fails, the requirement is considered failed.
 func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaRequirement) error {
 	rows, err := v.db.QueryContext(ctx, req.Query)
 	if err != nil {
@@ -106,44 +106,39 @@ func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaReq
 	}
 	defer func() { err := rows.Close(); _ = err }()
 
-	// Check if query returned at least one row
-	if !rows.Next() {
-		return fmt.Errorf("%s", req.Description)
-	}
-
 	return nil
 }
 
 // ValidateTableExists creates a requirement to check if a table exists.
 //
-// This generates a simple "SELECT 1 FROM table LIMIT 1" query that will fail
+// This generates a "SELECT 1 FROM table WHERE 1=0" query that will fail
 // if the table doesn't exist.
 //
 // Example:
 //
 //	requirement := core.ValidateTableExists("users")
-//	// Will check: SELECT 1 FROM users LIMIT 1
+//	// Will check: SELECT 1 FROM users WHERE 1=0
 func ValidateTableExists(tableName string) SchemaRequirement {
 	return SchemaRequirement{
 		Name:        fmt.Sprintf("Table '%s' exists", tableName),
-		Query:       fmt.Sprintf("SELECT 1 FROM %s LIMIT 1", tableName),
-		Description: fmt.Sprintf("Table '%s' does not exist or is empty", tableName),
+		Query:       fmt.Sprintf("SELECT 1 FROM %s WHERE 1=0", tableName),
+		Description: fmt.Sprintf("Table '%s' does not exist", tableName),
 	}
 }
 
 // ValidateColumnExists creates a requirement to check if a column exists in a table.
 //
-// This generates a "SELECT column FROM table LIMIT 1" query that will fail
+// This generates a "SELECT column FROM table WHERE 1=0" query that will fail
 // if the column doesn't exist.
 //
 // Example:
 //
 //	requirement := core.ValidateColumnExists("users", "email")
-//	// Will check: SELECT email FROM users LIMIT 1
+//	// Will check: SELECT email FROM users WHERE 1=0
 func ValidateColumnExists(tableName, columnName string) SchemaRequirement {
 	return SchemaRequirement{
 		Name:        fmt.Sprintf("Column '%s.%s' exists", tableName, columnName),
-		Query:       fmt.Sprintf("SELECT %s FROM %s LIMIT 1", columnName, tableName),
+		Query:       fmt.Sprintf("SELECT %s FROM %s WHERE 1=0", columnName, tableName),
 		Description: fmt.Sprintf("Column '%s' does not exist in table '%s'", columnName, tableName),
 	}
 }
