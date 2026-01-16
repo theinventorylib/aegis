@@ -27,20 +27,21 @@ import (
 //   - Creates Aegis with test-appropriate configuration
 //   - Registers cleanup for all resources
 //
-// Configuration can be customized via additional options.
-//
 // Parameters:
 //   - t: Testing instance for cleanup registration
-//   - opts: Additional configuration options to apply
+//   - testCfg: Test configuration (use DefaultTestConfig() if nil)
 //
 // Returns:
 //   - *aegis.Aegis: Configured Aegis instance
-func SetupTestAegis(t testing.TB, opts ...config.Option) *aegis.Aegis {
+func SetupTestAegis(t testing.TB, testCfg *TestConfig) *aegis.Aegis {
 	t.Helper()
 
-	cfg := DefaultTestConfig()
-	db := SetupTestDB(t, cfg)
-	redisClient := SetupTestRedis(t, cfg)
+	if testCfg == nil {
+		testCfg = DefaultTestConfig()
+	}
+
+	db := SetupTestDB(t, testCfg)
+	redisClient := SetupTestRedis(t, testCfg)
 
 	if db == nil {
 		t.Skip("Skipping test: database required but not available")
@@ -53,28 +54,24 @@ func SetupTestAegis(t testing.TB, opts ...config.Option) *aegis.Aegis {
 	// Create a simple test router
 	router := &testRouter{}
 
-	// Base options with test-appropriate settings
-	baseOpts := []config.Option{
-		config.WithDB(db),
-		config.WithRouter(router),
-		config.WithSecret([]byte("test-secret-key-32-bytes-long!!")),
-		config.WithAPIOnlyMode(true), // Skip CSRF for API tests
-	}
+	// Base config with test-appropriate settings
+	baseCfg := config.Default().
+		WithDB(db).
+		WithRouter(router).
+		WithSecret([]byte("test-secret-key-32-bytes-long!!")).
+		WithAPIOnlyMode(true) // Skip CSRF for API tests
 
 	// Add Redis if available (parse from config)
 	if redisClient != nil {
 		// Parse Redis URL to get host and port
-		redisAddr := cfg.RedisURL
+		redisAddr := testCfg.RedisURL
 		host, port := parseRedisAddr(redisAddr)
-		baseOpts = append(baseOpts, config.WithRedis(host, port, "", cfg.RedisDB))
+		baseCfg.WithRedis(host, port, "", testCfg.RedisDB)
 	}
-
-	// Merge with user-provided options (user options take precedence)
-	allOpts := append(baseOpts, opts...)
 
 	// Create Aegis instance
 	ctx := context.Background()
-	a, err := aegis.New(ctx, allOpts...)
+	a, err := aegis.New(ctx, baseCfg)
 	if err != nil {
 		t.Fatalf("Failed to create Aegis instance: %v", err)
 	}
@@ -88,22 +85,22 @@ func SetupTestAegis(t testing.TB, opts ...config.Option) *aegis.Aegis {
 //
 // Parameters:
 //   - t: Testing instance
-//   - cfg: Custom test configuration
-//   - opts: Additional Aegis configuration options
+//   - testCfg: Custom test configuration (use DefaultTestConfig() if nil)
+//   - configModifier: Optional function to modify the Aegis config
 //
 // Returns:
 //   - *aegis.Aegis: Configured Aegis instance
 //   - *sql.DB: Database connection (for direct queries)
 //   - *redis.Client: Redis client (may be nil)
-func SetupTestAegisWithConfig(t testing.TB, cfg *TestConfig, opts ...config.Option) (*aegis.Aegis, *sql.DB, *redis.Client) {
+func SetupTestAegisWithConfig(t testing.TB, testCfg *TestConfig, configModifier func(*config.Config)) (*aegis.Aegis, *sql.DB, *redis.Client) {
 	t.Helper()
 
-	if cfg == nil {
-		cfg = DefaultTestConfig()
+	if testCfg == nil {
+		testCfg = DefaultTestConfig()
 	}
 
-	db := SetupTestDB(t, cfg)
-	redisClient := SetupTestRedis(t, cfg)
+	db := SetupTestDB(t, testCfg)
+	redisClient := SetupTestRedis(t, testCfg)
 
 	if db == nil {
 		t.Skip("Skipping test: database required but not available")
@@ -116,23 +113,25 @@ func SetupTestAegisWithConfig(t testing.TB, cfg *TestConfig, opts ...config.Opti
 	// Create a simple test router
 	router := &testRouter{}
 
-	// Base options
-	baseOpts := []config.Option{
-		config.WithDB(db),
-		config.WithRouter(router),
-		config.WithSecret([]byte("test-secret-key-32-bytes-long!!")),
-		config.WithAPIOnlyMode(true),
-	}
+	// Base config
+	baseCfg := config.Default().
+		WithDB(db).
+		WithRouter(router).
+		WithSecret([]byte("test-secret-key-32-bytes-long!!")).
+		WithAPIOnlyMode(true)
 
 	if redisClient != nil {
-		host, port := parseRedisAddr(cfg.RedisURL)
-		baseOpts = append(baseOpts, config.WithRedis(host, port, "", cfg.RedisDB))
+		host, port := parseRedisAddr(testCfg.RedisURL)
+		baseCfg.WithRedis(host, port, "", testCfg.RedisDB)
 	}
 
-	allOpts := append(baseOpts, opts...)
+	// Apply config modifier if provided
+	if configModifier != nil {
+		configModifier(baseCfg)
+	}
 
 	ctx := context.Background()
-	a, err := aegis.New(ctx, allOpts...)
+	a, err := aegis.New(ctx, baseCfg)
 	if err != nil {
 		t.Fatalf("Failed to create Aegis instance: %v", err)
 	}
@@ -242,6 +241,15 @@ func (g *testGroupRouterImpl) RegisterRouteMetadata(metadata core.RouteMetadata)
 		metadata.Tags = append([]string{g.groupName}, metadata.Tags...)
 	}
 	g.parent.metadata = append(g.parent.metadata, metadata)
+}
+
+// Group creates a nested test group by combining prefixes.
+func (g *testGroupRouterImpl) Group(path string, groupName string) router.GroupRouter {
+	return &testGroupRouterImpl{
+		prefix:    g.prefix + path,
+		groupName: groupName,
+		parent:    g.parent,
+	}
 }
 
 // parseRedisAddr parses a Redis address string into host and port.

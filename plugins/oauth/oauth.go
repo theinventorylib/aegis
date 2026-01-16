@@ -298,10 +298,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	oauthGroup := router.Group(prefix, "OAuth")
 
 	// OAuth authentication routes
-	oauthGroup.GET("/oauth/:provider", handlers.beginAuthHandler)
+	oauthGroup.GET("/:provider", handlers.beginAuthHandler)
 	oauthGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "GET",
-		Path:        prefix + "/oauth/{provider}",
+		Path:        prefix + "/{provider}",
 		Summary:     "Begin OAuth flow",
 		Description: "Initiate OAuth authentication with the specified provider (e.g., google, github)",
 		Tags:        []string{"OAuth"},
@@ -312,10 +312,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		},
 	})
 
-	oauthGroup.GET("/oauth/:provider/callback", handlers.callbackHandler)
+	oauthGroup.GET("/:provider/callback", handlers.callbackHandler)
 	oauthGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "GET",
-		Path:        prefix + "/oauth/{provider}/callback",
+		Path:        prefix + "/{provider}/callback",
 		Summary:     "OAuth callback",
 		Description: "Handle OAuth provider callback and create session",
 		Tags:        []string{"OAuth"},
@@ -330,10 +330,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	// Protected OAuth routes
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
-	oauthGroup.POST("/oauth/logout", handlers.logoutHandler)
+	oauthGroup.POST("/logout", handlers.logoutHandler)
 	oauthGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/oauth/logout",
+		Path:        prefix + "/logout",
 		Summary:     "OAuth logout",
 		Description: "Clear OAuth state and logout",
 		Tags:        []string{"OAuth"},
@@ -343,10 +343,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		},
 	})
 
-	oauthGroup.POST("/oauth/link", requireAuth(http.HandlerFunc(handlers.linkAccountHandler)).ServeHTTP)
+	oauthGroup.POST("/link", requireAuth(http.HandlerFunc(handlers.linkAccountHandler)).ServeHTTP)
 	oauthGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/oauth/link",
+		Path:        prefix + "/link",
 		Summary:     "Link OAuth account",
 		Description: "Link an OAuth provider to the currently authenticated user",
 		Tags:        []string{"OAuth"},

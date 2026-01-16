@@ -106,6 +106,13 @@ type GroupRouter interface {
 	// Middleware is scoped to this group and does not affect parent or sibling routes
 	Use(middleware func(http.Handler) http.Handler)
 
+	// Group creates a nested sub-group within this group.
+	// Nested groups inherit the parent's prefix and allow further
+	// organization of routes. The returned GroupRouter is prefixed
+	// with the nested path and will include the provided groupName
+	// in route metadata tags when registering routes.
+	Group(path string, groupName string) GroupRouter
+
 	// RegisterRouteMetadata registers OpenAPI metadata for a route within this group
 	// The groupName is automatically added to the Tags field if not already present
 	RegisterRouteMetadata(metadata core.RouteMetadata)

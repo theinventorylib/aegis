@@ -190,11 +190,14 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	// Create auth middleware - ALL organization routes require authentication
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
-	// Organization CRUD - all protected
-	r.POST(prefix+"/organizations", requireAuth(http.HandlerFunc(p.CreateOrganizationHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	// Organization routes grouped under plugin prefix
+	orgGroup := r.Group(prefix, "Organizations")
+
+	// Create organization (POST to prefix)
+	orgGroup.POST("/", requireAuth(http.HandlerFunc(p.CreateOrganizationHandler)).ServeHTTP)
+	orgGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/organizations",
+		Path:        prefix,
 		Summary:     "Create organization",
 		Description: "Create a new organization with the authenticated user as owner",
 		Tags:        []string{"Organizations"},
@@ -211,10 +214,11 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.GET(prefix+"/organizations", requireAuth(http.HandlerFunc(p.ListOrganizationsHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	// List organizations (GET to prefix)
+	orgGroup.GET("/", requireAuth(http.HandlerFunc(p.ListOrganizationsHandler)).ServeHTTP)
+	orgGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "GET",
-		Path:        prefix + "/organizations",
+		Path:        prefix,
 		Summary:     "List user organizations",
 		Description: "Retrieve all organizations the authenticated user is a member of",
 		Tags:        []string{"Organizations"},
@@ -226,10 +230,11 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.GET(prefix+"/organizations/:id", requireAuth(http.HandlerFunc(p.GetOrganizationHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	// Organization detail routes
+	orgGroup.GET("/:id", requireAuth(http.HandlerFunc(p.GetOrganizationHandler)).ServeHTTP)
+	orgGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "GET",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/organizations/:id"),
+		Path:        router.NormalizePathToOpenAPI(prefix + "/:id"),
 		Summary:     "Get organization",
 		Description: "Retrieve details of a specific organization",
 		Tags:        []string{"Organizations"},
@@ -243,10 +248,10 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.PUT(prefix+"/organizations/:id", requireAuth(http.HandlerFunc(p.UpdateOrganizationHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	orgGroup.PUT("/:id", requireAuth(http.HandlerFunc(p.UpdateOrganizationHandler)).ServeHTTP)
+	orgGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "PUT",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/organizations/:id"),
+		Path:        router.NormalizePathToOpenAPI(prefix + "/:id"),
 		Summary:     "Update organization",
 		Description: "Update organization details (requires owner or admin role)",
 		Tags:        []string{"Organizations"},
@@ -264,10 +269,10 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.DELETE(prefix+"/organizations/:id", requireAuth(http.HandlerFunc(p.DeleteOrganizationHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	orgGroup.DELETE("/:id", requireAuth(http.HandlerFunc(p.DeleteOrganizationHandler)).ServeHTTP)
+	orgGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "DELETE",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/organizations/:id"),
+		Path:        router.NormalizePathToOpenAPI(prefix + "/:id"),
 		Summary:     "Delete organization",
 		Description: "Delete an organization (requires owner role)",
 		Tags:        []string{"Organizations"},
@@ -281,11 +286,13 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	// Organization Member Management - all protected
-	r.POST(prefix+"/organizations/:id/members", requireAuth(http.HandlerFunc(p.AddOrganizationMemberHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	// Organization Member Management - group under orgGroup
+	membersGroup := orgGroup.Group("/:id/members", "Members")
+
+	membersGroup.POST("/", requireAuth(http.HandlerFunc(p.AddOrganizationMemberHandler)).ServeHTTP)
+	membersGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/organizations/:id/members"),
+		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members"),
 		Summary:     "Add organization member",
 		Description: "Add a new member to the organization (requires admin role)",
 		Tags:        []string{"Organizations", "Members"},
@@ -303,10 +310,10 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.GET(prefix+"/organizations/:id/members", requireAuth(http.HandlerFunc(p.ListOrganizationMembersHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	membersGroup.GET("/", requireAuth(http.HandlerFunc(p.ListOrganizationMembersHandler)).ServeHTTP)
+	membersGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "GET",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/organizations/:id/members"),
+		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members"),
 		Summary:     "List organization members",
 		Description: "Retrieve all members of an organization",
 		Tags:        []string{"Organizations", "Members"},
@@ -320,10 +327,10 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.PATCH(prefix+"/organizations/:id/members/:userId", requireAuth(http.HandlerFunc(p.UpdateMemberRoleHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	membersGroup.PATCH("/:userId", requireAuth(http.HandlerFunc(p.UpdateMemberRoleHandler)).ServeHTTP)
+	membersGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "PATCH",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/organizations/:id/members/:userId"),
+		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members/:userId"),
 		Summary:     "Update member role",
 		Description: "Update a member's role in the organization (requires owner role)",
 		Tags:        []string{"Organizations", "Members"},
@@ -341,10 +348,10 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.DELETE(prefix+"/organizations/:id/members/:userId", requireAuth(http.HandlerFunc(p.RemoveOrganizationMemberHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	membersGroup.DELETE("/:userId", requireAuth(http.HandlerFunc(p.RemoveOrganizationMemberHandler)).ServeHTTP)
+	membersGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "DELETE",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/organizations/:id/members/:userId"),
+		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members/:userId"),
 		Summary:     "Remove organization member",
 		Description: "Remove a member from the organization (requires admin role, cannot remove owner)",
 		Tags:        []string{"Organizations", "Members"},
@@ -357,11 +364,13 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	// Team CRUD - all protected
-	r.POST(prefix+"/organizations/:id/teams", requireAuth(http.HandlerFunc(p.CreateTeamHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	// Organization-specific teams under orgGroup
+	orgTeams := orgGroup.Group("/:id/teams", "OrgTeams")
+
+	orgTeams.POST("/", requireAuth(http.HandlerFunc(p.CreateTeamHandler)).ServeHTTP)
+	orgTeams.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/organizations/:id/teams"),
+		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/teams"),
 		Summary:     "Create team",
 		Description: "Create a new team within an organization (requires admin role)",
 		Tags:        []string{"Teams"},
@@ -379,10 +388,10 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.GET(prefix+"/organizations/:id/teams", requireAuth(http.HandlerFunc(p.ListTeamsHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	orgTeams.GET("/", requireAuth(http.HandlerFunc(p.ListTeamsHandler)).ServeHTTP)
+	orgTeams.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "GET",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/organizations/:id/teams"),
+		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/teams"),
 		Summary:     "List organization teams",
 		Description: "Retrieve all teams in an organization",
 		Tags:        []string{"Teams"},
@@ -396,8 +405,11 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.GET(prefix+"/teams/:teamId", requireAuth(http.HandlerFunc(p.GetTeamHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	// Team operations at /teams/:teamId under plugin prefix
+	teamsGroup := orgGroup.Group("/teams", "Teams")
+
+	teamsGroup.GET(":/teamId", requireAuth(http.HandlerFunc(p.GetTeamHandler)).ServeHTTP)
+	teamsGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "GET",
 		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId"),
 		Summary:     "Get team",
@@ -413,8 +425,8 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.PUT(prefix+"/teams/:teamId", requireAuth(http.HandlerFunc(p.UpdateTeamHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	teamsGroup.PUT("/:teamId", requireAuth(http.HandlerFunc(p.UpdateTeamHandler)).ServeHTTP)
+	teamsGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "PUT",
 		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId"),
 		Summary:     "Update team",
@@ -435,8 +447,8 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	r.DELETE(prefix+"/teams/:teamId", requireAuth(http.HandlerFunc(p.DeleteTeamHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	teamsGroup.DELETE("/:teamId", requireAuth(http.HandlerFunc(p.DeleteTeamHandler)).ServeHTTP)
+	teamsGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "DELETE",
 		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId"),
 		Summary:     "Delete team",

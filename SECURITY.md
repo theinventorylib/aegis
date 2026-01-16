@@ -9,14 +9,15 @@ Aegis uses Argon2id for password hashing with secure defaults. For production de
 #### Recommended Parameters
 
 ```go
-aegis.New(ctx,
-    // Argon2id is configured by default with secure parameters
-    // Memory: 64 MB, Time: 1 iteration, Threads: 4, KeyLength: 32 bytes
-    
-    // For higher security (if you have resources), increase memory and time:
-    config.WithArgon2Time(2),      // 2 iterations (default: 1)
-    config.WithArgon2Memory(128 * 1024), // 128 MB (default: 64 MB)
-)
+cfg := config.Default()
+// Argon2id is configured by default with secure parameters
+// Memory: 64 MB, Time: 1 iteration, Threads: 4, KeyLength: 32 bytes
+
+// For higher security (if you have resources), increase memory and time:
+cfg.WithArgon2Time(2).      // 2 iterations (default: 1)
+   WithArgon2Memory(128 * 1024) // 128 MB (default: 64 MB)
+
+aegis.New(ctx, cfg)
 ```
 
 **Guidelines**:
@@ -37,10 +38,11 @@ aegis.New(ctx,
 #### Session Expiry
 
 ```go
-aegis.New(ctx,
-    config.WithSessionExpiry(24 * time.Hour),   // Default: 24 hours
-    config.WithRefreshExpiry(7 * 24 * time.Hour), // Default: 7 days
-)
+cfg := config.Default().
+    WithSessionExpiry(24 * time.Hour).   // Default: 24 hours
+    WithRefreshExpiry(7 * 24 * time.Hour) // Default: 7 days
+
+aegis.New(ctx, cfg)
 ```
 
 **Guidelines**:
@@ -54,12 +56,13 @@ aegis.New(ctx,
 #### Cookie Security Flags
 
 ```go
-aegis.New(ctx,
-    config.WithCookieSecure(true),    // Default: true (REQUIRED in production)
-    // CookieHTTPOnly is always true by default (prevents XSS)
-    config.WithCookieSameSite("Strict"), // Default: "Lax"
-    config.WithCookieDomain(".example.com"), // Set for subdomain sharing
-)
+cfg := config.Default().
+    WithCookieSecure(true).    // Default: true (REQUIRED in production)
+    WithCookieSameSite("Strict"). // Default: "Lax"
+    WithCookieDomain(".example.com") // Set for subdomain sharing
+// CookieHTTPOnly is always true by default (prevents XSS)
+
+aegis.New(ctx, cfg)
 ```
 
 **Cookie Flag Requirements**:
@@ -77,10 +80,11 @@ aegis.New(ctx,
 #### Web Applications
 
 ```go
-aegis.New(ctx,
-    config.WithSecret([]byte("your-random-32-byte-secret")),
-    // CSRF protection is automatically enabled for web apps
-)
+cfg := config.Default().
+    WithSecret([]byte("your-random-32-byte-secret"))
+// CSRF protection is automatically enabled for web apps
+
+aegis.New(ctx, cfg)
 ```
 
 **Requirements**:
@@ -91,9 +95,10 @@ aegis.New(ctx,
 #### API-Only Applications
 
 ```go
-aegis.New(ctx,
-    config.WithAPIOnlyMode(true), // Skips CSRF requirement
-)
+cfg := config.Default().
+    WithAPIOnlyMode(true) // Skips CSRF requirement
+
+aegis.New(ctx, cfg)
 ```
 
 Only use API mode if:
@@ -108,14 +113,15 @@ Only use API mode if:
 If using Redis for session storage:
 
 ```go
-aegis.New(ctx,
-    config.WithRedis(
+cfg := config.Default().
+    WithRedis(
         "redis-server.internal", // Use internal/private network
         6379,
         os.Getenv("REDIS_PASSWORD"), // Always use password
         0,
-    ),
-)
+    )
+
+aegis.New(ctx, cfg)
 ```
 
 **Redis Security Checklist**:
@@ -163,7 +169,8 @@ db.SetMaxOpenConns(25)
 db.SetMaxIdleConns(5)
 db.SetConnMaxLifetime(5 * time.Minute)
 
-aegis.New(ctx, config.WithDB(db), ...)
+cfg := config.Default().WithDB(db)
+aegis.New(ctx, cfg)
 ```
 
 **Database Security Checklist**:
@@ -181,9 +188,10 @@ aegis.New(ctx, config.WithDB(db), ...)
 ```go
 import "log/slog"
 
-aegis.New(ctx,
-    config.WithLogger(slog.Default()),
-)
+cfg := config.Default().
+    WithLogger(slog.Default())
+
+aegis.New(ctx, cfg)
 ```
 
 **Logging Best Practices**:
@@ -233,18 +241,21 @@ import (
 )
 
 // Enable rate limiting with defaults (100 requests per minute per IP)
-aegis.New(ctx,
-    config.WithRateLimiting(),
-)
+cfg := config.Default().
+    WithRateLimiting()
+
+aegis.New(ctx, cfg)
 
 // Or with custom configuration:
-aegis.New(ctx,
-    config.WithRateLimitConfig(&core.RateLimitConfig{
+cfg = config.Default().
+    WithRateLimitConfig(&core.RateLimitConfig{
         RequestsPerWindow: 100,
         WindowDuration:    time.Minute,
         ByIP:              true,
-    }),
-)
+    })
+
+aegis.New(ctx, cfg)
+```
 ```
 
 **Rate Limiting Guidelines**:

@@ -2,6 +2,8 @@ package openapi
 
 import (
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/theinventorylib/aegis/router"
 )
@@ -97,20 +99,25 @@ func (h *Handler) ServeSpec(w http.ResponseWriter, _ *http.Request) {
 //
 // Example:
 // Navigate to http://localhost:8080/auth/docs to view interactive documentation.
-func (h *Handler) ServeScalarUI(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) ServeScalarUI(w http.ResponseWriter, req *http.Request) {
+	// Compute the correct spec URL relative to the current request path.
+	// If docs are served at /.../openapi/docs then the spec is at /.../openapi/openapi.json
+	p := strings.TrimSuffix(req.URL.Path, "/")
+	specURL := path.Join(path.Dir(p), "openapi.json")
+
 	// Scalar UI HTML with CDN-hosted assets
 	html := `<!DOCTYPE html>
 <html>
 <head>
-    <title>` + h.plugin.config.Title + ` - API Documentation</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>` + h.plugin.config.Title + ` - API Documentation</title>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
 <body>
-    <script
-        id="api-reference"
-        data-url="./openapi.json"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+	<script
+		id="api-reference"
+		data-url="` + specURL + `"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
 </body>
 </html>`
 
