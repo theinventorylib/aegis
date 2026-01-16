@@ -363,8 +363,8 @@ func (p *Plugin) SendOTP(ctx context.Context, emailAddress, purpose string) erro
 		// actual code or full email address to avoid leaking sensitive data.
 		if p.logger != nil {
 			p.logger.Info("OTP code generated (no provider configured)",
-				"email", core.RedactForLog(emailAddress),
-				"purpose", purpose)
+				"purpose", purpose,
+				"note", "no provider configured")
 		}
 	}
 

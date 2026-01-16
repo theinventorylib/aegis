@@ -322,8 +322,8 @@ func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, purpose string) error
 		// sensitive data in logs.
 		if p.logger != nil {
 			p.logger.Info("OTP code generated (no provider configured)",
-				"phone", core.RedactForLog(phoneNumber),
-				"purpose", purpose)
+				"purpose", purpose,
+				"note", "no provider configured")
 		}
 	}
 
