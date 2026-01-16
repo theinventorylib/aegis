@@ -178,10 +178,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	// Protected route - sending OTP requires authentication to prevent spam/abuse
-	router.POST(prefix+"/sms/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
+	router.POST(prefix+"/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
 	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/sms/send",
+		Path:        prefix + "/send",
 		Summary:     "Send SMS OTP",
 		Description: "Send a one-time password via SMS to the authenticated user's phone number",
 		Tags:        []string{"SMS"},
@@ -200,10 +200,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	})
 
 	// Public routes
-	router.POST(prefix+"/sms/verify", handlers.VerifyOTPHandler) // User proving phone ownership
+	router.POST(prefix+"/verify", handlers.VerifyOTPHandler) // User proving phone ownership
 	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/sms/verify",
+		Path:        prefix + "/verify",
 		Summary:     "Verify SMS OTP",
 		Description: "Verify a one-time password sent via SMS",
 		Tags:        []string{"SMS"},
@@ -221,10 +221,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	})
 
 	// Phone+password authentication (if core AuthService configured)
-	router.POST(prefix+"/sms/login", handlers.LoginWithPhoneHandler) // Login endpoint
+	router.POST(prefix+"/login", handlers.LoginWithPhoneHandler) // Login endpoint
 	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/sms/login",
+		Path:        prefix + "/login",
 		Summary:     "Login with phone and password",
 		Description: "Authenticate using phone number and password",
 		Tags:        []string{"SMS", "Authentication"},
@@ -241,10 +241,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		},
 	})
 
-	router.POST(prefix+"/sms/register", handlers.RegisterWithPhoneHandler)
+	router.POST(prefix+"/register", handlers.RegisterWithPhoneHandler)
 	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/sms/register",
+		Path:        prefix + "/register",
 		Summary:     "Register with phone and password",
 		Description: "Create a new account using phone number and password",
 		Tags:        []string{"SMS", "Authentication"},

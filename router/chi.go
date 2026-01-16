@@ -201,6 +201,17 @@ func (g *ChiGroupRouter) Use(middleware func(http.Handler) http.Handler) {
 	// For group-scoped middleware, use chi's Route() or Group() directly.
 }
 
+// Group creates a nested group under this group by combining prefixes.
+// The returned GroupRouter uses the same ChiRouter parent so metadata
+// and routes are collected on the same root router.
+func (g *ChiGroupRouter) Group(path string, groupName string) GroupRouter {
+	return &ChiGroupRouter{
+		prefix:    g.prefix + path,
+		groupName: groupName,
+		parent:    g.parent,
+	}
+}
+
 // RegisterRouteMetadata registers OpenAPI metadata for a route within this group.
 //
 // The group's name is automatically added to the Tags field if not already
