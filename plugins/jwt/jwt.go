@@ -363,8 +363,9 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	p.redisClient = sessionService.GetRedisClient()
 
 	// Build schema requirements: basic table existence from RequiresTables + detailed checks
-	requirements := []plugins.SchemaRequirement{}
-	for _, table := range p.RequiresTables() {
+	tables := p.RequiresTables()
+	requirements := make([]plugins.SchemaRequirement, 0, len(tables))
+	for _, table := range tables {
 		requirements = append(requirements, plugins.ValidateTableExists(table))
 	}
 	requirements = append(requirements, GetSchemaRequirements(p.dialect)...)

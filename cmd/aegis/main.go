@@ -298,15 +298,15 @@ func getPluginsForExport(dialect plugins.Dialect, pluginNames []string) []plugin
 
 	// If "all" or empty list, return all plugins
 	if len(pluginNames) == 0 || (len(pluginNames) == 1 && pluginNames[0] == "all") {
-		var result []plugins.Plugin
+		result := make([]plugins.Plugin, 0, len(allPlugins))
 		for _, p := range allPlugins {
 			result = append(result, p)
 		}
 		return result
 	}
 
-	// Return selected plugins
-	var result []plugins.Plugin
+	// Return selected plugins (preallocate capacity to avoid reallocs)
+	result := make([]plugins.Plugin, 0, len(pluginNames))
 	for _, name := range pluginNames {
 		if p, ok := allPlugins[name]; ok {
 			result = append(result, p)

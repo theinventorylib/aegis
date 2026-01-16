@@ -131,8 +131,9 @@ func (a *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	a.sessionService = aegis.GetAuthService().Session
 
 	// Build schema requirements: basic table existence from RequiresTables + detailed checks
-	requirements := []plugins.SchemaRequirement{}
-	for _, table := range a.RequiresTables() {
+	tables := a.RequiresTables()
+	requirements := make([]plugins.SchemaRequirement, 0, len(tables))
+	for _, table := range tables {
 		requirements = append(requirements, plugins.ValidateTableExists(table))
 	}
 	requirements = append(requirements, GetSchemaRequirements(a.dialect)...)

@@ -158,8 +158,9 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	}
 
 	// Build schema requirements
-	requirements := []plugins.SchemaRequirement{}
-	for _, table := range p.RequiresTables() {
+	tables := p.RequiresTables()
+	requirements := make([]plugins.SchemaRequirement, 0, len(tables))
+	for _, table := range tables {
 		requirements = append(requirements, plugins.ValidateTableExists(table))
 	}
 	requirements = append(requirements, GetSchemaRequirements(p.dialect)...)
