@@ -317,12 +317,13 @@ func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, purpose string) error
 			return fmt.Errorf("failed to send OTP via provider: %w", err)
 		}
 	} else {
-		// Fallback: log the OTP code (for testing purposes)
+		// Fallback: log that an OTP was generated, but do NOT include the
+		// actual code or full user-provided phone number to avoid leaking
+		// sensitive data in logs.
 		if p.logger != nil {
 			p.logger.Info("OTP code generated (no provider configured)",
-				"phone", phoneNumber,
-				"purpose", purpose,
-				"code", code)
+				"phone", core.RedactForLog(phoneNumber),
+				"purpose", purpose)
 		}
 	}
 

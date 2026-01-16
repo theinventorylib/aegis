@@ -19,6 +19,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"os"
@@ -131,10 +132,9 @@ func main() {
 	oauthPlugin := oauth.New(oauthConfig, nil, plugins.DialectPostgres)
 
 	// 7. Create Aegis instance
+	cfg := config.Default().WithDB(db).WithRouter(r).WithSecret([]byte(masterSecret))
 	a, err := aegis.New(context.Background(),
-		config.WithDB(db),
-		config.WithRouter(r),
-		config.WithSecret([]byte(masterSecret)),
+		cfg,
 	)
 	if err != nil {
 		log.Fatal("Failed to create Aegis instance:", err)
@@ -259,7 +259,9 @@ func loginPageHandler(w http.ResponseWriter, r *http.Request) {
 	errorMsg := r.URL.Query().Get("error")
 	errorHTML := ""
 	if errorMsg != "" {
-		errorHTML = fmt.Sprintf(`<div style="color: red; padding: 10px; background: #ffebee; border-radius: 4px; margin-bottom: 20px;">%s</div>`, errorMsg)
+		// Escape user-supplied error message to prevent reflected XSS
+		safe := html.EscapeString(errorMsg)
+		errorHTML = fmt.Sprintf(`<div style="color: red; padding: 10px; background: #ffebee; border-radius: 4px; margin-bottom: 20px;">%s</div>`, safe)
 	}
 
 	w.Write([]byte(fmt.Sprintf(`

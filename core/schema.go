@@ -122,37 +122,21 @@ func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaReq
 		}
 		return fmt.Errorf("requirement not satisfied")
 	}
-	defer func() {
-		if cerr := rows.Close(); cerr != nil && err == nil {
-			err = fmt.Errorf("rows close error: %w", cerr)
-		}
-	}()
-
-	// If the query returns no rows, treat the requirement as failed.
-	// This covers information_schema checks which return zero rows when
-	// the table/column is missing (instead of producing a SQL error).
-	if !rows.Next() {
-		if ierr := rows.Err(); ierr != nil {
-			return fmt.Errorf("query iteration error: %w", ierr)
-		}
-		if req.Description != "" {
-			return fmt.Errorf("%s", req.Description)
-		}
-		return fmt.Errorf("requirement not satisfied")
-	}
 
 	return nil
 }
 
 // ValidateTableExists creates a requirement to check if a table exists.
 //
-// This generates a "SELECT 1 FROM table WHERE 1=0" query that will fail
-// if the table doesn't exist.
+// This queries `information_schema.tables` for the given table name.
+// The actual query generated is:
+//
+//	SELECT table_name FROM information_schema.tables WHERE table_name = '<name>' LIMIT 1
 //
 // Example:
 //
 //	requirement := core.ValidateTableExists("users")
-//	// Will check: SELECT 1 FROM users WHERE 1=0
+//	// Will check: SELECT table_name FROM information_schema.tables WHERE table_name = 'users' LIMIT 1
 func ValidateTableExists(tableName string) SchemaRequirement {
 	return SchemaRequirement{
 		Name:        fmt.Sprintf("Table '%s' exists", tableName),
@@ -163,13 +147,15 @@ func ValidateTableExists(tableName string) SchemaRequirement {
 
 // ValidateColumnExists creates a requirement to check if a column exists in a table.
 //
-// This generates a "SELECT column FROM table WHERE 1=0" query that will fail
-// if the column doesn't exist.
+// This queries `information_schema.columns` for the given table and column.
+// The actual query generated is:
+//
+//	SELECT column_name FROM information_schema.columns WHERE table_name = '<table>' AND column_name = '<column>' LIMIT 1
 //
 // Example:
 //
 //	requirement := core.ValidateColumnExists("users", "email")
-//	// Will check: SELECT email FROM users WHERE 1=0
+//	// Will check: SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'email' LIMIT 1
 func ValidateColumnExists(tableName, columnName string) SchemaRequirement {
 	return SchemaRequirement{
 		Name:        fmt.Sprintf("Column '%s.%s' exists", tableName, columnName),

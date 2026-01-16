@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins/admin/internal/gen/sqlc"
 )
 
@@ -123,8 +124,8 @@ func (s *DefaultAdminStore) List(ctx context.Context, offset, limit int) ([]User
 		limit = math.MaxInt32
 	}
 	params := sqlc.ListUsersParams{
-		Offset: int32(offset), // #nosec G115 - bounds checked above
-		Limit:  int32(limit),  // #nosec G115 - bounds checked above
+		Offset: core.ClampIntToInt32(offset), // safe clamp to int32
+		Limit:  core.ClampIntToInt32(limit),  // safe clamp to int32
 	}
 	users, err := s.q.ListUsers(ctx, params)
 	if err != nil {
@@ -186,8 +187,8 @@ func (s *DefaultAdminStore) ListUsersRaw(ctx context.Context, offset, limit int)
 		limit = math.MaxInt32
 	}
 	users, err := s.q.ListUsersRaw(ctx, sqlc.ListUsersRawParams{
-		Offset: int32(offset), // #nosec G115 - bounds checked above
-		Limit:  int32(limit),  // #nosec G115 - bounds checked above
+		Offset: core.ClampIntToInt32(offset), // safe clamp to int32
+		Limit:  core.ClampIntToInt32(limit),  // safe clamp to int32
 	})
 	if err != nil {
 		return nil, err
