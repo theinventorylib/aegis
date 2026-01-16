@@ -122,6 +122,20 @@ func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaReq
 		}
 		return fmt.Errorf("requirement not satisfied")
 	}
+	defer func() { _ = rows.Close() }()
+
+	// If the query returns no rows, treat the requirement as failed.
+	// This covers information_schema checks which return zero rows when
+	// the table/column is missing (instead of producing a SQL error).
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("query iteration error: %w", err)
+		}
+		if req.Description != "" {
+			return fmt.Errorf("%s", req.Description)
+		}
+		return fmt.Errorf("requirement not satisfied")
+	}
 
 	return nil
 }
