@@ -99,19 +99,23 @@ func (v *SchemaValidator) ValidateRequirements(ctx context.Context, requirements
 //
 // Executes the requirement's Query and checks if it succeeds without error.
 // If the query fails, the requirement is considered failed.
-func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaRequirement) error {
-	rows, err := v.db.QueryContext(ctx, req.Query)
-	if err != nil {
-		return fmt.Errorf("query failed: %w", err)
+func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaRequirement) (err error) {
+	rows, qerr := v.db.QueryContext(ctx, req.Query)
+	if qerr != nil {
+		return fmt.Errorf("query failed: %w", qerr)
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() {
+		if cerr := rows.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("rows close error: %w", cerr)
+		}
+	}()
 
 	// If the query returns no rows, treat the requirement as failed.
 	// This covers information_schema checks which return zero rows when
 	// the table/column is missing (instead of producing a SQL error).
 	if !rows.Next() {
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("query iteration error: %w", err)
+		if ierr := rows.Err(); ierr != nil {
+			return fmt.Errorf("query iteration error: %w", ierr)
 		}
 		if req.Description != "" {
 			return fmt.Errorf("%s", req.Description)
