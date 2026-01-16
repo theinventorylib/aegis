@@ -104,7 +104,20 @@ func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaReq
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}
-	defer func() { err := rows.Close(); _ = err }()
+	defer func() { _ = rows.Close() }()
+
+	// If the query returns no rows, treat the requirement as failed.
+	// This covers information_schema checks which return zero rows when
+	// the table/column is missing (instead of producing a SQL error).
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("query iteration error: %w", err)
+		}
+		if req.Description != "" {
+			return fmt.Errorf("%s", req.Description)
+		}
+		return fmt.Errorf("requirement not satisfied")
+	}
 
 	return nil
 }
@@ -121,7 +134,7 @@ func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaReq
 func ValidateTableExists(tableName string) SchemaRequirement {
 	return SchemaRequirement{
 		Name:        fmt.Sprintf("Table '%s' exists", tableName),
-		Query:       fmt.Sprintf("SELECT 1 FROM %s WHERE 1=0", tableName),
+		Query:       fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s' LIMIT 1", tableName),
 		Description: fmt.Sprintf("Table '%s' does not exist", tableName),
 	}
 }
@@ -138,7 +151,7 @@ func ValidateTableExists(tableName string) SchemaRequirement {
 func ValidateColumnExists(tableName, columnName string) SchemaRequirement {
 	return SchemaRequirement{
 		Name:        fmt.Sprintf("Column '%s.%s' exists", tableName, columnName),
-		Query:       fmt.Sprintf("SELECT %s FROM %s WHERE 1=0", columnName, tableName),
+		Query:       fmt.Sprintf("SELECT column_name FROM information_schema.columns WHERE table_name = '%s' AND column_name = '%s' LIMIT 1", tableName, columnName),
 		Description: fmt.Sprintf("Column '%s' does not exist in table '%s'", columnName, tableName),
 	}
 }
