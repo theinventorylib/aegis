@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"html"
 	"net/http"
 	"path"
 	"strings"
@@ -106,17 +107,21 @@ func (h *Handler) ServeScalarUI(w http.ResponseWriter, req *http.Request) {
 	specURL := path.Join(path.Dir(p), "openapi.json")
 
 	// Scalar UI HTML with CDN-hosted assets
+	// Escape user-controllable values to prevent reflected XSS
+	escapedTitle := html.EscapeString(h.plugin.config.Title)
+	escapedSpecURL := html.EscapeString(specURL)
+
 	html := `<!DOCTYPE html>
 <html>
 <head>
-	<title>` + h.plugin.config.Title + ` - API Documentation</title>
+	<title>` + escapedTitle + ` - API Documentation</title>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
 <body>
 	<script
 		id="api-reference"
-		data-url="` + specURL + `"></script>
+		data-url="` + escapedSpecURL + `"></script>
 	<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
 </body>
 </html>`

@@ -2,8 +2,10 @@ package core
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"time"
 
@@ -253,6 +255,70 @@ func GenerateID() string {
 		// Default to ULID
 		return ulid.MustNew(ulid.Timestamp(time.Now()), defaultIDConfig.entropy).String()
 	}
+}
+
+// ClampIntToInt32 safely converts an `int` to `int32` by clamping the value
+// to the valid range for int32. This prevents unsafe downcasts on platforms
+// where `int` is larger than 32 bits (e.g., amd64) and guards against
+// potential overflows when values originate from untrusted sources.
+func ClampIntToInt32(n int) int32 {
+	if n <= 0 {
+		return 0
+	}
+	if n > math.MaxInt32 {
+		return int32(math.MaxInt32)
+	}
+	return int32(n)
+}
+
+// RedactForLog returns a masked version of a user-provided identifier suitable
+// for inclusion in logs. It preserves a small, non-sensitive hint while
+// removing the majority of the value to avoid leaking sensitive data.
+//
+// Examples:
+//   - email: "alice@example.com" -> "a***@example.com"
+//   - phone: "+1234567890" -> "+1******90"
+//   - other strings: "userid-abcdef" -> "us***ef"
+func RedactForLog(s string) string {
+	if s == "" {
+		return ""
+	}
+	// Email-like: keep first char and domain
+	for i := 0; i < len(s); i++ {
+		if s[i] == '@' {
+			local := s[:i]
+			domain := s[i+1:]
+			if len(local) <= 1 {
+				return "***@" + domain
+			}
+			return fmt.Sprintf("%c***@%s", local[0], domain)
+		}
+	}
+
+	// Phone-like: keep country/first char and last two chars
+	if len(s) >= 4 {
+		return fmt.Sprintf("%s***%s", s[:1], s[len(s)-2:])
+	}
+
+	// Fallback: keep first and last char
+	if len(s) == 2 {
+		return s
+	}
+	if len(s) == 1 {
+		return "*"
+	}
+	return fmt.Sprintf("%c***%c", s[0], s[len(s)-1])
+}
+
+// HashShort returns a short hash string (hex) of the input suitable for
+// non-reversible identification in logs.
+func HashShort(s string) string {
+	if s == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte(s))
+	// return first 8 hex chars for brevity
+	return fmt.Sprintf("%x", h)[:8]
 }
 
 // // GenerateUUID always generates a UUID v4, regardless of strategy

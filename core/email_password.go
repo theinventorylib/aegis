@@ -49,7 +49,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAd
 		}
 		if locked {
 			_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, "", ipAddress, userAgent, false, map[string]interface{}{
-				"email":     email,
+				"email":     RedactForLog(email),
 				"reason":    "account_locked",
 				"remaining": remaining.String(),
 			})
@@ -67,7 +67,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAd
 			_ = err
 		}
 		_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, "", ipAddress, userAgent, false, map[string]interface{}{
-			"email":  email,
+			"email":  RedactForLog(email),
 			"reason": "user_not_found",
 		})
 		return nil, ErrInvalidCredentials
@@ -85,7 +85,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAd
 			_ = err
 		}
 		_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, uid, ipAddress, userAgent, false, map[string]interface{}{
-			"email":  email,
+			"email":  RedactForLog(email),
 			"reason": "invalid_password",
 		})
 		return nil, ErrInvalidCredentials

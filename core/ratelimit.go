@@ -369,8 +369,22 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 
 			if !allowed {
 				// Audit log rate limit hit
+				// Avoid logging raw keys (which may contain IPs or user IDs).
+				// Log the key type and a short non-reversible hash instead.
+				keyType := "unknown"
+				keyVal := key
+				if len(key) > 3 {
+					if key[:3] == "ip:" {
+						keyType = "ip"
+						keyVal = key[3:]
+					} else if key[:5] == "user:" {
+						keyType = "user"
+						keyVal = key[5:]
+					}
+				}
 				_ = limiter.auditLogger.LogAuthEvent(r.Context(), AuditEventRateLimitHit, "", getClientIP(r), r.UserAgent(), false, map[string]interface{}{
-					"key":       key,
+					"key_type":  keyType,
+					"key_hash":  HashShort(keyVal),
 					"path":      r.URL.Path,
 					"method":    r.Method,
 					"remaining": remaining,
