@@ -49,11 +49,11 @@ func main() {
 	r := router.NewChiRouter(mux)
 
 	// 3. Create Aegis instance
-	a, err := aegis.New(context.Background(),
-		config.WithDB(db),
-		config.WithRouter(r),
-		config.WithSecret([]byte("your-32-byte-secret-key-here!!!!")),
-	)
+	cfg := config.Default().
+		WithDB(db).
+		WithRouter(r).
+		WithSecret([]byte("your-32-byte-secret-key-here!!!!"))
+	a, err := aegis.New(context.Background(), cfg)
 	if err != nil {
 		log.Fatal("Failed to create Aegis instance:", err)
 	}

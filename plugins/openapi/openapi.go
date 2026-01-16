@@ -232,10 +232,32 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 
 	// Serve OpenAPI spec as JSON
 	router.GET(prefix+"/openapi.json", handler.ServeSpec)
+	router.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "GET",
+		Path:        prefix + "/openapi.json",
+		Summary:     "OpenAPI spec",
+		Description: "Get the OpenAPI specification JSON",
+		Tags:        []string{"OpenAPI"},
+		Protected:   false,
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "OpenAPI JSON"},
+		},
+	})
 
 	// Serve Scalar UI if enabled
 	if p.config.EnableScalarUI {
 		router.GET(prefix+"/docs", handler.ServeScalarUI)
+		router.RegisterRouteMetadata(core.RouteMetadata{
+			Method:      "GET",
+			Path:        prefix + "/docs",
+			Summary:     "API docs UI",
+			Description: "Interactive API documentation UI",
+			Tags:        []string{"OpenAPI"},
+			Protected:   false,
+			Responses: map[string]*core.ResponseMeta{
+				"200": {Description: "HTML docs UI"},
+			},
+		})
 	}
 }
 

@@ -567,13 +567,14 @@ func main() {
     r := chi.NewRouter()
     
     // 3. Create Aegis instance
-    a, _ := aegis.New(context.Background(),
-        config.WithDB(db),
-        config.WithRouter(r),
-        config.WithMasterSecret([]byte("your-32-byte-secret-key-here!!!!")),
-        config.WithRedis("localhost", 6379, "", 0),
-        config.WithRateLimiting(true, nil),
-    )
+    cfg := config.Default().
+        WithDB(db).
+        WithRouter(r).
+        WithSecret([]byte("your-32-byte-secret-key-here!!!!")).
+        WithRedis("localhost", 6379, "", 0).
+        WithRateLimiting()
+    
+    a, _ := aegis.New(context.Background(), cfg)
     
     // 4. Register plugins (priority-based initialization)
     orgPlugin := organizations.New(nil, plugins.DialectPostgres)

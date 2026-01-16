@@ -201,10 +201,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	// Protected route - sending OTP requires authentication to prevent spam/abuse
-	router.POST(prefix+"/emailotp/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
+	router.POST(prefix+"/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
 	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/emailotp/send",
+		Path:        prefix + "/send",
 		Summary:     "Send Email OTP",
 		Description: "Send a one-time password via email to the authenticated user's email address",
 		Tags:        []string{"EmailOTP"},
@@ -223,10 +223,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	})
 
 	// Public routes
-	router.POST(prefix+"/emailotp/verify", handlers.VerifyOTPHandler) // User proving email ownership
+	router.POST(prefix+"/verify", handlers.VerifyOTPHandler) // User proving email ownership
 	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/emailotp/verify",
+		Path:        prefix + "/verify",
 		Summary:     "Verify Email OTP",
 		Description: "Verify a one-time password sent via email",
 		Tags:        []string{"EmailOTP"},
@@ -244,10 +244,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	})
 
 	// Email+password authentication (if core AuthService configured)
-	router.POST(prefix+"/emailotp/login", handlers.LoginWithEmailHandler) // Login endpoint
+	router.POST(prefix+"/login", handlers.LoginWithEmailHandler) // Login endpoint
 	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/emailotp/login",
+		Path:        prefix + "/login",
 		Summary:     "Login with email and password",
 		Description: "Authenticate using email address and password",
 		Tags:        []string{"EmailOTP", "Authentication"},
@@ -264,10 +264,10 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		},
 	})
 
-	router.POST(prefix+"/emailotp/register", handlers.RegisterWithEmailHandler)
+	router.POST(prefix+"/register", handlers.RegisterWithEmailHandler)
 	router.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
-		Path:        prefix + "/emailotp/register",
+		Path:        prefix + "/register",
 		Summary:     "Register with email and password",
 		Description: "Create a new account using email address and password",
 		Tags:        []string{"EmailOTP", "Authentication"},

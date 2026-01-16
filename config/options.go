@@ -307,9 +307,6 @@ func (c *Config) DeriveSecret(purpose string) []byte {
 	return core.DeriveSecret(c.Secret, purpose, core.DefaultSecretLength)
 }
 
-// Option is a functional option for configuring Aegis
-type Option func(*Config)
-
 // WithRouter sets the HTTP router for Aegis.
 // router: an implementation of server.Router (ChiRouter, DefaultRouter, etc.)
 //
@@ -319,10 +316,9 @@ type Option func(*Config)
 //	router := server.NewDefaultRouter(mux)
 //
 //	aegis.New(config.WithRouter(router), ...)
-func WithRouter(router router.Router) Option {
-	return func(c *Config) {
-		c.Router = router
-	}
+func (c *Config) WithRouter(router router.Router) *Config {
+	c.Router = router
+	return c
 }
 
 // WithSecret sets the master secret for Aegis.
@@ -336,65 +332,57 @@ func WithRouter(router router.Router) Option {
 //	crypto/rand.Read(secret)
 //
 //	aegis.New(config.WithSecret(secret), ...)
-func WithSecret(secret []byte) Option {
-	return func(c *Config) {
-		c.Secret = secret
-	}
+func (c *Config) WithSecret(secret []byte) *Config {
+	c.Secret = secret
+	return c
 }
 
 // WithSessionExpiry sets the session expiry duration
-func WithSessionExpiry(duration time.Duration) Option {
-	return func(c *Config) {
-		c.SessionExpiry = duration
-	}
+func (c *Config) WithSessionExpiry(duration time.Duration) *Config {
+	c.SessionExpiry = duration
+	return c
 }
 
 // WithRefreshExpiry sets the refresh token expiry duration
-func WithRefreshExpiry(duration time.Duration) Option {
-	return func(c *Config) {
-		c.RefreshExpiry = duration
-	}
+func (c *Config) WithRefreshExpiry(duration time.Duration) *Config {
+	c.RefreshExpiry = duration
+	return c
 }
 
 // WithCookieDomain sets the cookie domain
-func WithCookieDomain(domain string) Option {
-	return func(c *Config) {
-		c.CookieDomain = domain
-	}
+func (c *Config) WithCookieDomain(domain string) *Config {
+	c.CookieDomain = domain
+	return c
 }
 
 // WithCookieName sets the session cookie name
 // Default is "aegis_session"
-func WithCookieName(name string) Option {
-	return func(c *Config) {
-		c.CookieName = name
-	}
+func (c *Config) WithCookieName(name string) *Config {
+	c.CookieName = name
+	return c
 }
 
 // WithCookieSecure sets whether cookies should be secure
-func WithCookieSecure(secure bool) Option {
-	return func(c *Config) {
-		c.CookieSecure = secure
-	}
+func (c *Config) WithCookieSecure(secure bool) *Config {
+	c.CookieSecure = secure
+	return c
 }
 
 // WithCookieSameSite sets the SameSite cookie attribute
-func WithCookieSameSite(sameSite string) Option {
-	return func(c *Config) {
-		c.CookieSameSite = sameSite
-	}
+func (c *Config) WithCookieSameSite(sameSite string) *Config {
+	c.CookieSameSite = sameSite
+	return c
 }
 
 // WithRedis sets the Redis configuration
-func WithRedis(host string, port int, password string, db int) Option {
-	return func(c *Config) {
-		c.Redis = &RedisConfig{
-			Host:     host,
-			Port:     port,
-			Password: password,
-			DB:       db,
-		}
+func (c *Config) WithRedis(host string, port int, password string, db int) *Config {
+	c.Redis = &RedisConfig{
+		Host:     host,
+		Port:     port,
+		Password: password,
+		DB:       db,
 	}
+	return c
 }
 
 // WithIDGenerator sets a custom ID generation function, overriding the default ULID strategy.
@@ -410,11 +398,10 @@ func WithRedis(host string, port int, password string, db int) Option {
 // Examples:
 //   - UUID: WithIDGenerator(func() string { return uuid.New().String() })
 //   - KSUID: WithIDGenerator(func() string { return ksuid.New().String() })
-func WithIDGenerator(generator func() string) Option {
-	return func(c *Config) {
-		c.IDGenerator = generator
-		c.IDStrategy = core.IDStrategyCustom
-	}
+func (c *Config) WithIDGenerator(generator func() string) *Config {
+	c.IDGenerator = generator
+	c.IDStrategy = core.IDStrategyCustom
+	return c
 }
 
 // WithIDStrategy sets the global ID generation strategy for Aegis.
@@ -428,44 +415,42 @@ func WithIDGenerator(generator func() string) Option {
 //
 // Example:
 //
-//	aegis.New(ctx, config.WithIDStrategy(core.IDStrategyUUID), ...)
-func WithIDStrategy(strategy core.IDStrategy) Option {
-	return func(c *Config) {
-		c.IDStrategy = strategy
-	}
+//	cfg := config.Default()
+//	cfg.WithIDStrategy(core.IDStrategyUUID)
+//
+//	aegis.New(ctx, cfg, ...)
+func (c *Config) WithIDStrategy(strategy core.IDStrategy) *Config {
+	c.IDStrategy = strategy
+	return c
 }
 
 // WithAPIOnlyMode enables API-only mode (skips CSRF secret requirement)
 // Use this when building APIs without web UI
-func WithAPIOnlyMode(enabled bool) Option {
-	return func(c *Config) {
-		c.APIMode = enabled
-	}
+func (c *Config) WithAPIOnlyMode(enabled bool) *Config {
+	c.APIMode = enabled
+	return c
 }
 
 // WithLogger sets an optional logger for observability of Aegis lifecycle events.
 // The logger will receive events for plugin registration, initialization, and errors.
 // Example: WithLogger(slog.Default()) or a custom logger implementation
-func WithLogger(logger Logger) Option {
-	return func(c *Config) {
-		c.Logger = logger
-	}
+func (c *Config) WithLogger(logger Logger) *Config {
+	c.Logger = logger
+	return c
 }
 
 // WithAuditLogger sets an optional audit logger for security events.
 // The audit logger will receive events for authentication attempts, user actions, etc.
 // Example: WithAuditLogger(&MyAuditLogger{})
-func WithAuditLogger(logger core.AuditLogger) Option {
-	return func(c *Config) {
-		c.AuditLogger = logger
-	}
+func (c *Config) WithAuditLogger(logger core.AuditLogger) *Config {
+	c.AuditLogger = logger
+	return c
 }
 
 // WithAuthConfig sets the core authentication configuration
-func WithAuthConfig(authConfig *core.AuthConfig) Option {
-	return func(c *Config) {
-		c.CoreAuth = authConfig
-	}
+func (c *Config) WithAuthConfig(authConfig *core.AuthConfig) *Config {
+	c.CoreAuth = authConfig
+	return c
 }
 
 // WithRateLimiting enables rate limiting with default configuration.
@@ -474,17 +459,19 @@ func WithAuthConfig(authConfig *core.AuthConfig) Option {
 //
 // Example:
 //
-//	aegis.New(config.WithRateLimiting(), ...)
-func WithRateLimiting() Option {
-	return func(c *Config) {
-		c.RateLimitEnabled = true
-		if c.RateLimitConfig == nil {
-			c.RateLimitConfig = core.DefaultRateLimitConfig()
-		}
-		if c.LoginAttemptConfig == nil {
-			c.LoginAttemptConfig = core.DefaultLoginAttemptConfig()
-		}
+//	cfg := config.Default()
+//	cfg.WithRateLimiting()
+//
+//	aegis.New(ctx, cfg, ...)
+func (c *Config) WithRateLimiting() *Config {
+	c.RateLimitEnabled = true
+	if c.RateLimitConfig == nil {
+		c.RateLimitConfig = core.DefaultRateLimitConfig()
 	}
+	if c.LoginAttemptConfig == nil {
+		c.LoginAttemptConfig = core.DefaultLoginAttemptConfig()
+	}
+	return c
 }
 
 // WithRateLimitConfig sets custom rate limiting configuration.
@@ -498,14 +485,13 @@ func WithRateLimiting() Option {
 //	    ByIP:              true,
 //	}
 //	aegis.New(config.WithRateLimitConfig(cfg), ...)
-func WithRateLimitConfig(cfg *core.RateLimitConfig) Option {
-	return func(c *Config) {
-		c.RateLimitEnabled = true
-		c.RateLimitConfig = cfg
-		if c.LoginAttemptConfig == nil {
-			c.LoginAttemptConfig = core.DefaultLoginAttemptConfig()
-		}
+func (c *Config) WithRateLimitConfig(cfg *core.RateLimitConfig) *Config {
+	c.RateLimitEnabled = true
+	c.RateLimitConfig = cfg
+	if c.LoginAttemptConfig == nil {
+		c.LoginAttemptConfig = core.DefaultLoginAttemptConfig()
 	}
+	return c
 }
 
 // WithPasswordPolicy sets custom password validation policies.
@@ -522,13 +508,12 @@ func WithRateLimitConfig(cfg *core.RateLimitConfig) Option {
 //	    MaxLength:      256,
 //	}
 //	aegis.New(config.WithPasswordPolicy(policy), ...)
-func WithPasswordPolicy(policy *core.PasswordPolicyConfig) Option {
-	return func(c *Config) {
-		if c.CoreAuth == nil {
-			c.CoreAuth = core.DefaultAuthConfig()
-		}
-		c.CoreAuth.PasswordPolicy = policy
+func (c *Config) WithPasswordPolicy(policy *core.PasswordPolicyConfig) *Config {
+	if c.CoreAuth == nil {
+		c.CoreAuth = core.DefaultAuthConfig()
 	}
+	c.CoreAuth.PasswordPolicy = policy
+	return c
 }
 
 // WithUserFields configures which extension fields are included in user API responses.
@@ -557,16 +542,15 @@ func WithPasswordPolicy(policy *core.PasswordPolicyConfig) Option {
 // Note: Session endpoints (/session/validate) always return both session and
 // enriched user data. This config only filters which extension fields appear
 // in the user portion of responses.
-func WithUserFields(fields []string) Option {
-	return func(c *Config) {
-		if c.CoreAuth == nil {
-			c.CoreAuth = core.DefaultAuthConfig()
-		}
-		if c.CoreAuth.UserFields == nil {
-			c.CoreAuth.UserFields = core.DefaultUserFieldsConfig()
-		}
-		c.CoreAuth.UserFields.Fields = fields
+func (c *Config) WithUserFields(fields []string) *Config {
+	if c.CoreAuth == nil {
+		c.CoreAuth = core.DefaultAuthConfig()
 	}
+	if c.CoreAuth.UserFields == nil {
+		c.CoreAuth.UserFields = core.DefaultUserFieldsConfig()
+	}
+	c.CoreAuth.UserFields.Fields = fields
+	return c
 }
 
 // WithDB sets the database connection for Aegis.
@@ -574,12 +558,13 @@ func WithUserFields(fields []string) Option {
 //
 // Example:
 //
-//	db, _ := sql.Open("postgres", "postgres://user:pass@localhost:5432/db?sslmode=require")
-//	aegis.New(ctx, config.WithDB(db), ...)
-func WithDB(db *sql.DB) Option {
-	return func(c *Config) {
-		c.DB = db
-	}
+//	cfg := config.Default()
+//	cfg.WithDB(db)
+//
+//	aegis.New(ctx, cfg, ...)
+func (c *Config) WithDB(db *sql.DB) *Config {
+	c.DB = db
+	return c
 }
 
 // WithArgon2Time sets the number of iterations for Argon2id password hashing.
@@ -588,11 +573,13 @@ func WithDB(db *sql.DB) Option {
 //
 // Example:
 //
-//	aegis.New(ctx, config.WithArgon2Time(2), ...)
-func WithArgon2Time(time uint32) Option {
-	return func(c *Config) {
-		c.Argon2Time = time
-	}
+//	cfg := config.Default()
+//	cfg.WithArgon2Time(2)
+//
+//	aegis.New(ctx, cfg, ...)
+func (c *Config) WithArgon2Time(time uint32) *Config {
+	c.Argon2Time = time
+	return c
 }
 
 // WithArgon2Memory sets the memory cost in KB for Argon2id password hashing.
@@ -601,11 +588,13 @@ func WithArgon2Time(time uint32) Option {
 //
 // Example:
 //
-//	aegis.New(ctx, config.WithArgon2Memory(128*1024), ...) // 128 MB
-func WithArgon2Memory(memory uint32) Option {
-	return func(c *Config) {
-		c.Argon2Memory = memory
-	}
+//	cfg := config.Default()
+//	cfg.WithArgon2Memory(128*1024) // 128 MB
+//
+//	aegis.New(ctx, cfg, ...)
+func (c *Config) WithArgon2Memory(memory uint32) *Config {
+	c.Argon2Memory = memory
+	return c
 }
 
 // WithArgon2Threads sets the parallelism for Argon2id password hashing.
@@ -613,11 +602,13 @@ func WithArgon2Memory(memory uint32) Option {
 //
 // Example:
 //
-//	aegis.New(ctx, config.WithArgon2Threads(4), ...)
-func WithArgon2Threads(threads uint8) Option {
-	return func(c *Config) {
-		c.Argon2Threads = threads
-	}
+//	cfg := config.Default()
+//	cfg.WithArgon2Threads(4)
+//
+//	aegis.New(ctx, cfg, ...)
+func (c *Config) WithArgon2Threads(threads uint8) *Config {
+	c.Argon2Threads = threads
+	return c
 }
 
 // WithArgon2KeyLength sets the output key length for Argon2id.
@@ -625,9 +616,11 @@ func WithArgon2Threads(threads uint8) Option {
 //
 // Example:
 //
-//	aegis.New(ctx, config.WithArgon2KeyLength(32), ...)
-func WithArgon2KeyLength(length uint32) Option {
-	return func(c *Config) {
-		c.Argon2KeyLength = length
-	}
+//	cfg := config.Default()
+//	cfg.WithArgon2KeyLength(32)
+//
+//	aegis.New(ctx, cfg, ...)
+func (c *Config) WithArgon2KeyLength(length uint32) *Config {
+	c.Argon2KeyLength = length
+	return c
 }

@@ -164,18 +164,121 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 	adminGroup := r.Group(prefix, "Admin")
 
 	// User management - all protected
-	adminGroup.GET("/admin/users", requireAdmin(http.HandlerFunc(a.listUsersHandler)).ServeHTTP)
-	adminGroup.GET("/admin/users/:id", requireAdmin(http.HandlerFunc(a.getUserHandler)).ServeHTTP)
-	adminGroup.POST("/admin/users/:id/disable", requireAdmin(http.HandlerFunc(a.disableUserHandler)).ServeHTTP)
-	adminGroup.POST("/admin/users/:id/enable", requireAdmin(http.HandlerFunc(a.enableUserHandler)).ServeHTTP)
-	adminGroup.DELETE("/admin/users/:id", requireAdmin(http.HandlerFunc(a.deleteUserHandler)).ServeHTTP)
+	adminGroup.GET("/users", requireAdmin(http.HandlerFunc(a.listUsersHandler)).ServeHTTP)
+	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "GET",
+		Path:        prefix + "/users",
+		Summary:     "List users",
+		Description: "List all users (admin only)",
+		Tags:        []string{"Admin"},
+		Protected:   true,
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "List of users", Schema: core.SchemaUser},
+			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		},
+	})
+
+	adminGroup.GET("/users/:id", requireAdmin(http.HandlerFunc(a.getUserHandler)).ServeHTTP)
+	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "GET",
+		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id"),
+		Summary:     "Get user",
+		Description: "Get user details by ID (admin only)",
+		Tags:        []string{"Admin"},
+		Protected:   true,
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "User details", Schema: core.SchemaUser},
+			"401": {Description: "Not authorized", Schema: core.SchemaError},
+			"404": {Description: "User not found", Schema: core.SchemaError},
+		},
+	})
+
+	adminGroup.POST("/users/:id/disable", requireAdmin(http.HandlerFunc(a.disableUserHandler)).ServeHTTP)
+	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "POST",
+		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id/disable"),
+		Summary:     "Disable user",
+		Description: "Disable a user account (admin only)",
+		Tags:        []string{"Admin"},
+		Protected:   true,
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "User disabled", Schema: core.SchemaSuccess},
+			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		},
+	})
+
+	adminGroup.POST("/users/:id/enable", requireAdmin(http.HandlerFunc(a.enableUserHandler)).ServeHTTP)
+	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "POST",
+		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id/enable"),
+		Summary:     "Enable user",
+		Description: "Enable a user account (admin only)",
+		Tags:        []string{"Admin"},
+		Protected:   true,
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "User enabled", Schema: core.SchemaSuccess},
+			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		},
+	})
+
+	adminGroup.DELETE("/users/:id", requireAdmin(http.HandlerFunc(a.deleteUserHandler)).ServeHTTP)
+	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "DELETE",
+		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id"),
+		Summary:     "Delete user",
+		Description: "Delete a user account (admin only)",
+		Tags:        []string{"Admin"},
+		Protected:   true,
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "User deleted", Schema: core.SchemaSuccess},
+			"401": {Description: "Not authorized", Schema: core.SchemaError},
+			"404": {Description: "User not found", Schema: core.SchemaError},
+		},
+	})
 
 	// Ban management - protected
-	adminGroup.POST("/admin/users/:id/ban", requireAdmin(http.HandlerFunc(a.banUserHandler)).ServeHTTP)
-	adminGroup.POST("/admin/users/:id/unban", requireAdmin(http.HandlerFunc(a.unbanUserHandler)).ServeHTTP)
+	adminGroup.POST("/users/:id/ban", requireAdmin(http.HandlerFunc(a.banUserHandler)).ServeHTTP)
+	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "POST",
+		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id/ban"),
+		Summary:     "Ban user",
+		Description: "Ban a user with reason and expiry (admin only)",
+		Tags:        []string{"Admin"},
+		Protected:   true,
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "User banned", Schema: core.SchemaSuccess},
+			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		},
+	})
+
+	adminGroup.POST("/users/:id/unban", requireAdmin(http.HandlerFunc(a.unbanUserHandler)).ServeHTTP)
+	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "POST",
+		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id/unban"),
+		Summary:     "Unban user",
+		Description: "Remove ban from user (admin only)",
+		Tags:        []string{"Admin"},
+		Protected:   true,
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "User unbanned", Schema: core.SchemaSuccess},
+			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		},
+	})
 
 	// Stats and analytics - protected
-	adminGroup.GET("/admin/stats", requireAdmin(http.HandlerFunc(a.getStatsHandler)).ServeHTTP)
+	adminGroup.GET("/stats", requireAdmin(http.HandlerFunc(a.getStatsHandler)).ServeHTTP)
+	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "GET",
+		Path:        prefix + "/stats",
+		Summary:     "Admin stats",
+		Description: "Get platform statistics (admin only)",
+		Tags:        []string{"Admin"},
+		Protected:   true,
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "Statistics", Schema: core.SchemaSuccess},
+			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		},
+	})
 }
 
 // Dependencies returns the plugin dependencies

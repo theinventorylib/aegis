@@ -32,12 +32,11 @@
 //		r := chi.NewRouter()
 //
 //		// Create Aegis instance
-//		a, _ := aegis.New(context.Background(),
-//			config.WithDB(db),
-//			config.WithRouter(r),
-//			config.WithMasterSecret([]byte("your-32-byte-secret-key-here!")),
-//			config.WithEmailPassword(true),
-//		)
+//		cfg := config.Default().
+//			WithDB(db).
+//			WithRouter(r).
+//			WithSecret([]byte("your-32-byte-secret-key-here!"))
+//		a, _ := aegis.New(context.Background(), cfg)
 //
 //		// Mount authentication routes
 //		a.MountRoutes("/auth")
@@ -193,12 +192,7 @@ type pluginRegistration struct {
 //	if err != nil {
 //		log.Fatal("Failed to initialize Aegis:", err)
 //	}
-func New(_ context.Context, opts ...config.Option) (*Aegis, error) {
-	cfg := config.Default()
-	for _, opt := range opts {
-		opt(cfg)
-	}
-
+func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -343,12 +337,13 @@ func New(_ context.Context, opts ...config.Option) (*Aegis, error) {
 //	// POST /auth/jwt/token
 //	// etc.
 func (a *Aegis) MountRoutes(prefix string) {
-	// Mount core routes with optional rate limiter
+	// Mount core routes under the "default" subpath with optional rate limiter
 	var coreAuth *core.AuthConfig
 	if a.config != nil {
 		coreAuth = a.config.CoreAuth
 	}
-	router.MountRoutes(a.router, a.auth, coreAuth, prefix, a.rateLimiter)
+	corePrefix := prefix + "/default"
+	router.MountRoutes(a.router, a.auth, coreAuth, corePrefix, a.rateLimiter)
 
 	// Get sorted plugins for mounting
 	sortedPlugins := a.GetPlugins()
