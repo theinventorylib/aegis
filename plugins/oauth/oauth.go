@@ -289,6 +289,16 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 		}
 	}
 
+	// Register schemas with OpenAPI plugin for documentation
+	if openapiPlugin, ok := a.GetPlugin("openapi"); ok {
+		if oapi, ok := openapiPlugin.(interface {
+			RegisterSchemaFromType(name string, example interface{})
+		}); ok {
+			// Register request schemas
+			oapi.RegisterSchemaFromType(SchemaLinkAccountRequest, LinkAccountRequest{})
+		}
+	}
+
 	return nil
 }
 

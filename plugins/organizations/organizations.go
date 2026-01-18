@@ -175,6 +175,35 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	p.sessionService = aegis.GetAuthService().Session
 	p.aegis = aegis
 
+	// Register schemas with OpenAPI plugin for documentation
+	if openapiPlugin, ok := aegis.GetPlugin("openapi"); ok {
+		if oapi, ok := openapiPlugin.(interface {
+			RegisterSchemaFromType(name string, example interface{})
+		}); ok {
+			// Register request schemas
+			oapi.RegisterSchemaFromType(SchemaCreateOrganizationRequest, CreateOrganizationRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateOrganizationRequest, UpdateOrganizationRequest{})
+			oapi.RegisterSchemaFromType(SchemaAddOrganizationMemberRequest, AddOrganizationMemberRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateMemberRoleRequest, UpdateMemberRoleRequest{})
+			oapi.RegisterSchemaFromType(SchemaCreateTeamRequest, CreateTeamRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateTeamRequest, UpdateTeamRequest{})
+			oapi.RegisterSchemaFromType(SchemaAddTeamMemberRequest, AddTeamMemberRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateTeamMemberRoleRequest, UpdateTeamMemberRoleRequest{})
+
+			// Register response schemas
+			oapi.RegisterSchemaFromType(SchemaOrganization, Organization{})
+			oapi.RegisterSchemaFromType(SchemaTeam, Team{})
+			oapi.RegisterSchemaFromType(SchemaMember, Member{})
+			oapi.RegisterSchemaFromType(SchemaTeamMember, TeamMember{})
+
+			// Register list schemas
+			oapi.RegisterSchemaFromType(SchemaOrganizationList, []Organization{})
+			oapi.RegisterSchemaFromType(SchemaTeamList, []Team{})
+			oapi.RegisterSchemaFromType(SchemaMemberList, []Member{})
+			oapi.RegisterSchemaFromType(SchemaTeamMemberList, []TeamMember{})
+		}
+	}
+
 	return nil
 }
 
