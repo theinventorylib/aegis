@@ -93,6 +93,7 @@ type Plugin struct {
 	userService     *core.UserService
 	sessionService  *core.SessionService
 	dialect         plugins.Dialect
+	aegis           plugins.Aegis
 }
 
 // Config holds OAuth plugin configuration.
@@ -268,6 +269,7 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 	p.userService = authService.User
 	p.sessionService = authService.Session
 	p.logger = a.GetLogger()
+	p.aegis = a
 
 	// Initialize store if not provided
 	if p.store == nil {
@@ -287,21 +289,21 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 		}
 	}
 
-	// Register schemas with OpenAPI plugin for documentation
-	if openapiPlugin, ok := a.GetPlugin("openapi"); ok {
-		if oapi, ok := openapiPlugin.(interface {
-			RegisterSchemaFromType(name string, example interface{})
-		}); ok {
-			// Register request schemas
-			oapi.RegisterSchemaFromType(SchemaLinkAccountRequest, LinkAccountRequest{})
-		}
-	}
-
 	return nil
 }
 
 // MountRoutes registers HTTP routes for the OAuth plugin
 func (p *Plugin) MountRoutes(router router.Router, prefix string) {
+	// Register schemas with OpenAPI if available
+	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
+		if oapi, ok := plugin.(interface {
+			RegisterSchemaFromType(name string, example interface{})
+		}); ok {
+			// Request schemas
+			oapi.RegisterSchemaFromType(SchemaLinkAccountRequest, LinkAccountRequest{})
+		}
+	}
+
 	handlers := NewHandlers(p)
 
 	// Create route group for OAuth plugin

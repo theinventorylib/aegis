@@ -269,6 +269,18 @@ func (p *Plugin) UpdateSpec(metadata []core.RouteMetadata) {
 	defer p.mu.Unlock()
 
 	for _, meta := range metadata {
+		// Skip OpenAPI's own routes if they are tagged as "OpenAPI"
+		skip := false
+		for _, tag := range meta.Tags {
+			if tag == "OpenAPI" {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+
 		// Create operation
 		op := &Operation{
 			Summary:     meta.Summary,
