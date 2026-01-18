@@ -801,3 +801,7 @@ func (w *pluginAegisWrapper) GetRateLimiter() *core.RateLimiter {
 func (w *pluginAegisWrapper) DB() *sql.DB {
 	return w.config.DB
 }
+
+func (w *pluginAegisWrapper) GetPlugin(name string) (plugins.Plugin, bool) {
+	return w.Aegis.GetPlugin(name)
+}

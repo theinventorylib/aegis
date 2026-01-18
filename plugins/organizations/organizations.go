@@ -173,6 +173,35 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	// Store session service for auth middleware
 	p.sessionService = aegis.GetAuthService().Session
 
+	// Register schemas with OpenAPI plugin for documentation
+	if openapiPlugin, ok := aegis.GetPlugin("openapi"); ok {
+		if oapi, ok := openapiPlugin.(interface {
+			RegisterSchemaFromType(name string, example interface{})
+		}); ok {
+			// Register request schemas
+			oapi.RegisterSchemaFromType(SchemaCreateOrganizationRequest, CreateOrganizationRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateOrganizationRequest, UpdateOrganizationRequest{})
+			oapi.RegisterSchemaFromType(SchemaAddOrganizationMemberRequest, AddOrganizationMemberRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateMemberRoleRequest, UpdateMemberRoleRequest{})
+			oapi.RegisterSchemaFromType(SchemaCreateTeamRequest, CreateTeamRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateTeamRequest, UpdateTeamRequest{})
+			oapi.RegisterSchemaFromType(SchemaAddTeamMemberRequest, AddTeamMemberRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateTeamMemberRoleRequest, UpdateTeamMemberRoleRequest{})
+
+			// Register response schemas
+			oapi.RegisterSchemaFromType(SchemaOrganization, Organization{})
+			oapi.RegisterSchemaFromType(SchemaTeam, Team{})
+			oapi.RegisterSchemaFromType(SchemaMember, Member{})
+			oapi.RegisterSchemaFromType(SchemaTeamMember, TeamMember{})
+
+			// Register list schemas
+			oapi.RegisterSchemaFromType(SchemaOrganizationList, []Organization{})
+			oapi.RegisterSchemaFromType(SchemaTeamList, []Team{})
+			oapi.RegisterSchemaFromType(SchemaMemberList, []Member{})
+			oapi.RegisterSchemaFromType(SchemaTeamMemberList, []TeamMember{})
+		}
+	}
+
 	return nil
 }
 
@@ -300,7 +329,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Member details (userId and role)",
 			Required:    true,
-			Schema:      AddOrganizationMemberRequest{},
+			Schema:      SchemaAddOrganizationMemberRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"201": {Description: "Member added successfully", Schema: core.SchemaSuccess},
@@ -338,7 +367,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "New role for the member",
 			Required:    true,
-			Schema:      UpdateMemberRoleRequest{},
+			Schema:      SchemaUpdateMemberRoleRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Role updated successfully", Schema: core.SchemaSuccess},
@@ -378,10 +407,10 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Team details",
 			Required:    true,
-			Schema:      CreateTeamRequest{},
+			Schema:      SchemaCreateTeamRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
-			"201": {Description: "Team created successfully", Schema: "Team"},
+			"201": {Description: "Team created successfully", Schema: SchemaTeam},
 			"400": {Description: "Invalid request or validation error", Schema: core.SchemaError},
 			"401": {Description: "Not authenticated", Schema: core.SchemaError},
 			"403": {Description: "Insufficient permissions", Schema: core.SchemaError},
@@ -417,7 +446,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Tags:        []string{"Teams"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Team details", Schema: "Team"},
+			"200": {Description: "Team details", Schema: SchemaTeam},
 			"400": {Description: "Invalid team ID", Schema: core.SchemaError},
 			"401": {Description: "Not authenticated", Schema: core.SchemaError},
 			"403": {Description: "Not a member of this organization", Schema: core.SchemaError},
@@ -436,7 +465,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Updated team details",
 			Required:    true,
-			Schema:      UpdateTeamRequest{},
+			Schema:      SchemaUpdateTeamRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Team updated successfully", Schema: core.SchemaSuccess},
@@ -477,7 +506,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Team member details (userId and role)",
 			Required:    true,
-			Schema:      AddTeamMemberRequest{},
+			Schema:      SchemaAddTeamMemberRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"201": {Description: "Member added to team successfully", Schema: core.SchemaSuccess},
@@ -517,7 +546,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "New role for the team member",
 			Required:    true,
-			Schema:      UpdateTeamMemberRoleRequest{},
+			Schema:      SchemaUpdateTeamMemberRoleRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Team member role updated successfully", Schema: core.SchemaSuccess},

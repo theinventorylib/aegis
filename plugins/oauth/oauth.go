@@ -287,6 +287,16 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 		}
 	}
 
+	// Register schemas with OpenAPI plugin for documentation
+	if openapiPlugin, ok := a.GetPlugin("openapi"); ok {
+		if oapi, ok := openapiPlugin.(interface {
+			RegisterSchemaFromType(name string, example interface{})
+		}); ok {
+			// Register request schemas
+			oapi.RegisterSchemaFromType(SchemaLinkAccountRequest, LinkAccountRequest{})
+		}
+	}
+
 	return nil
 }
 
@@ -354,7 +364,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "OAuth provider to link",
 			Required:    true,
-			Schema:      LinkAccountRequest{},
+			Schema:      SchemaLinkAccountRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Account linked successfully", Schema: core.SchemaSuccess},

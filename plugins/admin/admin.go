@@ -143,6 +143,21 @@ func (a *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 		return err
 	}
 
+	// Register schemas with OpenAPI plugin for documentation
+	if openapiPlugin, ok := aegis.GetPlugin("openapi"); ok {
+		if oapi, ok := openapiPlugin.(interface {
+			RegisterSchemaFromType(name string, example interface{})
+		}); ok {
+			// Register request schemas
+			oapi.RegisterSchemaFromType(SchemaBanUserRequest, BanUserRequest{})
+
+			// Register response schemas
+			oapi.RegisterSchemaFromType(SchemaAdminUser, User{})
+			oapi.RegisterSchemaFromType(SchemaUserListResponse, UserListResponse{})
+			oapi.RegisterSchemaFromType(SchemaAdminStats, StatsResponse{})
+		}
+	}
+
 	return nil
 }
 
@@ -173,7 +188,7 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		Tags:        []string{"Admin"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "List of users", Schema: core.SchemaUser},
+			"200": {Description: "List of users", Schema: SchemaUserListResponse},
 			"401": {Description: "Not authorized", Schema: core.SchemaError},
 		},
 	})
@@ -187,7 +202,7 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		Tags:        []string{"Admin"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "User details", Schema: core.SchemaUser},
+			"200": {Description: "User details", Schema: SchemaAdminUser},
 			"401": {Description: "Not authorized", Schema: core.SchemaError},
 			"404": {Description: "User not found", Schema: core.SchemaError},
 		},
@@ -245,6 +260,11 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		Description: "Ban a user with reason and expiry (admin only)",
 		Tags:        []string{"Admin"},
 		Protected:   true,
+		RequestBody: &core.RequestBodyMeta{
+			Description: "Ban details",
+			Required:    true,
+			Schema:      SchemaBanUserRequest,
+		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "User banned", Schema: core.SchemaSuccess},
 			"401": {Description: "Not authorized", Schema: core.SchemaError},
@@ -275,7 +295,7 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		Tags:        []string{"Admin"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Statistics", Schema: core.SchemaSuccess},
+			"200": {Description: "Statistics", Schema: SchemaAdminStats},
 			"401": {Description: "Not authorized", Schema: core.SchemaError},
 		},
 	})

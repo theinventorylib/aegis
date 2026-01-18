@@ -30,8 +30,10 @@ package core
 //	}
 const (
 	// Core entity schemas
-	SchemaUser    = "User"
-	SchemaSession = "Session"
+	SchemaUser            = "User"
+	SchemaEnrichedUser    = "EnrichedUser"
+	SchemaSession         = "Session"
+	SchemaSessionWithUser = "SessionWithUser"
 
 	// Common response schemas
 	SchemaError   = "Error"

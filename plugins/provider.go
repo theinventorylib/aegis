@@ -29,6 +29,7 @@ type Aegis interface {
 	DeriveSecret(purpose string) []byte                                                     // Derives a purpose-specific secret from the master secret
 	DB() *sql.DB                                                                            // Returns the database connection for schema validation
 	ValidateSchemaRequirements(ctx context.Context, requirements []SchemaRequirement) error // Validates schema requirements
+	GetPlugin(name string) (Plugin, bool)                                                   // Returns a registered plugin by name (for inter-plugin communication)
 }
 
 // Migration represents a database migration for a plugin.
