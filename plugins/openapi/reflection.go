@@ -1,6 +1,8 @@
 package openapi
 
 import (
+	"encoding/json"
+	"maps"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -60,7 +62,7 @@ var (
 //	schema := GenerateSchema(User{})
 func GenerateSchema(v interface{}) *Schema {
 	t := reflect.TypeOf(v)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
@@ -68,11 +70,24 @@ func GenerateSchema(v interface{}) *Schema {
 }
 
 func generateSchemaType(t reflect.Type) *Schema {
+	// Handle pointers by dereferencing them recursively
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+
 	switch t.Kind() {
 	case reflect.Struct:
 		// Handle special types
-		if t == reflect.TypeOf(time.Time{}) {
+		if t == reflect.TypeFor[time.Time]() {
 			return DateTimeSchema("")
+		}
+
+		// Handle json.RawMessage as an object
+		if t == reflect.TypeFor[json.RawMessage]() {
+			return &Schema{
+				Type:        "object",
+				Description: "Arbitrary JSON data",
+			}
 		}
 
 		properties := make(map[string]*Schema)
@@ -98,6 +113,21 @@ func generateSchemaType(t reflect.Type) *Schema {
 				name = parts[0]
 			}
 
+			// Handle embedded fields (flattened if no name in json tag)
+			if field.Anonymous && (jsonTag == "" || name == "") {
+				embeddedSchema := generateSchemaType(field.Type)
+				if embeddedSchema.Type == "object" {
+					maps.Copy(properties, embeddedSchema.Properties)
+					required = append(required, embeddedSchema.Required...)
+					continue
+				}
+			}
+
+			// If name is still empty (e.g., json:",omitempty"), use field name
+			if name == "" {
+				name = field.Name
+			}
+
 			// Generate base schema for field
 			fieldSchema := generateSchemaType(field.Type)
 
@@ -112,7 +142,11 @@ func generateSchemaType(t reflect.Type) *Schema {
 				}
 			} else {
 				// Fallback: check omitempty for required fields
-				if !strings.Contains(jsonTag, "omitempty") && field.Type.Kind() != reflect.Ptr {
+				// Pointers and slices are typically optional unless marked required
+				if !strings.Contains(jsonTag, "omitempty") &&
+					field.Type.Kind() != reflect.Pointer &&
+					field.Type.Kind() != reflect.Slice &&
+					field.Type.Kind() != reflect.Map {
 					required = append(required, name)
 				}
 			}
@@ -123,6 +157,10 @@ func generateSchemaType(t reflect.Type) *Schema {
 		return ObjectSchema("", properties, required)
 
 	case reflect.Slice, reflect.Array:
+		// Special case for []byte which might not be json.RawMessage but we often want as string
+		if t.Elem().Kind() == reflect.Uint8 {
+			return &Schema{Type: "string", Description: "Base64 encoded bytes"}
+		}
 		return ArraySchema("", generateSchemaType(t.Elem()))
 
 	case reflect.String:
@@ -144,8 +182,11 @@ func generateSchemaType(t reflect.Type) *Schema {
 			AdditionalProperties: generateSchemaType(t.Elem()),
 		}
 
+	case reflect.Interface:
+		return &Schema{Type: "object", Description: "Any value"}
+
 	default:
-		return StringSchema("") // Fallback
+		return &Schema{Type: "object"} // Fallback for unknown types
 	}
 }
 

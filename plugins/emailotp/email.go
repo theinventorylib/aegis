@@ -101,6 +101,8 @@ type Plugin struct {
 	sessionService *core.SessionService
 	// dialect specifies database dialect (postgres, mysql)
 	dialect plugins.Dialect
+	// aegis is the main framework instance
+	aegis plugins.Aegis
 }
 
 // Config holds Email OTP plugin configuration.
@@ -184,18 +186,25 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 	p.sessionService = authService.Session
 	p.verificationService = authService.Verification
 	p.logger = a.GetLogger()
+	p.aegis = a
 
 	// Initialize store if not provided
 	if p.store == nil {
 		p.store = NewDefaultEmailOTPStore(a.DB())
 	}
 
-	// Register schemas with OpenAPI plugin for documentation
-	if openapiPlugin, ok := a.GetPlugin("openapi"); ok {
-		if oapi, ok := openapiPlugin.(interface {
+	// Schema registration moved to MountRoutes to ensure all plugins are initialized
+	return nil
+}
+
+// MountRoutes registers HTTP routes for the Email OTP plugin
+func (p *Plugin) MountRoutes(router router.Router, prefix string) {
+	// Register schemas with OpenAPI if available
+	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
+		if oapi, ok := plugin.(interface {
 			RegisterSchemaFromType(name string, example interface{})
 		}); ok {
-			// Register request schemas
+			// Request schemas
 			oapi.RegisterSchemaFromType(SchemaSendOTPRequest, SendOTPRequest{})
 			oapi.RegisterSchemaFromType(SchemaVerifyOTPRequest, VerifyOTPRequest{})
 			oapi.RegisterSchemaFromType(SchemaLoginWithEmailRequest, LoginWithEmailRequest{})
@@ -203,11 +212,7 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 		}
 	}
 
-	return nil
-}
-
-// MountRoutes registers HTTP routes for the Email OTP plugin
-func (p *Plugin) MountRoutes(router router.Router, prefix string) {
+	// Email OTP Routes
 	handlers := NewHandlers(p)
 
 	// Create auth middleware for protected routes
@@ -225,7 +230,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Email address to send OTP to",
 			Required:    true,
-			Schema:      "SendOTPRequest",
+			Schema:      SchemaSendOTPRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "OTP sent successfully", Schema: core.SchemaSuccess},
@@ -247,7 +252,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Email address and OTP code",
 			Required:    true,
-			Schema:      "VerifyOTPRequest",
+			Schema:      SchemaVerifyOTPRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "OTP verified successfully", Schema: core.SchemaSuccess},
@@ -268,7 +273,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Email address and password credentials",
 			Required:    true,
-			Schema:      "EmailLoginRequest",
+			Schema:      SchemaLoginWithEmailRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Login successful, session created", Schema: core.SchemaSession},
@@ -288,7 +293,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Email address and password credentials",
 			Required:    true,
-			Schema:      "RegisterWithEmailRequest",
+			Schema:      SchemaRegisterWithEmailRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"201": {Description: "Registration successful, session created", Schema: core.SchemaSession},

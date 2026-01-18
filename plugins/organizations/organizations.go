@@ -88,6 +88,7 @@ type Plugin struct {
 	sessionService *core.SessionService
 	store          OrganizationStore
 	dialect        plugins.Dialect
+	aegis          plugins.Aegis
 }
 
 // New creates a new organizations plugin for multi-tenancy management.
@@ -172,35 +173,7 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 
 	// Store session service for auth middleware
 	p.sessionService = aegis.GetAuthService().Session
-
-	// Register schemas with OpenAPI plugin for documentation
-	if openapiPlugin, ok := aegis.GetPlugin("openapi"); ok {
-		if oapi, ok := openapiPlugin.(interface {
-			RegisterSchemaFromType(name string, example interface{})
-		}); ok {
-			// Register request schemas
-			oapi.RegisterSchemaFromType(SchemaCreateOrganizationRequest, CreateOrganizationRequest{})
-			oapi.RegisterSchemaFromType(SchemaUpdateOrganizationRequest, UpdateOrganizationRequest{})
-			oapi.RegisterSchemaFromType(SchemaAddOrganizationMemberRequest, AddOrganizationMemberRequest{})
-			oapi.RegisterSchemaFromType(SchemaUpdateMemberRoleRequest, UpdateMemberRoleRequest{})
-			oapi.RegisterSchemaFromType(SchemaCreateTeamRequest, CreateTeamRequest{})
-			oapi.RegisterSchemaFromType(SchemaUpdateTeamRequest, UpdateTeamRequest{})
-			oapi.RegisterSchemaFromType(SchemaAddTeamMemberRequest, AddTeamMemberRequest{})
-			oapi.RegisterSchemaFromType(SchemaUpdateTeamMemberRoleRequest, UpdateTeamMemberRoleRequest{})
-
-			// Register response schemas
-			oapi.RegisterSchemaFromType(SchemaOrganization, Organization{})
-			oapi.RegisterSchemaFromType(SchemaTeam, Team{})
-			oapi.RegisterSchemaFromType(SchemaMember, Member{})
-			oapi.RegisterSchemaFromType(SchemaTeamMember, TeamMember{})
-
-			// Register list schemas
-			oapi.RegisterSchemaFromType(SchemaOrganizationList, []Organization{})
-			oapi.RegisterSchemaFromType(SchemaTeamList, []Team{})
-			oapi.RegisterSchemaFromType(SchemaMemberList, []Member{})
-			oapi.RegisterSchemaFromType(SchemaTeamMemberList, []TeamMember{})
-		}
-	}
+	p.aegis = aegis
 
 	return nil
 }
@@ -216,6 +189,33 @@ func (p *Plugin) GetMigrations() []plugins.Migration {
 
 // MountRoutes registers HTTP routes for the organizations plugin
 func (p *Plugin) MountRoutes(r router.Router, prefix string) {
+	// Register schemas with OpenAPI if available
+	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
+		if oapi, ok := plugin.(interface {
+			RegisterSchemaFromType(name string, example interface{})
+		}); ok {
+			// Request schemas
+			oapi.RegisterSchemaFromType(SchemaCreateOrganizationRequest, CreateOrganizationRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateOrganizationRequest, UpdateOrganizationRequest{})
+			oapi.RegisterSchemaFromType(SchemaAddOrganizationMemberRequest, AddOrganizationMemberRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateMemberRoleRequest, UpdateMemberRoleRequest{})
+			oapi.RegisterSchemaFromType(SchemaCreateTeamRequest, CreateTeamRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateTeamRequest, UpdateTeamRequest{})
+			oapi.RegisterSchemaFromType(SchemaAddTeamMemberRequest, AddTeamMemberRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateTeamMemberRoleRequest, UpdateTeamMemberRoleRequest{})
+
+			// Response schemas
+			oapi.RegisterSchemaFromType(SchemaOrganization, Organization{})
+			oapi.RegisterSchemaFromType(SchemaOrganizationList, []Organization{})
+			oapi.RegisterSchemaFromType(SchemaTeam, Team{})
+			oapi.RegisterSchemaFromType(SchemaTeamList, []Team{})
+			oapi.RegisterSchemaFromType(SchemaMember, Member{})
+			oapi.RegisterSchemaFromType(SchemaMemberList, []Member{})
+			oapi.RegisterSchemaFromType(SchemaTeamMember, TeamMember{})
+			oapi.RegisterSchemaFromType(SchemaTeamMemberList, []TeamMember{})
+		}
+	}
+
 	// Create auth middleware - ALL organization routes require authentication
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
