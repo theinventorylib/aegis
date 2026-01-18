@@ -190,6 +190,19 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 		p.store = NewDefaultEmailOTPStore(a.DB())
 	}
 
+	// Register schemas with OpenAPI plugin for documentation
+	if openapiPlugin, ok := a.GetPlugin("openapi"); ok {
+		if oapi, ok := openapiPlugin.(interface {
+			RegisterSchemaFromType(name string, example interface{})
+		}); ok {
+			// Register request schemas
+			oapi.RegisterSchemaFromType(SchemaSendOTPRequest, SendOTPRequest{})
+			oapi.RegisterSchemaFromType(SchemaVerifyOTPRequest, VerifyOTPRequest{})
+			oapi.RegisterSchemaFromType(SchemaLoginWithEmailRequest, LoginWithEmailRequest{})
+			oapi.RegisterSchemaFromType(SchemaRegisterWithEmailRequest, RegisterWithEmailRequest{})
+		}
+	}
+
 	return nil
 }
 

@@ -1,5 +1,9 @@
 package openapi
 
+import (
+	"github.com/theinventorylib/aegis/core"
+)
+
 // ========== SCHEMA UTILITY FUNCTIONS ==========
 //
 // These functions provide a fluent API for building OpenAPI schemas.
@@ -18,13 +22,13 @@ package openapi
 // during Init() to ensure they stay in sync with model definitions.
 func addCommonSchemas(spec *Spec) {
 	// Error response schema - manually defined as it's a simple structure
-	spec.AddSchema("Error", ObjectSchema("Error response", map[string]*Schema{
+	spec.AddSchema(core.SchemaError, ObjectSchema("Error response", map[string]*Schema{
 		"success": BooleanSchema("Always false for errors"),
 		"error":   StringSchema("Error message"),
 	}, []string{"success", "error"}))
 
 	// Success response schema - manually defined as it's a simple structure
-	spec.AddSchema("Success", ObjectSchema("Success response", map[string]*Schema{
+	spec.AddSchema(core.SchemaSuccess, ObjectSchema("Success response", map[string]*Schema{
 		"success": BooleanSchema("Always true for success"),
 		"message": StringSchema("Success message"),
 	}, []string{"success"}))
@@ -71,7 +75,7 @@ func addCoreRoutes(spec *Spec, basePath string) {
 					Description: "Session refreshed successfully",
 					Content: map[string]MediaType{
 						"application/json": {
-							Schema: RefSchema("Session"),
+							Schema: RefSchema(core.SchemaSession),
 						},
 					},
 				},
@@ -79,7 +83,7 @@ func addCoreRoutes(spec *Spec, basePath string) {
 					Description: "Invalid or expired refresh token",
 					Content: map[string]MediaType{
 						"application/json": {
-							Schema: RefSchema("Error"),
+							Schema: RefSchema(core.SchemaError),
 						},
 					},
 				},
@@ -103,7 +107,7 @@ func addCoreRoutes(spec *Spec, basePath string) {
 					Description: "Logged out successfully",
 					Content: map[string]MediaType{
 						"application/json": {
-							Schema: RefSchema("Success"),
+							Schema: RefSchema(core.SchemaSuccess),
 						},
 					},
 				},
@@ -111,7 +115,7 @@ func addCoreRoutes(spec *Spec, basePath string) {
 					Description: "Not authenticated",
 					Content: map[string]MediaType{
 						"application/json": {
-							Schema: RefSchema("Error"),
+							Schema: RefSchema(core.SchemaError),
 						},
 					},
 				},

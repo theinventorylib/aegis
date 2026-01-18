@@ -213,7 +213,9 @@ func (p *Plugin) Description() string {
 func (p *Plugin) Init(_ context.Context, _ plugins.Aegis) error {
 	// Auto-register core model schemas from actual Go types
 	p.RegisterSchemaFromType(core.SchemaUser, auth.User{})
+	p.RegisterSchemaFromType(core.SchemaEnrichedUser, core.EnrichedUser{})
 	p.RegisterSchemaFromType(core.SchemaSession, auth.Session{})
+	p.RegisterSchemaFromType(core.SchemaSessionWithUser, core.SessionWithUser{})
 	p.RegisterSchemaFromType(core.SchemaLoginRequest, core.LoginRequest{})
 	p.RegisterSchemaFromType(core.SchemaRegisterRequest, core.RegisterRequest{})
 

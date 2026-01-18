@@ -21,6 +21,8 @@ const (
 	SchemaOrganizationList = "OrganizationList"
 	SchemaTeam             = "Team"
 	SchemaTeamList         = "TeamList"
+	SchemaMember           = "Member"
 	SchemaMemberList       = "MemberList"
+	SchemaTeamMember       = "TeamMember"
 	SchemaTeamMemberList   = "TeamMemberList"
 )

@@ -383,6 +383,21 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	// Create handler for JWKS endpoint
 	p.handler = NewHandler(p)
 
+	// Register schemas with OpenAPI plugin for documentation
+	if openapiPlugin, ok := aegis.GetPlugin("openapi"); ok {
+		if oapi, ok := openapiPlugin.(interface {
+			RegisterSchemaFromType(name string, example interface{})
+		}); ok {
+			// Register request schemas
+			oapi.RegisterSchemaFromType(SchemaRefreshTokenRequest, map[string]string{"refresh_token": ""})
+
+			// Register response schemas
+			oapi.RegisterSchemaFromType(SchemaTokenPair, TokenPair{})
+			oapi.RegisterSchemaFromType(SchemaAccessToken, AccessToken{})
+			oapi.RegisterSchemaFromType(SchemaJWKS, JWKS{})
+		}
+	}
+
 	// Auto-start key rotation if interval is configured
 	if p.config.KeyRotationInterval > 0 {
 		p.StartKeyRotation(ctx)
@@ -409,7 +424,7 @@ func (p *Plugin) MountRoutes(router router.Router, basePath string) {
 		Tags:        []string{"JWT"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Token pair generated successfully", Schema: "TokenPair"},
+			"200": {Description: "Token pair generated successfully", Schema: SchemaTokenPair},
 			"401": {Description: "Not authenticated", Schema: core.SchemaError},
 			"500": {Description: "Failed to generate tokens", Schema: core.SchemaError},
 		},
@@ -424,7 +439,7 @@ func (p *Plugin) MountRoutes(router router.Router, basePath string) {
 		Tags:        []string{"JWT"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Access token generated successfully", Schema: "AccessToken"},
+			"200": {Description: "Access token generated successfully", Schema: SchemaAccessToken},
 			"401": {Description: "Not authenticated", Schema: core.SchemaError},
 			"500": {Description: "Failed to generate token", Schema: core.SchemaError},
 		},
@@ -459,7 +474,7 @@ func (p *Plugin) MountRoutes(router router.Router, basePath string) {
 			Schema:      core.SchemaRefreshTokenRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Tokens refreshed successfully", Schema: "TokenPair"},
+			"200": {Description: "Tokens refreshed successfully", Schema: SchemaTokenPair},
 			"400": {Description: "Invalid request", Schema: core.SchemaError},
 			"401": {Description: "Invalid or expired refresh token", Schema: core.SchemaError},
 		},
@@ -475,7 +490,7 @@ func (p *Plugin) MountRoutes(router router.Router, basePath string) {
 		Tags:        []string{"JWT"},
 		Protected:   false,
 		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "JWKS retrieved successfully", Schema: "JWKS"},
+			"200": {Description: "JWKS retrieved successfully", Schema: SchemaJWKS},
 			"500": {Description: "Failed to retrieve JWKS", Schema: core.SchemaError},
 		},
 	})
@@ -489,7 +504,7 @@ func (p *Plugin) MountRoutes(router router.Router, basePath string) {
 		Tags:        []string{"JWT"},
 		Protected:   false,
 		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "JWKS retrieved successfully", Schema: "JWKS"},
+			"200": {Description: "JWKS retrieved successfully", Schema: SchemaJWKS},
 			"500": {Description: "Failed to retrieve JWKS", Schema: core.SchemaError},
 		},
 	})

@@ -57,4 +57,34 @@ const (
 	//   - POST /getAccessToken (partial - access token only)
 	//   - POST /refreshToken (success response)
 	SchemaTokenPair = "TokenPair"
+
+	// SchemaAccessToken is the OpenAPI schema name for access token only responses.
+	// Response Body:
+	//   {
+	//     "access_token": "eyJhbGc...",
+	//     "access_expiry": "2024-01-01T12:15:00Z"
+	//   }
+	//
+	// Used by:
+	//   - POST /getAccessToken (success response)
+	SchemaAccessToken = "AccessToken"
+
+	// SchemaJWKS is the OpenAPI schema name for JWKS responses.
+	// Response Body:
+	//   {
+	//     "keys": [
+	//       {
+	//         "kty": "RSA",
+	//         "use": "sig",
+	//         "kid": "access-1234567890",
+	//         "n": "...",
+	//         "e": "AQAB"
+	//       }
+	//     ]
+	//   }
+	//
+	// Used by:
+	//   - GET /.well-known/jwks.json
+	//   - GET /jwks
+	SchemaJWKS = "JWKS"
 )

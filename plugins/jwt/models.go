@@ -150,3 +150,45 @@ type Claims struct {
 	// Refresh tokens can only be used to get new access tokens
 	TokenType string `json:"token_type"`
 }
+
+// AccessToken represents a single access token response.
+//
+// This is returned by the /getAccessToken endpoint when only an access token
+// is needed (without a refresh token).
+//
+// Example response:
+//
+//	{
+//	  "access_token": "eyJhbGc...",
+//	  "access_expiry": "2024-01-01T12:15:00Z"
+//	}
+type AccessToken struct {
+	// AccessToken is the JWT access token (use for API requests)
+	AccessToken string `json:"access_token"`
+
+	// AccessExpiry is when the access token expires (UTC)
+	AccessExpiry time.Time `json:"access_expiry"`
+}
+
+// JWKS represents a JSON Web Key Set response.
+//
+// This is returned by the /.well-known/jwks.json endpoint and contains
+// the public keys used to verify JWT signatures.
+//
+// Example response:
+//
+//	{
+//	  "keys": [
+//	    {
+//	      "kty": "RSA",
+//	      "use": "sig",
+//	      "kid": "access-1234567890",
+//	      "n": "...",
+//	      "e": "AQAB"
+//	    }
+//	  ]
+//	}
+type JWKS struct {
+	// Keys is the array of public keys
+	Keys []map[string]interface{} `json:"keys"`
+}
