@@ -61,6 +61,8 @@ type Plugin struct {
 	dialect plugins.Dialect
 	// sessionService provides authentication verification
 	sessionService *core.SessionService
+	// aegis is the main framework instance
+	aegis plugins.Aegis
 }
 
 // New creates a new Admin plugin instance.
@@ -129,6 +131,7 @@ func (a *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 
 	// Store session service for auth middleware
 	a.sessionService = aegis.GetAuthService().Session
+	a.aegis = aegis
 
 	// Build schema requirements: basic table existence from RequiresTables + detailed checks
 	tables := a.RequiresTables()
@@ -143,21 +146,7 @@ func (a *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 		return err
 	}
 
-	// Register schemas with OpenAPI plugin for documentation
-	if openapiPlugin, ok := aegis.GetPlugin("openapi"); ok {
-		if oapi, ok := openapiPlugin.(interface {
-			RegisterSchemaFromType(name string, example interface{})
-		}); ok {
-			// Register request schemas
-			oapi.RegisterSchemaFromType(SchemaBanUserRequest, BanUserRequest{})
-
-			// Register response schemas
-			oapi.RegisterSchemaFromType(SchemaAdminUser, User{})
-			oapi.RegisterSchemaFromType(SchemaUserListResponse, UserListResponse{})
-			oapi.RegisterSchemaFromType(SchemaAdminStats, StatsResponse{})
-		}
-	}
-
+	// Schema registration moved to MountRoutes to ensure all plugins are initialized
 	return nil
 }
 
@@ -172,6 +161,21 @@ func (a *Plugin) GetMigrations() []plugins.Migration {
 
 // MountRoutes registers administrative management endpoints.
 func (a *Plugin) MountRoutes(r router.Router, prefix string) {
+	// Register schemas with OpenAPI if available
+	if plugin, ok := a.aegis.GetPlugin("openapi"); ok {
+		if oapi, ok := plugin.(interface {
+			RegisterSchemaFromType(name string, example interface{})
+		}); ok {
+			// Register request schemas
+			oapi.RegisterSchemaFromType(SchemaBanUserRequest, BanUserRequest{})
+
+			// Register response schemas
+			oapi.RegisterSchemaFromType(SchemaAdminUser, User{})
+			oapi.RegisterSchemaFromType(SchemaUserListResponse, UserListResponse{})
+			oapi.RegisterSchemaFromType(SchemaAdminStats, StatsResponse{})
+		}
+	}
+
 	// Create admin middleware - ALL admin routes require admin role
 	requireAdmin := a.RequireAdminMiddleware()
 

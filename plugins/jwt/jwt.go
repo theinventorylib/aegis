@@ -258,6 +258,8 @@ type Plugin struct {
 
 	// logger provides structured logging (may be nil)
 	logger config.Logger
+	// aegis is the main framework instance
+	aegis plugins.Aegis
 }
 
 // New creates a new JWT authentication plugin.
@@ -361,6 +363,7 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	sessionService := aegis.GetAuthService().Session
 	p.sessionService = sessionService // Store for middleware access
 	p.redisClient = sessionService.GetRedisClient()
+	p.aegis = aegis
 
 	// Build schema requirements: basic table existence from RequiresTables + detailed checks
 	tables := p.RequiresTables()
@@ -383,9 +386,22 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	// Create handler for JWKS endpoint
 	p.handler = NewHandler(p)
 
-	// Register schemas with OpenAPI plugin for documentation
-	if openapiPlugin, ok := aegis.GetPlugin("openapi"); ok {
-		if oapi, ok := openapiPlugin.(interface {
+	// Schema registration moved to MountRoutes to ensure all plugins are initialized
+	// and OpenAPI plugin is ready to receive schemas.
+
+	// Auto-start key rotation if interval is configured
+	if p.config.KeyRotationInterval > 0 {
+		p.StartKeyRotation(ctx)
+	}
+
+	return nil
+}
+
+// MountRoutes registers HTTP routes for JWT endpoints with appropriate middleware.
+func (p *Plugin) MountRoutes(router router.Router, basePath string) {
+	// Register schemas with OpenAPI if available
+	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
+		if oapi, ok := plugin.(interface {
 			RegisterSchemaFromType(name string, example interface{})
 		}); ok {
 			// Register request schemas
@@ -398,16 +414,6 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 		}
 	}
 
-	// Auto-start key rotation if interval is configured
-	if p.config.KeyRotationInterval > 0 {
-		p.StartKeyRotation(ctx)
-	}
-
-	return nil
-}
-
-// MountRoutes registers HTTP routes for JWT endpoints with appropriate middleware.
-func (p *Plugin) MountRoutes(router router.Router, basePath string) {
 	// Create route group for JWT plugin
 	jwtGroup := router.Group(basePath, "JWT")
 

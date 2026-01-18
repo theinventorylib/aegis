@@ -78,6 +78,8 @@ type Plugin struct {
 	sessionService *core.SessionService
 	// dialect specifies database dialect (postgres, mysql)
 	dialect plugins.Dialect
+	// aegis is the main framework instance
+	aegis plugins.Aegis
 }
 
 // Config holds SMS plugin configuration.
@@ -161,15 +163,22 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 	p.sessionService = authService.Session
 	p.verificationService = authService.Verification
 	p.logger = a.GetLogger()
+	p.aegis = a
 
 	// Initialize store if not provided
 	if p.store == nil {
 		p.store = NewDefaultSMSStore(a.DB())
 	}
 
-	// Register schemas with OpenAPI plugin for documentation
-	if openapiPlugin, ok := a.GetPlugin("openapi"); ok {
-		if oapi, ok := openapiPlugin.(interface {
+	// Schema registration moved to MountRoutes to ensure all plugins are initialized
+	return nil
+}
+
+// MountRoutes registers HTTP routes for the SMS plugin
+func (p *Plugin) MountRoutes(router router.Router, prefix string) {
+	// Register schemas with OpenAPI if available
+	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
+		if oapi, ok := plugin.(interface {
 			RegisterSchemaFromType(name string, example interface{})
 		}); ok {
 			// Register request schemas
@@ -180,11 +189,7 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 		}
 	}
 
-	return nil
-}
-
-// MountRoutes registers HTTP routes for the SMS plugin
-func (p *Plugin) MountRoutes(router router.Router, prefix string) {
+	// SMS OTP Routes
 	handlers := NewHandlers(p)
 
 	// Create auth middleware for protected routes
@@ -202,7 +207,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Phone number to send OTP to",
 			Required:    true,
-			Schema:      "SendOTPRequest",
+			Schema:      SchemaSendOTPRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "OTP sent successfully", Schema: core.SchemaSuccess},
@@ -224,7 +229,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Phone number and OTP code",
 			Required:    true,
-			Schema:      "VerifyOTPRequest",
+			Schema:      SchemaVerifyOTPRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "OTP verified successfully", Schema: core.SchemaSuccess},
@@ -245,7 +250,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Phone number and password credentials",
 			Required:    true,
-			Schema:      "PhoneLoginRequest",
+			Schema:      SchemaLoginWithPhoneRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Login successful, session created", Schema: core.SchemaSession},
@@ -265,7 +270,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Phone number and password credentials",
 			Required:    true,
-			Schema:      "RegisterWithPhoneRequest",
+			Schema:      SchemaRegisterWithPhoneRequest,
 		},
 		Responses: map[string]*core.ResponseMeta{
 			"201": {Description: "Registration successful, session created", Schema: core.SchemaSession},
