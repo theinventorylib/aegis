@@ -195,46 +195,52 @@ The core schema defines **required tables** that never change within a major ver
 **Core Tables:**
 
 ```sql
--- Users table (authentication identity)
-CREATE TABLE users (
-    id TEXT PRIMARY KEY,              -- ULID/UUID/custom ID
-    name TEXT,                        -- Display name
-    email TEXT UNIQUE,                -- Email address (optional for OAuth-only users)
-    email_verified BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
+-- Core Table 1: user
+CREATE TABLE "user" (
+    id TEXT PRIMARY KEY,
+    avatar TEXT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    disabled INTEGER NOT NULL DEFAULT 0
 );
 
--- Accounts table (authentication methods)
+-- Core Table 2: accounts
 CREATE TABLE accounts (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
     provider TEXT NOT NULL,           -- 'password', 'google', 'github', etc.
     provider_account_id TEXT,         -- OAuth provider user ID
     password_hash TEXT,               -- Argon2id hash (for password provider)
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
-    UNIQUE(user_id, provider)
+    access_token TEXT,                -- OAuth access token
+    refresh_token TEXT,               -- OAuth refresh token
+    expires_at TEXT,                  -- Token expiry
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(provider, provider_account_id)
 );
 
--- Sessions table (active user sessions)
-CREATE TABLE sessions (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token TEXT UNIQUE NOT NULL,       -- Session token (cryptographically random)
-    refresh_token TEXT UNIQUE,        -- Refresh token (optional)
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
-);
-
--- Verifications table (email/phone verification codes)
-CREATE TABLE verifications (
+-- Core Table 3: verification
+CREATE TABLE verification (
     id TEXT PRIMARY KEY,
     identifier TEXT NOT NULL,         -- Email or phone number
-    code TEXT NOT NULL,               -- Verification code
-    purpose TEXT NOT NULL,            -- 'email_verification', 'password_reset', etc.
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
+    token TEXT NOT NULL UNIQUE,       -- Verification code or token
+    type TEXT NOT NULL,               -- 'email', 'reset', 'otp', etc.
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+-- Core Table 4: session
+CREATE TABLE session (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    token TEXT UNIQUE NOT NULL,       -- Session token
+    refresh_token TEXT UNIQUE,        -- Refresh token (optional)
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT
 );
 ```
 
@@ -389,44 +395,45 @@ Each plugin owns its schema completely and independently.
 **Example: Organizations Plugin Schema**
 
 ```sql
--- Organizations table (multi-tenant workspaces)
-CREATE TABLE organizations (
+-- Organization table
+CREATE TABLE organization (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    slug TEXT UNIQUE NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
+    slug TEXT NOT NULL UNIQUE,
+    disabled INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
--- Organization members (user-organization relationships)
-CREATE TABLE organization_members (
+-- Member (memberships)
+CREATE TABLE members (
     id TEXT PRIMARY KEY,
-    organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL,  -- 'owner', 'admin', 'member'
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
-    UNIQUE(organization_id, user_id)
+    user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    organization_id TEXT NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(user_id, organization_id)
 );
 
--- Teams within organizations
-CREATE TABLE teams (
+-- Team table
+CREATE TABLE team (
     id TEXT PRIMARY KEY,
-    organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    organization_id TEXT NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
--- Team members
-CREATE TABLE team_members (
+-- Team Members
+CREATE TABLE team_member (
     id TEXT PRIMARY KEY,
-    team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL,  -- 'lead', 'member'
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
+    team_id TEXT NOT NULL REFERENCES team(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
     UNIQUE(team_id, user_id)
 );
 ```
@@ -434,17 +441,14 @@ CREATE TABLE team_members (
 **Example: JWT Plugin Schema**
 
 ```sql
--- JWK key storage for JWT signing/verification
-CREATE TABLE jwk_keys (
-    id TEXT PRIMARY KEY,
-    key_id TEXT UNIQUE NOT NULL,     -- JWK kid (key ID)
-    key_type TEXT NOT NULL,          -- 'RSA', 'EC', etc.
-    algorithm TEXT NOT NULL,         -- 'RS256', 'ES256', etc.
-    use TEXT NOT NULL,               -- 'sig' or 'enc'
-    public_key TEXT NOT NULL,        -- PEM-encoded public key
-    private_key TEXT,                -- PEM-encoded private key (if available)
-    expires_at TIMESTAMPTZ,          -- Key expiry (for rotation)
-    created_at TIMESTAMPTZ NOT NULL
+-- JWKS table for storing JSON Web Keys
+CREATE TABLE jwks (
+    kid TEXT PRIMARY KEY,
+    key_data TEXT NOT NULL,
+    algorithm TEXT NOT NULL,
+    use TEXT DEFAULT 'sig',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE
 );
 ```
 
@@ -709,7 +713,7 @@ Validation checks:
 - ✅ Clean build with no errors or warnings
 - ✅ 263 tests passing (100% pass rate)
 - ✅ `go vet` passes with no issues
-- ✅ All 142 Go files professionally documented
+- ✅ All 145 Go files professionally documented
 
 **CI/CD Pipeline:**
 - Automated testing on push/PR

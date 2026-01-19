@@ -89,7 +89,7 @@ func (h *Handler) handleGetAccessToken(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Access token generated successfully",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"access_token":  tokenPair.AccessToken,
 			"access_expiry": tokenPair.AccessExpiry,
 			"token_type":    "Bearer",
@@ -107,6 +107,9 @@ func (h *Handler) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// Sanitize inputs
+	req.RefreshToken = core.SanitizeString(req.RefreshToken, nil)
 
 	// Use plugin RefreshTokens
 	tokenPair, err := h.plugin.RefreshTokens(req.RefreshToken)
@@ -169,7 +172,7 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Logged out successfully",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"user_id": user.ID,
 		},
 	})

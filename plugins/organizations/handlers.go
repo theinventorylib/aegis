@@ -37,7 +37,7 @@ func (p *Plugin) validateOrgAccess(w http.ResponseWriter, r *http.Request) (orgI
 		return "", false
 	}
 
-	orgID = core.GetPathParam(r, "id")
+	orgID = core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return "", false
@@ -98,6 +98,10 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Sanitize inputs
+	req.Name = core.SanitizeString(req.Name, nil)
+	req.Slug = core.SanitizeString(req.Slug, nil)
+
 	if err := req.Validate(); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
@@ -109,7 +113,7 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
+	writeJSON(w, http.StatusCreated, map[string]any{
 		"success":      true,
 		"organization": org,
 	})
@@ -147,7 +151,7 @@ func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success":       true,
 		"organizations": orgs,
 	})
@@ -189,7 +193,7 @@ func (p *Plugin) GetOrganizationHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success":      true,
 		"organization": org,
 	})
@@ -203,7 +207,7 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	orgID := core.GetPathParam(r, "id")
+	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
@@ -221,6 +225,10 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Sanitize inputs
+	req.Name = core.SanitizeString(req.Name, nil)
+	req.Slug = core.SanitizeString(req.Slug, nil)
+
 	if err := req.Validate(); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
@@ -231,7 +239,7 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Organization updated",
 	})
@@ -245,7 +253,7 @@ func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	orgID := core.GetPathParam(r, "id")
+	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
@@ -261,7 +269,7 @@ func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Organization deleted",
 	})
@@ -277,7 +285,7 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	orgID := core.GetPathParam(r, "id")
+	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
@@ -295,6 +303,10 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Sanitize inputs
+	req.UserID = core.SanitizeString(req.UserID, nil)
+	req.Role = core.SanitizeString(req.Role, nil)
+
 	if err := req.Validate(); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
@@ -310,7 +322,7 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
+	writeJSON(w, http.StatusCreated, map[string]any{
 		"success": true,
 		"message": "Member added to organization",
 	})
@@ -329,7 +341,7 @@ func (p *Plugin) ListOrganizationMembersHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"members": members,
 	})
@@ -343,8 +355,8 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	orgID := core.GetPathParam(r, "id")
-	userID := core.GetPathParam(r, "userId")
+	orgID := core.GetSanitizedPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "userId")
 
 	if orgID == "" || userID == "" {
 		http.Error(w, "Organization ID and User ID required", http.StatusBadRequest)
@@ -363,6 +375,9 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Sanitize inputs
+	req.Role = core.SanitizeString(req.Role, nil)
+
 	if err := req.Validate(); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
@@ -378,7 +393,7 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Role updated",
 	})
@@ -392,8 +407,8 @@ func (p *Plugin) RemoveOrganizationMemberHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	orgID := core.GetPathParam(r, "id")
-	userID := core.GetPathParam(r, "userId")
+	orgID := core.GetSanitizedPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "userId")
 
 	if orgID == "" || userID == "" {
 		http.Error(w, "Organization ID and User ID required", http.StatusBadRequest)
@@ -415,7 +430,7 @@ func (p *Plugin) RemoveOrganizationMemberHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Member removed from organization",
 	})
@@ -431,7 +446,7 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orgID := core.GetPathParam(r, "id")
+	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
@@ -449,6 +464,10 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize inputs
+	req.Name = core.SanitizeString(req.Name, nil)
+	req.Description = core.SanitizeMultiline(req.Description, 500)
+
 	if err := req.Validate(); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
@@ -460,7 +479,7 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
+	writeJSON(w, http.StatusCreated, map[string]any{
 		"success": true,
 		"team":    team,
 	})
@@ -479,7 +498,7 @@ func (p *Plugin) ListTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"teams":   teams,
 	})
@@ -493,7 +512,7 @@ func (p *Plugin) GetTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teamID := core.GetPathParam(r, "teamId")
+	teamID := core.GetSanitizedPathParam(r, "teamId")
 	if teamID == "" {
 		http.Error(w, "Team ID required", http.StatusBadRequest)
 		return
@@ -510,7 +529,7 @@ func (p *Plugin) GetTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"team":    team,
 	})
@@ -524,7 +543,7 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teamID := core.GetPathParam(r, "teamId")
+	teamID := core.GetSanitizedPathParam(r, "teamId")
 	if teamID == "" {
 		http.Error(w, "Team ID required", http.StatusBadRequest)
 		return
@@ -548,6 +567,10 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize inputs
+	req.Name = core.SanitizeString(req.Name, nil)
+	req.Description = core.SanitizeMultiline(req.Description, 500)
+
 	if err := req.Validate(); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
@@ -558,7 +581,7 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Team updated",
 	})
@@ -572,7 +595,7 @@ func (p *Plugin) DeleteTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teamID := core.GetPathParam(r, "teamId")
+	teamID := core.GetSanitizedPathParam(r, "teamId")
 	if teamID == "" {
 		http.Error(w, "Team ID required", http.StatusBadRequest)
 		return
@@ -594,7 +617,7 @@ func (p *Plugin) DeleteTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Team deleted",
 	})
@@ -610,7 +633,7 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teamID := core.GetPathParam(r, "teamId")
+	teamID := core.GetSanitizedPathParam(r, "teamId")
 	if teamID == "" {
 		http.Error(w, "Team ID required", http.StatusBadRequest)
 		return
@@ -634,6 +657,10 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize inputs
+	req.UserID = core.SanitizeString(req.UserID, nil)
+	req.Role = core.SanitizeString(req.Role, nil)
+
 	if err := req.Validate(); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
@@ -650,7 +677,7 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
+	writeJSON(w, http.StatusCreated, map[string]any{
 		"success": true,
 		"message": "Member added to team",
 	})
@@ -664,7 +691,7 @@ func (p *Plugin) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	teamID := core.GetPathParam(r, "teamId")
+	teamID := core.GetSanitizedPathParam(r, "teamId")
 	if teamID == "" {
 		http.Error(w, "Team ID required", http.StatusBadRequest)
 		return
@@ -687,7 +714,7 @@ func (p *Plugin) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"members": members,
 	})
@@ -701,8 +728,8 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	teamID := core.GetPathParam(r, "teamId")
-	userID := core.GetPathParam(r, "userId")
+	teamID := core.GetSanitizedPathParam(r, "teamId")
+	userID := core.GetSanitizedPathParam(r, "userId")
 
 	if teamID == "" || userID == "" {
 		http.Error(w, "Team ID and User ID required", http.StatusBadRequest)
@@ -727,6 +754,9 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Sanitize inputs
+	req.Role = core.SanitizeString(req.Role, nil)
+
 	if err := req.Validate(); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
@@ -737,7 +767,7 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Team member role updated",
 	})
@@ -751,8 +781,8 @@ func (p *Plugin) RemoveTeamMemberHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	teamID := core.GetPathParam(r, "teamId")
-	userID := core.GetPathParam(r, "userId")
+	teamID := core.GetSanitizedPathParam(r, "teamId")
+	userID := core.GetSanitizedPathParam(r, "userId")
 
 	if teamID == "" || userID == "" {
 		http.Error(w, "Team ID and User ID required", http.StatusBadRequest)
@@ -775,14 +805,14 @@ func (p *Plugin) RemoveTeamMemberHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Member removed from team",
 	})
 }
 
 // Helper function
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	err := json.NewEncoder(w).Encode(data)

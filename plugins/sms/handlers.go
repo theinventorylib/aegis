@@ -77,6 +77,9 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Sanitize inputs
+	req.PhoneNumber = core.SanitizePhoneNumber(req.PhoneNumber)
+
 	// Validate phone number format
 	if err := ValidatePhoneNumber(req.PhoneNumber); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
@@ -124,7 +127,7 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Login successful",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"user": user,
 		},
 	})
@@ -180,6 +183,13 @@ func (h *Handlers) RegisterWithPhoneHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Sanitize inputs
+	req.PhoneNumber = core.SanitizePhoneNumber(req.PhoneNumber)
+	if req.Name != nil {
+		sanitized := core.SanitizeString(*req.Name, nil)
+		req.Name = &sanitized
+	}
+
 	// Validate phone number format
 	if err := ValidatePhoneNumber(req.PhoneNumber); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
@@ -226,7 +236,7 @@ func (h *Handlers) RegisterWithPhoneHandler(w http.ResponseWriter, r *http.Reque
 	core.WriteJSON(w, http.StatusCreated, &core.Response{
 		Success: true,
 		Message: "Registration successful",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"user": user,
 		},
 	})
@@ -267,6 +277,10 @@ func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// Sanitize inputs
+	req.PhoneNumber = core.SanitizePhoneNumber(req.PhoneNumber)
+	req.Purpose = core.SanitizeString(req.Purpose, nil)
 
 	// Validate phone number format
 	if err := ValidatePhoneNumber(req.PhoneNumber); err != nil {
@@ -331,6 +345,10 @@ func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// Sanitize inputs
+	req.PhoneNumber = core.SanitizePhoneNumber(req.PhoneNumber)
+	req.Code = core.SanitizeString(req.Code, nil)
 
 	// Validate phone number format
 	if err := ValidatePhoneNumber(req.PhoneNumber); err != nil {

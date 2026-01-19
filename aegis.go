@@ -12,6 +12,19 @@
 //   - Audit logging: Comprehensive security event tracking
 //   - Database support: PostgreSQL, MySQL, SQLite with migration tools
 //
+// Architecture Modes:
+//
+//  1. Web Mode (Default):
+//     - Best for: Server-Side Rendered apps (Templ, HTML templates), SPAs on same domain.
+//     - Auth: HTTP-Only Cookies (secure, max-age, same-site).
+//     - Security: CSRF Protection enabled (requires Master Secret).
+//
+//  2. API Mode:
+//     - Best for: Mobile apps, CLI tools, Service-to-Service, standalone frontends.
+//     - Auth: "Authorization: Bearer <token>" header.
+//     - Security: CSRF checks skipped (cookies not used for auth).
+//     - Enabled via: config.WithAPIOnlyMode(true).
+//
 // Quick Start:
 //
 //	package main
@@ -93,7 +106,7 @@ import (
 //	a, err := aegis.New(ctx,
 //		config.WithDB(db),
 //		config.WithRouter(router),
-//		config.WithMasterSecret(secret),
+//		config.WithSecret(secret),
 //	)
 //	if err != nil {
 //		log.Fatal(err)
@@ -158,14 +171,14 @@ type pluginRegistration struct {
 // Required options:
 //   - config.WithDB(db): Database connection (*sql.DB)
 //   - config.WithRouter(router): HTTP router implementing router.Router
-//   - config.WithMasterSecret(secret): 32-byte master secret for key derivation
+//   - config.WithSecret(secret): 32-byte master secret for key derivation
 //
 // Optional configuration:
 //   - config.WithRedis(host, port, password, db): Enable Redis caching
-//   - config.WithRateLimiting(enabled, config): Enable rate limiting
+//   - config.WithRateLimiting(): Enable rate limiting
 //   - config.WithLogger(logger): Structured logging
 //   - config.WithAuditLogger(logger): Security audit logging
-//   - config.WithArgon2Params(time, memory, threads, keyLen): Password hashing tuning
+//   - config.WithArgon2Time/WithArgon2Memory: Password hashing tuning
 //
 // Parameters:
 //   - ctx: Context for initialization (can be canceled)
@@ -184,10 +197,9 @@ type pluginRegistration struct {
 //	a, err := aegis.New(context.Background(),
 //		config.WithDB(db),
 //		config.WithRouter(router),
-//		config.WithMasterSecret(secret),
-//		config.WithEmailPassword(true),
+//		config.WithSecret(secret),
 //		config.WithRedis("localhost", 6379, "", 0),
-//		config.WithRateLimiting(true, nil),
+//		config.WithRateLimiting(),
 //	)
 //	if err != nil {
 //		log.Fatal("Failed to initialize Aegis:", err)
@@ -305,7 +317,7 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 //   - JWT: {prefix}/jwt/* - JWT token generation and validation
 //   - Organizations: {prefix}/organizations/* - Organization management
 //   - Admin: {prefix}/admin/* - Administrative user management
-//   - EmailOTP: {prefix}/emailotp/* - Email verification codes
+//   - EmailOTP: {prefix}/email-otp/* - Email verification codes
 //   - SMS: {prefix}/sms/* - SMS verification codes
 //
 // Plugin Mounting Order:

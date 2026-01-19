@@ -24,7 +24,7 @@ func (a *Plugin) listUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"users": users,
 			"page":  pagination.Page,
 			"limit": pagination.Limit,
@@ -34,7 +34,7 @@ func (a *Plugin) listUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 // getUserHandler retrieves detailed information for a specific user.
 func (a *Plugin) getUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := core.GetPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "id")
 	if userID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -70,7 +70,7 @@ func (a *Plugin) enableUserHandler(w http.ResponseWriter, r *http.Request) {
 
 // setUserDisabledStatus is a helper function that sets the disabled status of a user.
 func (a *Plugin) setUserDisabledStatus(w http.ResponseWriter, r *http.Request, disabled bool, action, pastTense string) {
-	userID := core.GetPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "id")
 	if userID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -102,7 +102,7 @@ func (a *Plugin) setUserDisabledStatus(w http.ResponseWriter, r *http.Request, d
 
 // deleteUserHandler permanently deletes a user account.
 func (a *Plugin) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := core.GetPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "id")
 	if userID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -129,7 +129,7 @@ func (a *Plugin) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 // banUserHandler bans a user with a reason and optional expiry date.
 func (a *Plugin) banUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := core.GetPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "id")
 	if userID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -146,6 +146,9 @@ func (a *Plugin) banUserHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// Sanitize inputs
+	req.Reason = core.SanitizeString(req.Reason, nil)
 
 	if req.Reason == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
@@ -171,7 +174,7 @@ func (a *Plugin) banUserHandler(w http.ResponseWriter, r *http.Request) {
 
 // unbanUserHandler removes the ban from a user account.
 func (a *Plugin) unbanUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := core.GetPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "id")
 	if userID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,

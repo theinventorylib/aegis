@@ -95,7 +95,7 @@ type AuditEvent struct {
 	Action string `json:"action,omitempty"`
 
 	// Details contains additional context specific to this event type
-	Details map[string]interface{} `json:"details,omitempty"`
+	Details map[string]any `json:"details,omitempty"`
 
 	// Timestamp of when the event occurred
 	Timestamp time.Time `json:"timestamp"`
@@ -117,7 +117,7 @@ type AuditLogger interface {
 
 	// LogAuthEvent is a convenience method for common authentication events.
 	// Creates and logs an AuditEvent with authentication-specific fields.
-	LogAuthEvent(ctx context.Context, eventType AuditEventType, userID, ipAddress, userAgent string, success bool, details map[string]interface{}) error
+	LogAuthEvent(ctx context.Context, eventType AuditEventType, userID, ipAddress, userAgent string, success bool, details map[string]any) error
 }
 
 // NoOpAuditLogger is a no-op implementation that discards all events.
@@ -130,7 +130,7 @@ func (n *NoOpAuditLogger) LogEvent(_ context.Context, _ *AuditEvent) error {
 }
 
 // LogAuthEvent implements AuditLogger.
-func (n *NoOpAuditLogger) LogAuthEvent(_ context.Context, _ AuditEventType, _, _, _ string, _ bool, _ map[string]interface{}) error {
+func (n *NoOpAuditLogger) LogAuthEvent(_ context.Context, _ AuditEventType, _, _, _ string, _ bool, _ map[string]any) error {
 	return nil
 }
 
@@ -139,17 +139,17 @@ func (n *NoOpAuditLogger) LogAuthEvent(_ context.Context, _ AuditEventType, _, _
 // the Info/Error/Debug methods.
 type LoggerAuditLogger struct {
 	logger interface {
-		Info(msg string, keysAndValues ...interface{})
-		Error(msg string, keysAndValues ...interface{})
-		Debug(msg string, keysAndValues ...interface{})
+		Info(msg string, keysAndValues ...any)
+		Error(msg string, keysAndValues ...any)
+		Debug(msg string, keysAndValues ...any)
 	}
 }
 
 // NewLoggerAuditLogger creates an audit logger that writes to a structured logger.
 func NewLoggerAuditLogger(logger interface {
-	Info(msg string, keysAndValues ...interface{})
-	Error(msg string, keysAndValues ...interface{})
-	Debug(msg string, keysAndValues ...interface{})
+	Info(msg string, keysAndValues ...any)
+	Error(msg string, keysAndValues ...any)
+	Debug(msg string, keysAndValues ...any)
 }) *LoggerAuditLogger {
 	return &LoggerAuditLogger{logger: logger}
 }
@@ -160,7 +160,7 @@ func (l *LoggerAuditLogger) LogEvent(_ context.Context, event *AuditEvent) error
 		return nil
 	}
 
-	fields := []interface{}{
+	fields := []any{
 		"event_type", event.EventType,
 		"user_id", event.UserID,
 		"ip_address", event.IPAddress,
@@ -186,7 +186,7 @@ func (l *LoggerAuditLogger) LogEvent(_ context.Context, event *AuditEvent) error
 }
 
 // LogAuthEvent implements AuditLogger.
-func (l *LoggerAuditLogger) LogAuthEvent(ctx context.Context, eventType AuditEventType, userID, ipAddress, userAgent string, success bool, details map[string]interface{}) error {
+func (l *LoggerAuditLogger) LogAuthEvent(ctx context.Context, eventType AuditEventType, userID, ipAddress, userAgent string, success bool, details map[string]any) error {
 	event := &AuditEvent{
 		ID:        GenerateID(),
 		EventType: eventType,

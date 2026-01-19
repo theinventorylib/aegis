@@ -42,6 +42,9 @@ func (h *Handlers) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize inputs
+	req.Email = core.SanitizeEmail(req.Email)
+
 	result, err := h.auth.EmailPassword.Login(r.Context(), req.Email, req.Password, r.RemoteAddr, r.UserAgent())
 	if err != nil {
 		status := http.StatusUnauthorized
@@ -65,7 +68,7 @@ func (h *Handlers) loginHandler(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Login successful",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"user": result.User,
 		},
 	})
@@ -85,6 +88,10 @@ func (h *Handlers) registerHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// Sanitize inputs
+	req.Name = core.SanitizeString(req.Name, nil)
+	req.Email = core.SanitizeEmail(req.Email)
 
 	if req.Name == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
@@ -109,7 +116,7 @@ func (h *Handlers) registerHandler(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusCreated, &core.Response{
 		Success: true,
 		Message: "Registration successful",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"user": result.User,
 		},
 	})
@@ -199,6 +206,9 @@ func (h *Handlers) refreshSessionHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Sanitize inputs
+	req.RefreshToken = core.SanitizeString(req.RefreshToken, nil)
+
 	// Use core SessionService.RefreshSession
 	newSession, err := h.auth.Session.RefreshSession(r.Context(), req.RefreshToken)
 	if err != nil {
@@ -227,7 +237,7 @@ func (h *Handlers) refreshSessionHandler(w http.ResponseWriter, r *http.Request)
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Session refreshed",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"expiresAt": expiresAt.String(),
 		},
 	})
@@ -262,7 +272,7 @@ func (h *Handlers) getCurrentSessionHandler(w http.ResponseWriter, r *http.Reque
 		core.WriteJSON(w, http.StatusOK, &core.Response{
 			Success: true,
 			Message: "Session valid",
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"session": session,
 				"user":    user,
 			},
@@ -330,7 +340,7 @@ func (h *Handlers) revokeSessionHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Get session ID from path parameter
-	sessionID := core.GetPathParam(r, "id")
+	sessionID := core.GetSanitizedPathParam(r, "id")
 	if sessionID == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,

@@ -297,7 +297,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	// Register schemas with OpenAPI if available
 	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
 		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example interface{})
+			RegisterSchemaFromType(name string, example any)
 		}); ok {
 			// Request schemas
 			oapi.RegisterSchemaFromType(SchemaLinkAccountRequest, LinkAccountRequest{})
@@ -543,6 +543,9 @@ func (p *Plugin) CompleteAuth(ctx context.Context, w http.ResponseWriter, r *htt
 		}
 		providerName = stateData.Provider
 	}
+
+	// Sanitize provider name
+	providerName = core.SanitizeString(providerName, nil)
 
 	provider, err := goth.GetProvider(providerName)
 	if err != nil {

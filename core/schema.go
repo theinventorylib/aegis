@@ -184,6 +184,7 @@ func SchemaRequirements() []SchemaRequirement {
 		ValidateTableExists("session"),
 
 		ValidateColumnExists("user", "id"),
+		ValidateColumnExists("user", "avatar"),
 		ValidateColumnExists("user", "name"),
 		ValidateColumnExists("user", "email"),
 		ValidateColumnExists("user", "created_at"),
@@ -193,7 +194,11 @@ func SchemaRequirements() []SchemaRequirement {
 		ValidateColumnExists("accounts", "id"),
 		ValidateColumnExists("accounts", "user_id"),
 		ValidateColumnExists("accounts", "provider"),
+		ValidateColumnExists("accounts", "provider_account_id"),
 		ValidateColumnExists("accounts", "password_hash"),
+		ValidateColumnExists("accounts", "access_token"),
+		ValidateColumnExists("accounts", "refresh_token"),
+		ValidateColumnExists("accounts", "expires_at"),
 		ValidateColumnExists("accounts", "created_at"),
 		ValidateColumnExists("accounts", "updated_at"),
 
@@ -207,7 +212,10 @@ func SchemaRequirements() []SchemaRequirement {
 		ValidateColumnExists("session", "id"),
 		ValidateColumnExists("session", "user_id"),
 		ValidateColumnExists("session", "token"),
+		ValidateColumnExists("session", "refresh_token"),
 		ValidateColumnExists("session", "expires_at"),
 		ValidateColumnExists("session", "created_at"),
+		ValidateColumnExists("session", "ip_address"),
+		ValidateColumnExists("session", "user_agent"),
 	}
 }

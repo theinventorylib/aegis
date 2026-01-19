@@ -179,7 +179,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	// Register schemas with OpenAPI if available
 	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
 		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example interface{})
+			RegisterSchemaFromType(name string, example any)
 		}); ok {
 			// Register request schemas
 			oapi.RegisterSchemaFromType(SchemaSendOTPRequest, SendOTPRequest{})
@@ -191,13 +191,14 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 
 	// SMS OTP Routes
 	handlers := NewHandlers(p)
+	smsGroup := router.Group(prefix, "SMS")
 
 	// Create auth middleware for protected routes
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	// Protected route - sending OTP requires authentication to prevent spam/abuse
-	router.POST(prefix+"/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
-	router.RegisterRouteMetadata(core.RouteMetadata{
+	smsGroup.POST("/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
+	smsGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        prefix + "/send",
 		Summary:     "Send SMS OTP",
@@ -218,8 +219,8 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	})
 
 	// Public routes
-	router.POST(prefix+"/verify", handlers.VerifyOTPHandler) // User proving phone ownership
-	router.RegisterRouteMetadata(core.RouteMetadata{
+	smsGroup.POST("/verify", handlers.VerifyOTPHandler) // User proving phone ownership
+	smsGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        prefix + "/verify",
 		Summary:     "Verify SMS OTP",
@@ -239,13 +240,13 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	})
 
 	// Phone+password authentication (if core AuthService configured)
-	router.POST(prefix+"/login", handlers.LoginWithPhoneHandler) // Login endpoint
-	router.RegisterRouteMetadata(core.RouteMetadata{
+	smsGroup.POST("/login", handlers.LoginWithPhoneHandler) // Login endpoint
+	smsGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        prefix + "/login",
 		Summary:     "Login with phone and password",
 		Description: "Authenticate using phone number and password",
-		Tags:        []string{"SMS", "Authentication"},
+		Tags:        []string{"SMS"},
 		Protected:   false,
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Phone number and password credentials",
@@ -259,13 +260,13 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		},
 	})
 
-	router.POST(prefix+"/register", handlers.RegisterWithPhoneHandler)
-	router.RegisterRouteMetadata(core.RouteMetadata{
+	smsGroup.POST("/register", handlers.RegisterWithPhoneHandler)
+	smsGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        prefix + "/register",
 		Summary:     "Register with phone and password",
 		Description: "Create a new account using phone number and password",
-		Tags:        []string{"SMS", "Authentication"},
+		Tags:        []string{"SMS"},
 		Protected:   false,
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Phone number and password credentials",
@@ -321,6 +322,8 @@ func (p *Plugin) GetSchemas() []plugins.Schema {
 
 // SendOTP generates and sends an OTP via SMS
 func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, purpose string) error {
+	// Sanitize phone number
+	phoneNumber = core.SanitizePhoneNumber(phoneNumber)
 
 	// Generate OTP code using shared utility
 	code, err := core.GenerateOTPCode(p.otpLength)
@@ -340,7 +343,6 @@ func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, purpose string) error
 		// sensitive data in logs.
 		if p.logger != nil {
 			p.logger.Info("OTP code generated (no provider configured)",
-				"purpose", purpose,
 				"note", "no provider configured")
 		}
 	}
@@ -368,6 +370,8 @@ func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, purpose string) error
 
 // VerifyOTP verifies an OTP code
 func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, code string) (bool, error) {
+	// Sanitize phone number
+	phoneNumber = core.SanitizePhoneNumber(phoneNumber)
 	// Check if provider supports OTP operations
 	if p.provider != nil {
 		// Use provider's OTP verification
@@ -390,6 +394,8 @@ func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, code string) (bool,
 
 // GetUserByPhone retrieves a user by phone number
 func (p *Plugin) GetUserByPhone(ctx context.Context, phone string) (*auth.User, error) {
+	// Sanitize phone number
+	phone = core.SanitizePhoneNumber(phone)
 	if p.store == nil {
 		return nil, fmt.Errorf("store not configured")
 	}
@@ -415,6 +421,10 @@ func (p *Plugin) CreateUserWithPhoneAndPassword(ctx context.Context, name, phone
 		return nil, fmt.Errorf("core auth service not configured")
 	}
 
+	// Sanitize inputs
+	name = core.SanitizeString(name, nil)
+	phone = core.SanitizePhoneNumber(phone)
+
 	user := User{
 		User: auth.User{
 			ID:   core.GenerateID(),
@@ -436,6 +446,7 @@ func (p *Plugin) CreateUserWithPhoneAndPassword(ctx context.Context, name, phone
 
 	uid := u.GetID()
 
+	// Hash password using default Argon2id parameters (0 = use defaults from framework)
 	hashedPassword, err := core.HashPassword(password, 0, 0, 0, 0)
 	if err != nil {
 		return u, err

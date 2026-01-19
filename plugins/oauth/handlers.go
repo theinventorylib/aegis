@@ -26,7 +26,7 @@ func NewHandlers(plugin *Plugin) *Handlers {
 // beginAuthHandler starts the OAuth flow by redirecting to the provider.
 func (h *Handlers) beginAuthHandler(w http.ResponseWriter, r *http.Request) {
 	// Provider comes from URL path parameter
-	provider := core.GetPathParam(r, "provider")
+	provider := core.GetSanitizedPathParam(r, "provider")
 	if provider == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -34,6 +34,9 @@ func (h *Handlers) beginAuthHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// Sanitize provider name
+	provider = core.SanitizeString(provider, nil)
 
 	// Begin OAuth flow using plugin method
 	if err := h.plugin.BeginAuth(w, r, provider); err != nil {
@@ -63,7 +66,7 @@ func (h *Handlers) callbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"user":    user,
 			"session": session,
 		},
@@ -109,12 +112,15 @@ func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize provider name before using in error message
+	providerName := core.SanitizeString(req.Provider, nil)
+
 	// Get provider
 	provider, err := goth.GetProvider(req.Provider)
 	if err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
-			Error:   fmt.Sprintf("Provider %s not found", req.Provider),
+			Error:   fmt.Sprintf("Provider %s not found", providerName),
 		})
 		return
 	}

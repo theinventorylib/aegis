@@ -67,7 +67,7 @@ openssl rand -base64 32
 Update `main.go` with your secret:
 
 ```go
-config.WithMasterSecret([]byte("your-generated-secret-here"))
+config.WithSecret([]byte("your-generated-secret-here"))
 ```
 
 ### 6. Run the Application

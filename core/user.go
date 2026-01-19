@@ -71,6 +71,11 @@ func NewUserService(userStore auth.UserStore, accountStore auth.AccountStore, se
 // Returns the created user. If creation fails, the user account is not created
 // (no partial state).
 func (s *UserService) CreateUser(ctx context.Context, user auth.User, password string) (auth.User, error) {
+	// Sanitize user input
+	user.Name = SanitizeString(user.Name, nil)
+	user.Email = SanitizeEmail(user.Email)
+	user.Avatar = SanitizeURL(user.Avatar)
+
 	if user.ID == "" {
 		user.ID = GenerateID()
 	}
@@ -126,6 +131,7 @@ func (s *UserService) CreateUserWithEmail(ctx context.Context, name, email, pass
 		Name:  name,
 		Email: email,
 	}
+	// CreateUser will handle the sanitization
 	return s.CreateUser(ctx, user, password)
 }
 
@@ -144,6 +150,11 @@ func (s *UserService) CreateUserWithEmail(ctx context.Context, name, email, pass
 //   - ctx: Request context
 //   - user: User model (ID will be generated if not provided)
 func (s *UserService) CreateUserWithoutPassword(ctx context.Context, user auth.User) (auth.User, error) {
+	// Sanitize user input
+	user.Name = SanitizeString(user.Name, nil)
+	user.Email = SanitizeEmail(user.Email)
+	user.Avatar = SanitizeURL(user.Avatar)
+
 	if user.ID == "" {
 		user.ID = GenerateID()
 	}
@@ -203,6 +214,11 @@ func (s *UserService) GetUserByEmail(ctx context.Context, email string) (auth.Us
 
 // UpdateUser updates an existing user's information.
 func (s *UserService) UpdateUser(ctx context.Context, user auth.User) error {
+	// Sanitize user input
+	user.Name = SanitizeString(user.Name, nil)
+	user.Email = SanitizeEmail(user.Email)
+	user.Avatar = SanitizeURL(user.Avatar)
+
 	return s.userStore.Update(ctx, user)
 }
 
@@ -212,7 +228,8 @@ func (s *UserService) UpdateUserEmail(ctx context.Context, userID, email string)
 	if err != nil {
 		return err
 	}
-	user.Email = email
+	// Sanitize email
+	user.Email = SanitizeEmail(email)
 	user.UpdatedAt = time.Now()
 	return s.UpdateUser(ctx, user)
 }

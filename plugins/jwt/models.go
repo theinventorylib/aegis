@@ -190,5 +190,5 @@ type AccessToken struct {
 //	}
 type JWKS struct {
 	// Keys is the array of public keys
-	Keys []map[string]interface{} `json:"keys"`
+	Keys []map[string]any `json:"keys"`
 }

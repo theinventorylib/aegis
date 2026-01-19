@@ -103,7 +103,7 @@ type PathItem struct {
 // Example:
 //
 //	op := &Operation{
-//	  Tags:        []string{"Authentication"},
+//	  Tags:        []string{"default"},
 //	  Summary:     "Login",
 //	  Description: "Authenticate user with email and password",
 //	  RequestBody: &RequestBody{...},
@@ -124,12 +124,12 @@ type Operation struct {
 
 // Parameter describes a single operation parameter.
 type Parameter struct {
-	Name        string      `json:"name"`
-	In          string      `json:"in"` // "query", "header", "path", "cookie"
-	Description string      `json:"description,omitempty"`
-	Required    bool        `json:"required,omitempty"`
-	Schema      *Schema     `json:"schema,omitempty"`
-	Example     interface{} `json:"example,omitempty"`
+	Name        string  `json:"name"`
+	In          string  `json:"in"` // "query", "header", "path", "cookie"
+	Description string  `json:"description,omitempty"`
+	Required    bool    `json:"required,omitempty"`
+	Schema      *Schema `json:"schema,omitempty"`
+	Example     any     `json:"example,omitempty"`
 }
 
 // RequestBody describes a single request body.
@@ -148,8 +148,8 @@ type Response struct {
 
 // MediaType provides schema and examples for the media type.
 type MediaType struct {
-	Schema  *Schema     `json:"schema,omitempty"`
-	Example interface{} `json:"example,omitempty"`
+	Schema  *Schema `json:"schema,omitempty"`
+	Example any     `json:"example,omitempty"`
 }
 
 // Header describes a single header parameter.
@@ -167,10 +167,10 @@ type Schema struct {
 	Properties           map[string]*Schema `json:"properties,omitempty"`
 	Required             []string           `json:"required,omitempty"`
 	Items                *Schema            `json:"items,omitempty"`
-	Enum                 []interface{}      `json:"enum,omitempty"`
-	Example              interface{}        `json:"example,omitempty"`
+	Enum                 []any              `json:"enum,omitempty"`
+	Example              any                `json:"example,omitempty"`
 	Ref                  string             `json:"$ref,omitempty"`
-	AdditionalProperties interface{}        `json:"additionalProperties,omitempty"`
+	AdditionalProperties any                `json:"additionalProperties,omitempty"`
 
 	// Validation constraints
 	MinLength *int     `json:"minLength,omitempty"`

@@ -136,7 +136,7 @@ func idsHandler(w http.ResponseWriter, r *http.Request) {
 		ids[i] = core.GenerateID()
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"strategy": core.GetIDStrategy(),
 		"ids":      ids,
 		"length":   len(ids[0]),
@@ -148,7 +148,7 @@ func idsHandler(w http.ResponseWriter, r *http.Request) {
 func strategyHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	strategies := []map[string]interface{}{
+	strategies := []map[string]any{
 		{
 			"name":        "ULID",
 			"description": "Universally Unique Lexicographically Sortable Identifier",
@@ -165,7 +165,7 @@ func strategyHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"current_strategy":     core.GetIDStrategy(),
 		"available_strategies": strategies,
 	}

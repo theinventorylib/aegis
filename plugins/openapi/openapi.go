@@ -131,9 +131,8 @@ func DefaultConfig() *Config {
 //  1. Create base OpenAPI 3.0.3 spec
 //  2. Configure servers, contact, license
 //  3. Add security schemes (cookie, bearer)
-//  4. Add default tags (Authentication, Session)
+//  4. Add default tags (default, Session)
 //  5. Add common schemas (Error, Success)
-//  6. Add core routes (refresh, logout)
 //
 // Parameters:
 //   - cfg: Plugin configuration (uses defaults if nil)
@@ -179,14 +178,11 @@ func New(cfg *Config) *Plugin {
 	})
 
 	// Add default tags
-	spec.AddTag(Tag{Name: "Authentication", Description: "Core authentication endpoints"})
+	spec.AddTag(Tag{Name: "default", Description: "Core authentication endpoints"})
 	spec.AddTag(Tag{Name: "Session", Description: "Session management endpoints"})
 
 	// Add common schemas
 	addCommonSchemas(spec)
-
-	// Add core Aegis routes
-	addCoreRoutes(spec, cfg.BasePath)
 
 	return &Plugin{
 		spec:   spec,
@@ -331,7 +327,7 @@ func (p *Plugin) UpdateSpec(metadata []core.RouteMetadata) {
 // resolveSchema resolves a schema reference or definition.
 // If v is a string, it returns a reference to that schema name.
 // If v is a struct/type, it generates the schema, registers it, and returns a reference.
-func (p *Plugin) resolveSchema(v interface{}) *Schema {
+func (p *Plugin) resolveSchema(v any) *Schema {
 	if v == nil {
 		return nil
 	}
@@ -478,7 +474,7 @@ func (p *Plugin) GetSpec() *Spec {
 //
 //	p.RegisterSchemaFromType("User", core.User{})
 //	p.RegisterSchemaFromType("CreateOrganizationRequest", organizations.CreateOrganizationRequest{})
-func (p *Plugin) RegisterSchemaFromType(name string, example interface{}) {
+func (p *Plugin) RegisterSchemaFromType(name string, example any) {
 	schema := GenerateSchema(example)
 	p.spec.AddSchema(name, schema)
 }

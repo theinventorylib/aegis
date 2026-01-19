@@ -21,10 +21,10 @@
 //  4. Session created on successful authentication
 //
 // Route Structure:
-//   - POST /emailotp/send     - Send OTP code (protected)
-//   - POST /emailotp/verify   - Verify OTP code (public)
-//   - POST /emailotp/login    - Login with email+password (public)
-//   - POST /emailotp/register - Register with email+password (public)
+//   - POST /email-otp/send     - Send OTP code (protected)
+//   - POST /email-otp/verify   - Verify OTP code (public)
+//   - POST /email-otp/login    - Login with email+password (public)
+//   - POST /email-otp/register - Register with email+password (public)
 //
 // Provider Integration:
 // Implement the Provider interface to use your email service:
@@ -40,7 +40,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/theinventorylib/aegis/auth"
@@ -58,7 +57,7 @@ import (
 // Returns:
 //   - error: If email is empty or has invalid format
 func ValidateEmail(email string) error {
-	email = strings.TrimSpace(email)
+	email = core.SanitizeEmail(email)
 	if email == "" {
 		return fmt.Errorf("email is required")
 	}
@@ -90,7 +89,7 @@ type Plugin struct {
 	// otpLength specifies OTP code length (default: 6 digits)
 	otpLength int
 	// store handles email-specific database operations
-	store Store // Storage driver for user datasending events (nil-safe)
+	store Store
 	// logger for OTP sending events (nil-safe)
 	logger config.Logger
 	// accountService manages password authentication
@@ -165,7 +164,7 @@ func New(cfg *Config, store Store, dialect ...plugins.Dialect) *Plugin {
 
 // Name returns the plugin identifier.
 func (p *Plugin) Name() string {
-	return "emailotp"
+	return "email-otp"
 }
 
 // Version returns the plugin version for compatibility tracking.
@@ -202,30 +201,29 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	// Register schemas with OpenAPI if available
 	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
 		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example interface{})
+			RegisterSchemaFromType(name string, example any)
 		}); ok {
 			// Request schemas
 			oapi.RegisterSchemaFromType(SchemaSendOTPRequest, SendOTPRequest{})
 			oapi.RegisterSchemaFromType(SchemaVerifyOTPRequest, VerifyOTPRequest{})
-			oapi.RegisterSchemaFromType(SchemaLoginWithEmailRequest, LoginWithEmailRequest{})
-			oapi.RegisterSchemaFromType(SchemaRegisterWithEmailRequest, RegisterWithEmailRequest{})
 		}
 	}
 
 	// Email OTP Routes
 	handlers := NewHandlers(p)
+	emailGroup := router.Group(prefix, "EmailOTP")
 
 	// Create auth middleware for protected routes
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	// Protected route - sending OTP requires authentication to prevent spam/abuse
-	router.POST(prefix+"/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
-	router.RegisterRouteMetadata(core.RouteMetadata{
+	emailGroup.POST("/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
+	emailGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        prefix + "/send",
 		Summary:     "Send Email OTP",
 		Description: "Send a one-time password via email to the authenticated user's email address",
-		Tags:        []string{"EmailOTP"},
+		Tags:        []string{"Email OTP"},
 		Protected:   true,
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Email address to send OTP to",
@@ -241,8 +239,8 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	})
 
 	// Public routes
-	router.POST(prefix+"/verify", handlers.VerifyOTPHandler) // User proving email ownership
-	router.RegisterRouteMetadata(core.RouteMetadata{
+	emailGroup.POST("/verify", handlers.VerifyOTPHandler) // User proving email ownership
+	emailGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        prefix + "/verify",
 		Summary:     "Verify Email OTP",
@@ -258,46 +256,6 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 			"200": {Description: "OTP verified successfully", Schema: core.SchemaSuccess},
 			"400": {Description: "Invalid request or incorrect OTP", Schema: core.SchemaError},
 			"401": {Description: "OTP expired or not found", Schema: core.SchemaError},
-		},
-	})
-
-	// Email+password authentication (if core AuthService configured)
-	router.POST(prefix+"/login", handlers.LoginWithEmailHandler) // Login endpoint
-	router.RegisterRouteMetadata(core.RouteMetadata{
-		Method:      "POST",
-		Path:        prefix + "/login",
-		Summary:     "Login with email and password",
-		Description: "Authenticate using email address and password",
-		Tags:        []string{"EmailOTP", "Authentication"},
-		Protected:   false,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Email address and password credentials",
-			Required:    true,
-			Schema:      SchemaLoginWithEmailRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Login successful, session created", Schema: core.SchemaSession},
-			"400": {Description: "Invalid request", Schema: core.SchemaError},
-			"401": {Description: "Invalid credentials", Schema: core.SchemaError},
-		},
-	})
-
-	router.POST(prefix+"/register", handlers.RegisterWithEmailHandler)
-	router.RegisterRouteMetadata(core.RouteMetadata{
-		Method:      "POST",
-		Path:        prefix + "/register",
-		Summary:     "Register with email and password",
-		Description: "Create a new account using email address and password",
-		Tags:        []string{"EmailOTP", "Authentication"},
-		Protected:   false,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Email address and password credentials",
-			Required:    true,
-			Schema:      SchemaRegisterWithEmailRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"201": {Description: "Registration successful, session created", Schema: core.SchemaSession},
-			"400": {Description: "Invalid request or email already exists", Schema: core.SchemaError},
 		},
 	})
 }
@@ -353,7 +311,6 @@ func (p *Plugin) GetSchemas() []plugins.Schema {
 // Parameters:
 //   - ctx: Request context
 //   - emailAddress: Recipient email address
-//   - userID: User ID requesting OTP
 //   - purpose: OTP purpose ("email_verification", "password_reset", "login_mfa")
 //
 // Returns:
@@ -363,6 +320,8 @@ func (p *Plugin) GetSchemas() []plugins.Schema {
 //
 //	err := plugin.SendOTP(ctx, "user@example.com", "email_verification")
 func (p *Plugin) SendOTP(ctx context.Context, emailAddress, purpose string) error {
+	// Sanitize email
+	emailAddress = core.SanitizeEmail(emailAddress)
 
 	// Generate OTP code using shared utility
 	code, err := core.GenerateOTPCode(p.otpLength)
@@ -381,7 +340,6 @@ func (p *Plugin) SendOTP(ctx context.Context, emailAddress, purpose string) erro
 		// actual code or full email address to avoid leaking sensitive data.
 		if p.logger != nil {
 			p.logger.Info("OTP code generated (no provider configured)",
-				"purpose", purpose,
 				"note", "no provider configured")
 		}
 	}
@@ -419,7 +377,6 @@ func (p *Plugin) SendOTP(ctx context.Context, emailAddress, purpose string) erro
 //   - ctx: Request context
 //   - emailAddress: Email address to verify
 //   - code: OTP code to verify (e.g., "123456")
-//   - purpose: OTP purpose (must match SendOTP purpose)
 //
 // Returns:
 //   - bool: true if OTP is valid and not expired
@@ -434,6 +391,8 @@ func (p *Plugin) SendOTP(ctx context.Context, emailAddress, purpose string) erro
 //	  // Mark email as verified
 //	}
 func (p *Plugin) VerifyOTP(ctx context.Context, emailAddress, code string) (bool, error) {
+	// Sanitize email
+	emailAddress = core.SanitizeEmail(emailAddress)
 	// Check if provider supports OTP operations
 	if p.provider != nil {
 		// Use provider's OTP verification
@@ -505,6 +464,10 @@ func (p *Plugin) CreateUserWithEmailAndPassword(ctx context.Context, name, email
 		return nil, fmt.Errorf("core auth service not configured")
 	}
 
+	// Sanitize inputs
+	name = core.SanitizeString(name, nil)
+	email = core.SanitizeEmail(email)
+
 	user := User{
 		User: auth.User{
 			ID:   core.GenerateID(),
@@ -526,6 +489,7 @@ func (p *Plugin) CreateUserWithEmailAndPassword(ctx context.Context, name, email
 
 	uid := u.GetID()
 
+	// Hash password using default Argon2id parameters (0 = use defaults from framework)
 	hashedPassword, err := core.HashPassword(password, 0, 0, 0, 0)
 	if err != nil {
 		return u, err

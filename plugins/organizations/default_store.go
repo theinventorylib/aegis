@@ -307,7 +307,7 @@ func (s *DefaultOrganizationStore) RemoveTeamMember(ctx context.Context, teamID,
 
 // Helper functions to convert sqlc types to our domain types
 
-func sqlcOrganizationToOrganization(o interface{}) Organization {
+func sqlcOrganizationToOrganization(o any) Organization {
 	var id, name, slug, createdAt, updatedAt string
 	switch v := o.(type) {
 	case sqlc.GetOrganizationRow:

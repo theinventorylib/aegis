@@ -59,6 +59,10 @@ func NewVerificationService(store auth.VerificationStore, auditLogger AuditLogge
 //
 // Returns the created verification with populated token.
 func (s *VerificationService) CreateVerification(ctx context.Context, identifier, vType string, expiry time.Duration, customToken *string) (auth.Verification, error) {
+	// Sanitize identifier (could be email, phone, etc.)
+	// We use SanitizeString as a catch-all for generic identifiers
+	identifier = SanitizeString(identifier, nil)
+
 	var token string
 	if customToken != nil {
 		token = *customToken

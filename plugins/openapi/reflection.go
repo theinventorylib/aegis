@@ -60,7 +60,7 @@ var (
 //	  Email string `json:"email" validation:"Required,Match(^.+@.+$)"`
 //	}
 //	schema := GenerateSchema(User{})
-func GenerateSchema(v interface{}) *Schema {
+func GenerateSchema(v any) *Schema {
 	t := reflect.TypeOf(v)
 	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
@@ -238,7 +238,7 @@ func applyValidationConstraints(schema *Schema, validationTag string, _ reflect.
 	// Enum constraint: validation:"In(admin,member)"
 	if matches := inRegex.FindStringSubmatch(validationTag); matches != nil {
 		values := strings.Split(matches[1], ",")
-		schema.Enum = make([]interface{}, len(values))
+		schema.Enum = make([]any, len(values))
 		for i, v := range values {
 			// Trim quotes and whitespace
 			cleaned := strings.Trim(strings.TrimSpace(v), "\"'")

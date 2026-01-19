@@ -23,7 +23,7 @@ type User struct {
 	AccessToken  string
 	RefreshToken string
 	ExpiresAt    time.Time
-	ProviderData map[string]interface{}
+	ProviderData map[string]any
 }
 
 // Connection represents an OAuth connection stored in the database.
@@ -68,7 +68,7 @@ type Connection struct {
 	ExpiresAt    time.Time // When the access token expires
 
 	// Provider-specific data (JSON)
-	ProviderData map[string]interface{} // Additional fields from provider
+	ProviderData map[string]any // Additional fields from provider
 }
 
 // ProviderConfig defines configuration for a single OAuth provider.
@@ -123,8 +123,8 @@ type ProviderConfig struct {
 	OverrideUserInfo      bool // Update user info on each sign-in
 
 	// Custom Functions (optional)
-	GetUserInfo func(*Tokens) (*User, error)                // Custom user info fetcher
-	MapProfile  func(map[string]interface{}) (*User, error) // Profile mapper
+	GetUserInfo func(*Tokens) (*User, error)        // Custom user info fetcher
+	MapProfile  func(map[string]any) (*User, error) // Profile mapper
 }
 
 // Tokens represents OAuth token response.
@@ -132,11 +132,11 @@ type ProviderConfig struct {
 // This struct holds the tokens returned by the provider after successful
 // authorization code exchange. It's used for custom user info fetching.
 type Tokens struct {
-	AccessToken  string                 // OAuth access token
-	RefreshToken string                 // OAuth refresh token
-	ExpiresAt    time.Time              // Token expiration time
-	Scopes       []string               // Granted scopes
-	Raw          map[string]interface{} // Provider-specific fields
+	AccessToken  string         // OAuth access token
+	RefreshToken string         // OAuth refresh token
+	ExpiresAt    time.Time      // Token expiration time
+	Scopes       []string       // Granted scopes
+	Raw          map[string]any // Provider-specific fields
 }
 
 // LinkAccountRequest represents a request to link an OAuth account.

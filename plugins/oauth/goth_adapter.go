@@ -5,6 +5,7 @@ import (
 
 	"github.com/markbates/goth"
 	"github.com/theinventorylib/aegis/auth"
+	core "github.com/theinventorylib/aegis/core"
 )
 
 // GothAdapter adapts goth.Provider to Aegis's Provider interface.
@@ -115,15 +116,15 @@ func (g *GothAdapter) Exchange(_ string) (*User, error) {
 func GothUserToUser(gothUser goth.User) *User {
 	return &User{
 		User: auth.User{
-			ID:     gothUser.UserID,
-			Email:  gothUser.Email,
-			Name:   gothUser.Name,
-			Avatar: gothUser.AvatarURL,
+			ID:     core.SanitizeString(gothUser.UserID, nil),
+			Email:  core.SanitizeEmail(gothUser.Email),
+			Name:   core.SanitizeString(gothUser.Name, nil),
+			Avatar: core.SanitizeURL(gothUser.AvatarURL),
 		},
 		AccessToken:  gothUser.AccessToken,
 		RefreshToken: gothUser.RefreshToken,
 		ExpiresAt:    gothUser.ExpiresAt,
-		ProviderData: make(map[string]interface{}),
+		ProviderData: make(map[string]any),
 	}
 }
 
