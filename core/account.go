@@ -53,6 +53,9 @@ func NewAccountService(accountStore auth.AccountStore, sessionStore auth.Session
 
 // CreateAccount creates a new account
 func (s *AccountService) CreateAccount(ctx context.Context, account auth.Account) error {
+	// Sanitize external account identifiers
+	account.ProviderAccountID = SanitizeString(account.ProviderAccountID, nil)
+
 	if account.ID == "" {
 		account.ID = GenerateID()
 	}
@@ -122,7 +125,7 @@ func (s *AccountService) UpdatePassword(ctx context.Context, userID, newPassword
 		// Log the error but don't fail the password update
 		// Session invalidation is best-effort - if it fails, existing sessions remain valid
 		// until they expire naturally, but the password has been changed successfully
-		_ = s.auditLogger.LogAuthEvent(ctx, "session_deletion_failed", userID, "", "", false, map[string]interface{}{
+		_ = s.auditLogger.LogAuthEvent(ctx, "session_deletion_failed", userID, "", "", false, map[string]any{
 			"error":  err.Error(),
 			"reason": "password_change",
 		})

@@ -303,7 +303,7 @@ func GenerateTestPassword() string {
 //   - interval: Time between retries
 //   - assertion: Function that returns true when assertion passes
 //   - msgAndArgs: Optional message and arguments for failure
-func AssertEventually(t testing.TB, timeout, interval time.Duration, assertion func() bool, msgAndArgs ...interface{}) {
+func AssertEventually(t testing.TB, timeout, interval time.Duration, assertion func() bool, msgAndArgs ...any) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
@@ -327,7 +327,7 @@ func AssertEventually(t testing.TB, timeout, interval time.Duration, assertion f
 //   - t: Testing instance
 //   - err: Error to check
 //   - msgAndArgs: Optional message and arguments for failure
-func RequireNoError(t testing.TB, err error, msgAndArgs ...interface{}) {
+func RequireNoError(t testing.TB, err error, msgAndArgs ...any) {
 	t.Helper()
 
 	if err != nil {
@@ -345,7 +345,7 @@ func RequireNoError(t testing.TB, err error, msgAndArgs ...interface{}) {
 //   - t: Testing instance
 //   - err: Error to check
 //   - msgAndArgs: Optional message and arguments for failure
-func RequireError(t testing.TB, err error, msgAndArgs ...interface{}) {
+func RequireError(t testing.TB, err error, msgAndArgs ...any) {
 	t.Helper()
 
 	if err == nil {

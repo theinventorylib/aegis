@@ -19,7 +19,7 @@ type Response struct {
 	Error string `json:"error,omitempty"`
 
 	// Data contains the response payload (optional, Success=true)
-	Data interface{} `json:"data,omitempty"`
+	Data any `json:"data,omitempty"`
 }
 
 // PaginationParams holds parsed and validated pagination parameters.
@@ -39,7 +39,7 @@ type PaginationParams struct {
 // HTTPLogger is an optional interface for logging HTTP helper errors.
 // This is a subset of structured logging interfaces (zap, logrus, slog).
 type HTTPLogger interface {
-	Error(msg string, keysAndValues ...interface{})
+	Error(msg string, keysAndValues ...any)
 }
 
 // httpLogger is the global logger for HTTP helpers (optional)
@@ -99,7 +99,7 @@ type RequestBodyMeta struct {
 	// Schema is either:
 	//   - A string with the schema name (e.g., "CreateUserRequest")
 	//   - An inline schema definition (struct or map)
-	Schema interface{}
+	Schema any
 }
 
 // ResponseMeta describes a possible response for an API endpoint.
@@ -111,7 +111,7 @@ type ResponseMeta struct {
 	// Schema is either:
 	//   - A string with the schema name (e.g., "User", "Error")
 	//   - An inline schema definition (struct or map)
-	Schema interface{}
+	Schema any
 }
 
 // RouteMetadata contains OpenAPI documentation metadata for a route.
@@ -174,7 +174,7 @@ type RouteMetadata struct {
 // Example:
 //
 //	core.WriteJSON(w, 200, map[string]string{"status": "ok"})
-func WriteJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func WriteJSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(data); err != nil {

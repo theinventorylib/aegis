@@ -192,7 +192,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	// Register schemas with OpenAPI if available
 	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
 		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example interface{})
+			RegisterSchemaFromType(name string, example any)
 		}); ok {
 			// Request schemas
 			oapi.RegisterSchemaFromType(SchemaCreateOrganizationRequest, CreateOrganizationRequest{})
@@ -605,6 +605,10 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 //   - *Organization: Created organization with metadata
 //   - error: Database error or duplicate slug error
 func (p *Plugin) createOrganization(ctx context.Context, name, slug, ownerID string) (*Organization, error) {
+	// Sanitize inputs
+	name = core.SanitizeString(name, nil)
+	slug = core.SanitizeUsername(slug, 50) // Slugs follow username-like rules
+
 	now := time.Now()
 	id := core.GenerateID()
 
@@ -633,6 +637,10 @@ func (p *Plugin) getOrganization(ctx context.Context, id string) (Organization, 
 }
 
 func (p *Plugin) updateOrganization(ctx context.Context, id, name, slug string) error {
+	// Sanitize inputs
+	name = core.SanitizeString(name, nil)
+	slug = core.SanitizeUsername(slug, 50)
+
 	return p.store.UpdateOrganization(ctx, id, name, slug, time.Now())
 }
 
@@ -757,6 +765,10 @@ func (p *Plugin) listOrganizationMembers(ctx context.Context, orgID string) ([]*
 // Team operations
 
 func (p *Plugin) createTeam(ctx context.Context, orgID, name, description string) (*Team, error) {
+	// Sanitize inputs
+	name = core.SanitizeString(name, nil)
+	description = core.SanitizeMultiline(description, 500)
+
 	now := time.Now()
 	id := core.GenerateID()
 
@@ -794,6 +806,10 @@ func (p *Plugin) listTeams(ctx context.Context, orgID string) ([]*Team, error) {
 }
 
 func (p *Plugin) updateTeam(ctx context.Context, id, name, description string) error {
+	// Sanitize inputs
+	name = core.SanitizeString(name, nil)
+	description = core.SanitizeMultiline(description, 500)
+
 	return p.store.UpdateTeam(ctx, id, name, description, time.Now())
 }
 

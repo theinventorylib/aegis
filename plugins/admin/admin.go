@@ -164,7 +164,7 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 	// Register schemas with OpenAPI if available
 	if plugin, ok := a.aegis.GetPlugin("openapi"); ok {
 		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example interface{})
+			RegisterSchemaFromType(name string, example any)
 		}); ok {
 			// Register request schemas
 			oapi.RegisterSchemaFromType(SchemaBanUserRequest, BanUserRequest{})
@@ -383,7 +383,7 @@ func (a *Plugin) ListUsers(ctx context.Context, offset, limit int) ([]User, erro
 }
 
 // ListUsersRaw lists all users as raw map data programmatically.
-func (a *Plugin) ListUsersRaw(ctx context.Context, offset, limit int) ([]map[string]interface{}, error) {
+func (a *Plugin) ListUsersRaw(ctx context.Context, offset, limit int) ([]map[string]any, error) {
 	return a.store.ListUsersRaw(ctx, offset, limit)
 }
 
@@ -393,7 +393,7 @@ func (a *Plugin) GetUser(ctx context.Context, userID string) (User, error) {
 }
 
 // GetUserRaw retrieves detailed information for a specific user as raw map data programmatically.
-func (a *Plugin) GetUserRaw(ctx context.Context, userID string) (map[string]interface{}, error) {
+func (a *Plugin) GetUserRaw(ctx context.Context, userID string) (map[string]any, error) {
 	return a.store.GetUserRaw(ctx, userID)
 }
 
@@ -424,6 +424,9 @@ func (a *Plugin) DeleteUser(ctx context.Context, userID string) error {
 
 // BanUser bans a user programmatically.
 func (a *Plugin) BanUser(ctx context.Context, userID, reason string, expiresAt *time.Time) error {
+	// Sanitize ban reason
+	reason = core.SanitizeString(reason, nil)
+
 	return a.store.BanUser(ctx, userID, reason, expiresAt)
 }
 

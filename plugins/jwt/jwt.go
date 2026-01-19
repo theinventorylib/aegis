@@ -402,7 +402,7 @@ func (p *Plugin) MountRoutes(router router.Router, basePath string) {
 	// Register schemas with OpenAPI if available
 	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
 		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example interface{})
+			RegisterSchemaFromType(name string, example any)
 		}); ok {
 			// Register request schemas
 			oapi.RegisterSchemaFromType(SchemaRefreshTokenRequest, map[string]string{"refresh_token": ""})
@@ -529,7 +529,7 @@ func (p *Plugin) Dependencies() []plugins.Dependency {
 
 // RequiresTables returns tables this plugin manages.
 func (p *Plugin) RequiresTables() []string {
-	return []string{"jwt.jwks"} // JWT plugin owns and manages its JWKS table
+	return []string{"jwks"} // JWT plugin owns and manages its JWKS table
 }
 
 // ProvidesAuthMethods returns authentication methods provided.

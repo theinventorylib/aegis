@@ -94,7 +94,7 @@ type EnrichedUser struct {
 	// Extensions holds additional fields from plugins.
 	// Keys are simple field names: "role", "verified", "organizations", etc.
 	// These are flattened into the JSON response as top-level fields.
-	Extensions map[string]interface{} `json:"-"` // Excluded from default marshal, handled in MarshalJSON
+	Extensions map[string]any `json:"-"` // Excluded from default marshal, handled in MarshalJSON
 
 	mu sync.RWMutex
 }
@@ -104,7 +104,7 @@ type EnrichedUser struct {
 func NewEnrichedUser(user *auth.User) *EnrichedUser {
 	return &EnrichedUser{
 		User:       user,
-		Extensions: make(map[string]interface{}),
+		Extensions: make(map[string]any),
 	}
 }
 
@@ -115,11 +115,11 @@ func NewEnrichedUser(user *auth.User) *EnrichedUser {
 // a top-level field in JSON responses.
 //
 // Thread-safe for concurrent plugin access.
-func (eu *EnrichedUser) Set(key string, value interface{}) {
+func (eu *EnrichedUser) Set(key string, value any) {
 	eu.mu.Lock()
 	defer eu.mu.Unlock()
 	if eu.Extensions == nil {
-		eu.Extensions = make(map[string]interface{})
+		eu.Extensions = make(map[string]any)
 	}
 	eu.Extensions[key] = value
 }
@@ -128,7 +128,7 @@ func (eu *EnrichedUser) Set(key string, value interface{}) {
 // Returns nil if the key doesn't exist.
 //
 // For type-safe access, prefer the typed getters (GetString, GetBool, etc.).
-func (eu *EnrichedUser) Get(key string) interface{} {
+func (eu *EnrichedUser) Get(key string) any {
 	eu.mu.RLock()
 	defer eu.mu.RUnlock()
 	if eu.Extensions == nil {
@@ -169,9 +169,9 @@ func (eu *EnrichedUser) GetStringSlice(key string) []string {
 
 // GetMap retrieves a map extension value.
 // Returns nil if the key doesn't exist or value is not a map.
-func (eu *EnrichedUser) GetMap(key string) map[string]interface{} {
+func (eu *EnrichedUser) GetMap(key string) map[string]any {
 	v := eu.Get(key)
-	if m, ok := v.(map[string]interface{}); ok {
+	if m, ok := v.(map[string]any); ok {
 		return m
 	}
 	return nil
@@ -208,7 +208,7 @@ func (eu *EnrichedUser) MarshalJSON() ([]byte, error) {
 	defer eu.mu.RUnlock()
 
 	// Create a map with core user fields
-	result := map[string]interface{}{
+	result := map[string]any{
 		"id":        eu.ID,
 		"email":     eu.Email,
 		"name":      eu.Name,
@@ -233,18 +233,18 @@ func (eu *EnrichedUser) MarshalJSON() ([]byte, error) {
 
 // ToAPIResponse returns a map suitable for JSON API responses.
 // Extensions are flattened as top-level fields.
-func (eu *EnrichedUser) ToAPIResponse() map[string]interface{} {
+func (eu *EnrichedUser) ToAPIResponse() map[string]any {
 	return eu.ToAPIResponseFiltered(nil)
 }
 
 // ToAPIResponseFiltered returns a map suitable for JSON API responses,
 // optionally filtering extension fields based on the provided config.
 // If config is nil, all fields are included.
-func (eu *EnrichedUser) ToAPIResponseFiltered(config *UserFieldsConfig) map[string]interface{} {
+func (eu *EnrichedUser) ToAPIResponseFiltered(config *UserFieldsConfig) map[string]any {
 	eu.mu.RLock()
 	defer eu.mu.RUnlock()
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"id":        eu.ID,
 		"email":     eu.Email,
 		"name":      eu.Name,
@@ -278,12 +278,12 @@ func (eu *EnrichedUser) ToAPIResponseFiltered(config *UserFieldsConfig) map[stri
 }
 
 // sessionToMap converts a session to a map for API responses.
-func sessionToMap(session *auth.Session) map[string]interface{} {
+func sessionToMap(session *auth.Session) map[string]any {
 	if session == nil {
 		return nil
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"id":        session.ID,
 		"expiresAt": session.ExpiresAt,
 		"createdAt": session.CreatedAt,
@@ -306,14 +306,14 @@ type SessionWithUser struct {
 
 // ToAPIResponse returns a map suitable for JSON API responses.
 // Session includes all session fields, user includes all extension fields flattened.
-func (swu *SessionWithUser) ToAPIResponse() map[string]interface{} {
+func (swu *SessionWithUser) ToAPIResponse() map[string]any {
 	return swu.ToAPIResponseFiltered(nil)
 }
 
 // ToAPIResponseFiltered returns a map with optional user field filtering.
 // Session data is always fully included; only user extension fields are filtered.
-func (swu *SessionWithUser) ToAPIResponseFiltered(config *UserFieldsConfig) map[string]interface{} {
-	resp := make(map[string]interface{})
+func (swu *SessionWithUser) ToAPIResponseFiltered(config *UserFieldsConfig) map[string]any {
+	resp := make(map[string]any)
 
 	if swu.Session != nil {
 		resp["session"] = sessionToMap(swu.Session)
@@ -353,19 +353,19 @@ type RequestMeta struct {
 // Plugins can store and retrieve their own data without key collisions.
 type PluginData struct {
 	mu   sync.RWMutex
-	data map[string]interface{}
+	data map[string]any
 }
 
 // NewPluginData creates a new plugin data store
 func NewPluginData() *PluginData {
 	return &PluginData{
-		data: make(map[string]interface{}),
+		data: make(map[string]any),
 	}
 }
 
 // Set stores a value for a plugin. The key should be namespaced by plugin name.
 // Example: pluginData.Set("jwt:token_type", "access")
-func (pd *PluginData) Set(key string, value interface{}) {
+func (pd *PluginData) Set(key string, value any) {
 	pd.mu.Lock()
 	defer pd.mu.Unlock()
 	pd.data[key] = value
@@ -373,7 +373,7 @@ func (pd *PluginData) Set(key string, value interface{}) {
 
 // Get retrieves a value from the plugin data store.
 // Returns nil if the key doesn't exist.
-func (pd *PluginData) Get(key string) interface{} {
+func (pd *PluginData) Get(key string) any {
 	pd.mu.RLock()
 	defer pd.mu.RUnlock()
 	return pd.data[key]
@@ -576,7 +576,7 @@ func GetPluginData(ctx context.Context) *PluginData {
 
 // GetPluginValue is a convenience function to get a plugin value directly from context.
 // Returns nil if plugin data is not initialized or key doesn't exist.
-func GetPluginValue(ctx context.Context, key string) interface{} {
+func GetPluginValue(ctx context.Context, key string) any {
 	pd := GetPluginData(ctx)
 	if pd == nil {
 		return nil
@@ -586,7 +586,7 @@ func GetPluginValue(ctx context.Context, key string) interface{} {
 
 // SetPluginValue is a convenience function to set a plugin value directly in context.
 // Does nothing if plugin data is not initialized.
-func SetPluginValue(ctx context.Context, key string, value interface{}) {
+func SetPluginValue(ctx context.Context, key string, value any) {
 	pd := GetPluginData(ctx)
 	if pd != nil {
 		pd.Set(key, value)
@@ -628,7 +628,7 @@ func GetUserID(ctx context.Context) string {
 //
 //	core.ExtendUser(ctx, "admin:role", "admin")
 //	core.ExtendUser(ctx, "orgs:memberships", []string{"org1", "org2"})
-func ExtendUser(ctx context.Context, key string, value interface{}) {
+func ExtendUser(ctx context.Context, key string, value any) {
 	eu := GetEnrichedUser(ctx)
 	if eu != nil {
 		eu.Set(key, value)
@@ -637,7 +637,7 @@ func ExtendUser(ctx context.Context, key string, value interface{}) {
 
 // GetUserExtension retrieves a specific extension from the enriched user.
 // Returns nil if user is not authenticated or extension doesn't exist.
-func GetUserExtension(ctx context.Context, key string) interface{} {
+func GetUserExtension(ctx context.Context, key string) any {
 	eu := GetEnrichedUser(ctx)
 	if eu == nil {
 		return nil
@@ -678,6 +678,13 @@ func GetPathParam(r *http.Request, name string) string {
 
 	// Fallback to Go 1.22+ standard library
 	return r.PathValue(name)
+}
+
+// GetSanitizedPathParam extracts and sanitizes a path parameter.
+// This is the recommended way to retrieve IDs and other path parameters
+// from the URL path.
+func GetSanitizedPathParam(r *http.Request, name string) string {
+	return SanitizeString(GetPathParam(r, name), nil)
 }
 
 // GetIPAddress extracts the IP address from context metadata.
@@ -746,7 +753,7 @@ func (ac *AegisContext) WithPluginData() *AegisContext {
 
 // WithExtension adds a user extension to the context.
 // Requires WithUser to be called first.
-func (ac *AegisContext) WithExtension(key string, value interface{}) *AegisContext {
+func (ac *AegisContext) WithExtension(key string, value any) *AegisContext {
 	ExtendUser(ac.ctx, key, value)
 	return ac
 }

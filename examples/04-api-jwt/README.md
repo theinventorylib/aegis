@@ -405,7 +405,7 @@ func (c *APIClient) Login(email, password string) error {
     return nil
 }
 
-func (c *APIClient) Request(method, path string, body interface{}) (*http.Response, error) {
+func (c *APIClient) Request(method, path string, body any) (*http.Response, error) {
     // Create request with auth header
     req, _ := http.NewRequest(method, c.BaseURL+path, nil)
     req.Header.Set("Authorization", "Bearer "+c.AccessToken)

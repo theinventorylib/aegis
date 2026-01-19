@@ -172,7 +172,7 @@ func (s *DefaultAdminStore) RemoveRole(ctx context.Context, userID string, _ str
 }
 
 // ListUsersRaw lists users returning raw map data.
-func (s *DefaultAdminStore) ListUsersRaw(ctx context.Context, offset, limit int) ([]map[string]interface{}, error) {
+func (s *DefaultAdminStore) ListUsersRaw(ctx context.Context, offset, limit int) ([]map[string]any, error) {
 	// Ensure values are within int32 range
 	if offset < 0 {
 		offset = 0
@@ -193,9 +193,9 @@ func (s *DefaultAdminStore) ListUsersRaw(ctx context.Context, offset, limit int)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]map[string]interface{}, len(users))
+	result := make([]map[string]any, len(users))
 	for i, u := range users {
-		result[i] = map[string]interface{}{
+		result[i] = map[string]any{
 			"id":        u.ID,
 			"createdAt": u.CreatedAt,
 			"updatedAt": u.UpdatedAt,
@@ -208,12 +208,12 @@ func (s *DefaultAdminStore) ListUsersRaw(ctx context.Context, offset, limit int)
 }
 
 // GetUserRaw retrieves a single user as raw map data.
-func (s *DefaultAdminStore) GetUserRaw(ctx context.Context, userID string) (map[string]interface{}, error) {
+func (s *DefaultAdminStore) GetUserRaw(ctx context.Context, userID string) (map[string]any, error) {
 	u, err := s.q.GetUserRaw(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"id":        u.ID,
 		"createdAt": u.CreatedAt,
 		"updatedAt": u.UpdatedAt,

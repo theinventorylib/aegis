@@ -41,10 +41,10 @@ type Store interface {
 
 	// ListUsersRaw retrieves paginated users as raw map data.
 	// This supports flexible admin UIs without schema changes.
-	ListUsersRaw(ctx context.Context, offset, limit int) ([]map[string]interface{}, error)
+	ListUsersRaw(ctx context.Context, offset, limit int) ([]map[string]any, error)
 
 	// GetUserRaw retrieves a user as raw map data.
-	GetUserRaw(ctx context.Context, userID string) (map[string]interface{}, error)
+	GetUserRaw(ctx context.Context, userID string) (map[string]any, error)
 
 	// Count returns total user count.
 	Count(ctx context.Context) (int, error)

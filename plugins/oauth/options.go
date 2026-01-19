@@ -190,7 +190,7 @@ func WithOverrideUserInfo() ProviderOption {
 //	    // Call custom API with access token
 //	    resp, _ := http.Get("https://api.example.com/user?access_token=" + tokens.AccessToken)
 //	    // Parse custom response format
-//	    var data map[string]interface{}
+//	    var data map[string]any
 //	    json.NewDecoder(resp.Body).Decode(&data)
 //	    return &oauth.User{...}, nil
 //	}
@@ -211,7 +211,7 @@ func WithUserInfoFetcher(fn func(*Tokens) (*User, error)) ProviderOption {
 //
 // Example:
 //
-//	mapProfile := func(profile map[string]interface{}) (*oauth.User, error) {
+//	mapProfile := func(profile map[string]any) (*oauth.User, error) {
 //	    return &oauth.User{
 //	        User: auth.User{
 //	            ID:     profile["sub"].(string),
@@ -226,7 +226,7 @@ func WithUserInfoFetcher(fn func(*Tokens) (*User, error)) ProviderOption {
 //	oauth.Generic("custom", clientID, clientSecret,
 //	    oauth.WithProfileMapper(mapProfile),
 //	)
-func WithProfileMapper(fn func(map[string]interface{}) (*User, error)) ProviderOption {
+func WithProfileMapper(fn func(map[string]any) (*User, error)) ProviderOption {
 	return func(cfg *ProviderConfig) {
 		cfg.MapProfile = fn
 	}

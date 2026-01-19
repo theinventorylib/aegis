@@ -54,11 +54,8 @@ func main() {
 	// 3. Create organizations plugin
 	orgPlugin := organizations.New(nil, plugins.DialectPostgres)
 
-	a, err := aegis.New(context.Background(),
-		config.WithDB(db),
-		config.WithRouter(r),
-		config.WithSecret([]byte("your-32-byte-secret-key-here!!!!")),
-	)
+	cfg := config.Default().WithDB(db).WithRouter(r).WithSecret([]byte("your-32-byte-secret-key-here!!!!"))
+	a, err := aegis.New(context.Background(), cfg)
 	if err != nil {
 		log.Fatal("Failed to create Aegis instance:", err)
 	}
@@ -309,13 +306,13 @@ type Project struct {
 
 func listProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	// Get organization ID from path param
-	orgID := core.GetPathParam(r, "id")
+	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization required", http.StatusBadRequest)
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success":         true,
 		"projects":        projects[orgID],
 		"organization_id": orgID,
@@ -324,7 +321,7 @@ func listProjectsHandler(w http.ResponseWriter, r *http.Request) {
 
 func createProjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Get organization ID from path param
-	orgID := core.GetPathParam(r, "id")
+	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization ID required", http.StatusBadRequest)
 		return
@@ -345,6 +342,10 @@ func createProjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize inputs
+	input.Name = core.SanitizeString(input.Name, nil)
+	input.Description = core.SanitizeMultiline(input.Description, 500)
+
 	project := Project{
 		ID:             fmt.Sprintf("proj_%d", len(projects[orgID])+1),
 		OrganizationID: orgID,
@@ -358,7 +359,7 @@ func createProjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	projects[orgID] = append(projects[orgID], project)
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"project": project,
 	})
@@ -366,17 +367,17 @@ func createProjectHandler(w http.ResponseWriter, r *http.Request) {
 
 func getProjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Get organization ID from path param
-	orgID := core.GetPathParam(r, "id")
+	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization required", http.StatusBadRequest)
 		return
 	}
 
-	projectID := chi.URLParam(r, "id")
+	projectID := core.GetSanitizedPathParam(r, "id")
 
 	for _, p := range projects[orgID] {
 		if p.ID == projectID {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"success": true,
 				"project": p,
 			})
@@ -389,18 +390,18 @@ func getProjectHandler(w http.ResponseWriter, r *http.Request) {
 
 func deleteProjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Get organization ID from path param
-	orgID := core.GetPathParam(r, "id")
+	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization required", http.StatusBadRequest)
 		return
 	}
 
-	projectID := chi.URLParam(r, "id")
+	projectID := core.GetSanitizedPathParam(r, "id")
 
 	for i, p := range projects[orgID] {
 		if p.ID == projectID {
 			projects[orgID] = append(projects[orgID][:i], projects[orgID][i+1:]...)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"success": true,
 				"message": "Project deleted",
 			})
@@ -413,14 +414,14 @@ func deleteProjectHandler(w http.ResponseWriter, r *http.Request) {
 
 func teamMembersHandler(w http.ResponseWriter, r *http.Request) {
 	// Get organization ID from path param
-	orgID := core.GetPathParam(r, "id")
+	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
 		http.Error(w, "Organization required", http.StatusBadRequest)
 		return
 	}
 
 	// In real app, query members from database
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success":         true,
 		"message":         "Use GET /auth/organizations/" + orgID + "/members to see team members",
 		"organization_id": orgID,

@@ -41,6 +41,11 @@ type LoginResult struct {
 
 // Login authenticates a user with email and password programmatically.
 func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAddress, userAgent string) (*LoginResult, error) {
+	// Sanitize inputs that will be logged
+	email = SanitizeEmail(email)
+	ipAddress = SanitizeString(ipAddress, nil)
+	userAgent = SanitizeString(userAgent, nil)
+
 	// Check if account is locked out
 	if h.authService.loginAttemptTracker != nil {
 		locked, remaining, err := h.authService.loginAttemptTracker.IsLockedOut(ctx, email)
@@ -48,7 +53,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAd
 			return nil, err
 		}
 		if locked {
-			_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, "", ipAddress, userAgent, false, map[string]interface{}{
+			_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, "", ipAddress, userAgent, false, map[string]any{
 				"email":     RedactForLog(email),
 				"reason":    "account_locked",
 				"remaining": remaining.String(),
@@ -66,7 +71,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAd
 			_ = lockout
 			_ = err
 		}
-		_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, "", ipAddress, userAgent, false, map[string]interface{}{
+		_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, "", ipAddress, userAgent, false, map[string]any{
 			"email":  RedactForLog(email),
 			"reason": "user_not_found",
 		})
@@ -84,7 +89,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAd
 			_ = lockout
 			_ = err
 		}
-		_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, uid, ipAddress, userAgent, false, map[string]interface{}{
+		_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, uid, ipAddress, userAgent, false, map[string]any{
 			"email":  RedactForLog(email),
 			"reason": "invalid_password",
 		})
@@ -129,6 +134,12 @@ type RegisterResult struct {
 
 // Register registers a new user with email and password programmatically.
 func (h *EmailPasswordHandlers) Register(ctx context.Context, name, email, password, ipAddress, userAgent string) (*RegisterResult, error) {
+	name = SanitizeString(name, nil)
+	email = SanitizeEmail(email)
+	// Sanitize inputs that will be logged
+	ipAddress = SanitizeString(ipAddress, nil)
+	userAgent = SanitizeString(userAgent, nil)
+
 	// Create user with password
 	user, err := h.authService.User.CreateUserWithEmail(ctx, name, email, password)
 	if err != nil {

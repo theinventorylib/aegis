@@ -64,13 +64,13 @@ func GetPluginData(ctx context.Context) *PluginData {
 }
 
 // GetPluginValue is a convenience function to get a plugin value from context.
-func GetPluginValue(ctx context.Context, key string) interface{} {
+func GetPluginValue(ctx context.Context, key string) any {
 	return core.GetPluginValue(ctx, key)
 }
 
 // SetPluginValue is a convenience function to set a plugin value in context.
 // For plugin-internal data (not exposed in API responses), use namespaced keys.
-func SetPluginValue(ctx context.Context, key string, value interface{}) {
+func SetPluginValue(ctx context.Context, key string, value any) {
 	core.SetPluginValue(ctx, key, value)
 }
 
@@ -123,12 +123,12 @@ func GetEnrichedUser(ctx context.Context) *EnrichedUser {
 //	plugins.ExtendUser(ctx, "organizations", []string{"org1", "org2"})
 //
 // These produce JSON like: {"id": "...", "email": "...", "role": "admin", "organizations": [...]}
-func ExtendUser(ctx context.Context, key string, value interface{}) {
+func ExtendUser(ctx context.Context, key string, value any) {
 	core.ExtendUser(ctx, key, value)
 }
 
 // GetUserExtension retrieves a specific extension from the enriched user.
-func GetUserExtension(ctx context.Context, key string) interface{} {
+func GetUserExtension(ctx context.Context, key string) any {
 	return core.GetUserExtension(ctx, key)
 }
 

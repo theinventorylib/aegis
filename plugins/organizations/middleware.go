@@ -22,7 +22,7 @@ func (p *Plugin) requireOrganizationRole(checker orgRoleChecker) func(http.Handl
 				return
 			}
 
-			orgID := core.GetPathParam(r, "id")
+			orgID := core.GetSanitizedPathParam(r, "id")
 			if orgID == "" {
 				http.Error(w, "Organization ID required", http.StatusBadRequest)
 				return

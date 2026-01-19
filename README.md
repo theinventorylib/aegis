@@ -16,13 +16,13 @@
 ### Core Authentication
 - **Minimal Core Schema**: Only 4 essential tables
 - **Database Agnostic**: Works with PostgreSQL, MySQL, SQLite
-- **Session Management**: Secure JWT-based sessions with refresh tokens
+- **Session Management**: Secure token-based sessions with refresh tokens and Redis caching
 - **CSRF Protection**: Built-in CSRF protection for web applications
 - **Password Authentication**: Argon2id hashing built into core (not a plugin)
 - **Developer Friendly**: No auto-migration magic, fully typed API
 
 ### 8 Official Plugins
-- **Email** - Email verification via OTP or magic links
+- **Email** - Email verification via OTP and email+password auth
 - **SMS** - Phone number verification via OTP
 - **OAuth** - Social login (Google, GitHub, and more)
 - **JWT** - Token generation, validation, and rotation

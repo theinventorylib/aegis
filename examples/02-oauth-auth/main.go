@@ -456,9 +456,9 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
-		"user": map[string]interface{}{
+		"user": map[string]any{
 			"id":         user.ID,
 			"email":      user.Email,
 			"name":       user.Name,
@@ -477,7 +477,7 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// In a real app, you'd query the accounts table here
 	// This is just a demonstration
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"message": "Query the auth.accounts table to see all linked authentication providers",
 		"user_id": user.ID,

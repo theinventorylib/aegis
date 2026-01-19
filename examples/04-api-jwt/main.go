@@ -307,7 +307,7 @@ curl -X POST http://localhost:8080/auth/jwt/refresh \\
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"status":  "healthy",
 		"service": "aegis-jwt-api",
 		"time":    time.Now().Format(time.RFC3339),
@@ -321,9 +321,9 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
-		"user": map[string]interface{}{
+		"user": map[string]any{
 			"id":         user.ID,
 			"email":      user.Email,
 			"name":       user.Name,
@@ -341,13 +341,13 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mock data
-	data := []map[string]interface{}{
+	data := []map[string]any{
 		{"id": "1", "title": "Item 1", "user_id": user.ID},
 		{"id": "2", "title": "Item 2", "user_id": user.ID},
 		{"id": "3", "title": "Item 3", "user_id": user.ID},
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"data":    data,
 		"count":   len(data),
@@ -361,14 +361,14 @@ func createDataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input map[string]interface{}
+	var input map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "Invalid JSON")
 		return
 	}
 
 	// Mock creation
-	result := map[string]interface{}{
+	result := map[string]any{
 		"id":         "new_id",
 		"user_id":    user.ID,
 		"created_at": time.Now(),
@@ -378,7 +378,7 @@ func createDataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"data":    result,
 	})
@@ -393,7 +393,7 @@ func deleteDataHandler(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"message": "Deleted item " + id,
 	})
@@ -408,9 +408,9 @@ func adminUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 	// In production, check if user has admin role
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
-		"users": []map[string]interface{}{
+		"users": []map[string]any{
 			{"id": "1", "email": "user1@example.com", "name": "User 1"},
 			{"id": "2", "email": "user2@example.com", "name": "User 2"},
 		},
@@ -424,9 +424,9 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
-		"stats": map[string]interface{}{
+		"stats": map[string]any{
 			"total_users":    1234,
 			"active_users":   456,
 			"total_requests": 98765,
@@ -437,7 +437,7 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": false,
 		"error":   message,
 	})

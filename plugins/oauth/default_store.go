@@ -146,14 +146,14 @@ func toNullString(s string) sql.NullString {
 
 func sqlcConnectionToConnection(c sqlc.OauthConnection) *Connection {
 	providerDataStr := nullStringToString(c.ProviderData)
-	var providerData map[string]interface{}
+	var providerData map[string]any
 	if providerDataStr != "" {
 		if err := json.Unmarshal([]byte(providerDataStr), &providerData); err != nil {
 			// If unmarshal fails, set to empty map
-			providerData = make(map[string]interface{})
+			providerData = make(map[string]any)
 		}
 	} else {
-		providerData = make(map[string]interface{})
+		providerData = make(map[string]any)
 	}
 	return &Connection{
 		ID:             c.ID,

@@ -14,9 +14,9 @@ import (
 // Logger is an optional interface for logging Aegis lifecycle events.
 // Implementations can integrate with any logging framework (zap, logrus, slog, etc).
 type Logger interface {
-	Info(msg string, keysAndValues ...interface{})
-	Error(msg string, keysAndValues ...interface{})
-	Debug(msg string, keysAndValues ...interface{})
+	Info(msg string, keysAndValues ...any)
+	Error(msg string, keysAndValues ...any)
+	Debug(msg string, keysAndValues ...any)
 }
 
 // Config holds the configuration for Aegis authentication framework.
@@ -174,15 +174,15 @@ type Config struct {
 	Redis *RedisConfig
 
 	// ========== AUTH CONFIGURATION ==========
-	// Auth holds authentication configuration.
-	// REQUIRED.
-	// Use WithCoreAuthConfig to set this.
+
+	// Auth holds low-level authentication configuration for database operations.
+	// REQUIRED. This is typically initialized automatically from the main DB connection.
 	Auth auth.Config
 
-	// CoreAuth holds core authentication configuration.
+	// CoreAuth holds high-level core authentication service configuration.
 	// OPTIONAL.
 	// Default: DefaultAuthConfig()
-	// Use WithCoreAuthConfig to set this.
+	// Use WithAuthConfig to set this.
 	CoreAuth *core.AuthConfig
 
 	// ========== RATE LIMITING ==========

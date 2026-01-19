@@ -30,7 +30,7 @@ import (
 //
 // Route Grouping:
 //
-// All core authentication routes are grouped under "Authentication" for OpenAPI
+// All core authentication routes are grouped under "default" for OpenAPI
 // documentation. Session management routes are additionally tagged with "Session".
 //
 // Rate Limiting:
@@ -63,7 +63,7 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 	handlers := NewHandlers(authService)
 
 	// Create route group for core authentication routes
-	authGroup := router.Group(prefix, "Authentication")
+	authGroup := router.Group(prefix, "default")
 
 	// Mount Email/Password routes
 	if config == nil || config.EnableEmailPassword {
@@ -73,7 +73,7 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 			Path:        prefix + "/login",
 			Summary:     "Email/Password Login",
 			Description: "Authenticate a user with email and password",
-			Tags:        []string{"Authentication"},
+			Tags:        []string{"default"},
 			Protected:   false,
 			RequestBody: &core.RequestBodyMeta{
 				Description: "Login credentials",
@@ -92,7 +92,7 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 			Path:        prefix + "/signup",
 			Summary:     "Email/Password Registration",
 			Description: "Register a new user with email and password",
-			Tags:        []string{"Authentication"},
+			Tags:        []string{"default"},
 			Protected:   false,
 			RequestBody: &core.RequestBodyMeta{
 				Description: "Registration details",
@@ -116,7 +116,7 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 		Path:        prefix + "/logout",
 		Summary:     "Logout",
 		Description: "Invalidate the current session and log out the user",
-		Tags:        []string{"Authentication"},
+		Tags:        []string{"default"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Successfully logged out", Schema: "Success"},
@@ -130,7 +130,7 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 		Path:        prefix + "/user",
 		Summary:     "Get current user",
 		Description: "Retrieve the currently authenticated user's information",
-		Tags:        []string{"Authentication"},
+		Tags:        []string{"default"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "User information", Schema: core.SchemaUser},

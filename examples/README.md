@@ -149,7 +149,7 @@ openssl rand -base64 32
 Use it in your application:
 
 ```go
-config.WithMasterSecret([]byte(os.Getenv("MASTER_SECRET")))
+config.WithSecret([]byte(os.Getenv("MASTER_SECRET")))
 ```
 
 ### Environment Variables

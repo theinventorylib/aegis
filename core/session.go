@@ -107,6 +107,10 @@ func NewSessionService(userStore auth.UserStore, sessionStore auth.SessionStore,
 //
 // Logs a successful login audit event upon session creation.
 func (s *SessionService) CreateSession(ctx context.Context, user *auth.User, ipAddress, userAgent string) (*auth.Session, error) {
+	// Sanitize session metadata
+	ipAddress = SanitizeString(ipAddress, nil)
+	userAgent = SanitizeString(userAgent, nil)
+
 	uid := user.GetID()
 
 	token, err := generateRandomToken()
