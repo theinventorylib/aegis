@@ -100,17 +100,17 @@ func SanitizeString(input string, config *SanitizationConfig) string {
 		config = DefaultSanitizationConfig()
 	}
 
-	// Remove null bytes (prevents null byte injection)
-	input = nullByteRegex.ReplaceAllString(input, "")
-
-	// Remove script tags first (most dangerous)
-	input = scriptTagRegex.ReplaceAllString(input, "")
-
-	// Strip HTML tags if configured
+	// 1. Unescape FIRST to catch encoded payloads
 	if config.StripHTML {
-		input = htmlTagRegex.ReplaceAllString(input, "")
+		input = html.UnescapeString(input)
 		// Also decode HTML entities to prevent double-encoding attacks
 		input = html.UnescapeString(input)
+	}
+	// 2. Apply filters
+	input = nullByteRegex.ReplaceAllString(input, "")
+	input = scriptTagRegex.ReplaceAllString(input, "")
+	if config.StripHTML {
+		input = htmlTagRegex.ReplaceAllString(input, "")
 	}
 
 	// Remove control characters (except \n, \t, \r)
@@ -131,9 +131,12 @@ func SanitizeString(input string, config *SanitizationConfig) string {
 		input = strings.TrimSpace(input)
 	}
 
-	// Enforce maximum length
-	if config.MaxLength > 0 && len(input) > config.MaxLength {
-		input = input[:config.MaxLength]
+	// 3. Robust Truncation (Rune-aware)
+	if config.MaxLength > 0 {
+		runes := []rune(input)
+		if len(runes) > config.MaxLength {
+			input = string(runes[:config.MaxLength])
+		}
 	}
 
 	return input
