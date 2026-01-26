@@ -10,7 +10,7 @@ require (
 	github.com/markbates/goth v1.82.0
 	github.com/nyaruka/phonenumbers v1.6.7
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/redis/go-redis/v9 v9.17.2
+	github.com/redis/go-redis/v9 v9.17.3
 	golang.org/x/crypto v0.46.0
 )
 
