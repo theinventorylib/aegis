@@ -13,6 +13,9 @@ var postgresSchema string
 //go:embed internal/sql/mysql/schema.sql
 var mysqlSchema string
 
+//go:embed internal/sql/sqlite/schema.sql
+var sqliteSchema string
+
 // GetSchema returns the database schema for the admin plugin.
 //
 // The schema extends the 'user' table with admin-specific columns:
@@ -38,6 +41,8 @@ func GetSchema(dialect plugins.Dialect) (*plugins.Schema, error) {
 		sql = postgresSchema
 	case plugins.DialectMySQL:
 		sql = mysqlSchema
+	case plugins.DialectSQLite:
+		sql = sqliteSchema
 	default:
 		return nil, fmt.Errorf("unsupported dialect: %s", dialect)
 	}

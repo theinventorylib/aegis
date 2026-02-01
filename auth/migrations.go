@@ -93,7 +93,7 @@ DROP TABLE IF EXISTS user;
 	entries, err := migrationFS.ReadDir(dir)
 	if err != nil {
 		// If no migrations dir, just return initial
-		if strings.Contains(err.Error(), "no such file") {
+		if strings.Contains(err.Error(), "file does not exist") {
 			return []Migration{initial}, nil
 		}
 		return nil, fmt.Errorf("read migrations dir for %s: %w", dialect, err)

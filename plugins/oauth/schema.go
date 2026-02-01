@@ -24,6 +24,9 @@ var postgresSchema string
 //go:embed internal/sql/mysql/schema.sql
 var mysqlSchema string
 
+//go:embed internal/sql/sqlite/schema.sql
+var sqliteSchema string
+
 // GetSchema returns the initial database schema for the OAuth plugin.
 //
 // This function provides the CREATE TABLE statement for oauth_connections,
@@ -44,6 +47,8 @@ func GetSchema(dialect plugins.Dialect) (*plugins.Schema, error) {
 		sql = postgresAuthSchema + "\n\n" + postgresSchema
 	case plugins.DialectMySQL:
 		sql = mysqlSchema
+	case plugins.DialectSQLite:
+		sql = sqliteSchema
 	default:
 		return nil, fmt.Errorf("unsupported dialect: %s", dialect)
 	}

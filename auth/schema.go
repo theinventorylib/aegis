@@ -20,7 +20,8 @@ var postgresSchema string
 //go:embed internal/sql/mysql/schema.sql
 var mysqlSchema string
 
-// var sqliteSchema string
+//go:embed internal/sql/sqlite/schema.sql
+var sqliteSchema string
 
 // Dialect represents a database dialect/driver.
 type Dialect string
@@ -98,8 +99,8 @@ func GetSchema(dialect Dialect) (*Schema, error) {
 		sql = postgresSchema
 	case DialectMySQL:
 		sql = mysqlSchema
-	// case DialectSQLite:
-	// 	sql = sqliteSchema
+	case DialectSQLite:
+		sql = sqliteSchema
 	default:
 		return nil, fmt.Errorf("unsupported dialect: %s", dialect)
 	}
