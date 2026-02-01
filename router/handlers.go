@@ -65,12 +65,19 @@ func (h *Handlers) loginHandler(w http.ResponseWriter, r *http.Request) {
 	// Set session cookie
 	h.auth.Session.GetCookieManager().SetSessionCookie(w, result.Token)
 
+	// Convert user to EnrichedUser for consistent response format
+	enriched := core.NewEnrichedUser(&result.User)
+
+	// Return session with user data
+	config := h.auth.GetUserFieldsConfig()
+	swu := &core.SessionWithUser{
+		Session: result.Session,
+		User:    enriched,
+	}
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Login successful",
-		Data: map[string]any{
-			"user": result.User,
-		},
+		Data:    swu.ToAPIResponseFiltered(config),
 	})
 }
 
@@ -113,12 +120,19 @@ func (h *Handlers) registerHandler(w http.ResponseWriter, r *http.Request) {
 	// Set session cookie
 	h.auth.Session.GetCookieManager().SetSessionCookie(w, result.Token)
 
+	// Convert user to EnrichedUser for consistent response format
+	enriched := core.NewEnrichedUser(&result.User)
+
+	// Return session with user data
+	config := h.auth.GetUserFieldsConfig()
+	swu := &core.SessionWithUser{
+		Session: result.Session,
+		User:    enriched,
+	}
 	core.WriteJSON(w, http.StatusCreated, &core.Response{
 		Success: true,
 		Message: "Registration successful",
-		Data: map[string]any{
-			"user": result.User,
-		},
+		Data:    swu.ToAPIResponseFiltered(config),
 	})
 }
 
@@ -151,36 +165,6 @@ func (h *Handlers) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Logged out successfully",
-	})
-}
-
-// userHandler returns the current authenticated user with plugin extensions.
-func (h *Handlers) userHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Try to get enriched user first (includes plugin extensions)
-	if enriched := core.GetEnrichedUser(ctx); enriched != nil {
-		config := h.auth.GetUserFieldsConfig()
-		core.WriteJSON(w, http.StatusOK, &core.Response{
-			Success: true,
-			Data:    enriched.ToAPIResponseFiltered(config),
-		})
-		return
-	}
-
-	// Fallback to basic user
-	user, err := core.GetUser(ctx)
-	if err != nil {
-		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
-			Success: false,
-			Error:   "Not authenticated",
-		})
-		return
-	}
-
-	core.WriteJSON(w, http.StatusOK, &core.Response{
-		Success: true,
-		Data:    user,
 	})
 }
 

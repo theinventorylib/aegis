@@ -1,0 +1,2 @@
+-- JWT plugin does not require core tables
+-- This file is present for consistency with other plugins

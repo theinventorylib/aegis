@@ -4,14 +4,41 @@ This document describes the release process for Aegis.
 
 ## Overview
 
-Aegis uses automated releases via GitHub Actions and GoReleaser. When you push a version tag, the release workflow automatically:
+Aegis supports two release workflows:
 
-1. Runs tests
-2. Builds CLI binaries for multiple platforms
-3. Creates GitHub release with changelog
-4. Uploads release artifacts
+1. **Automated Release** (via GitHub Actions) - For official versioned releases
+2. **Patch Release** (via workflow dispatch) - For quick patch/minor/major releases
 
-## Creating a Release
+## Quick Patch Release (Recommended for Small Changes)
+
+For quick releases without manual tag creation:
+
+1. Go to [Actions > Patch Release](https://github.com/theinventorylib/aegis/actions/workflows/patch.yml)
+2. Click "Run workflow"
+3. Select options:
+   - **Version bump type**: patch, minor, or major
+   - **Dry run**: Preview the release without creating it
+   - **Skip tests**: Not recommended, but available for emergencies
+   - **Use GoReleaser**: Build CLI binaries for all platforms
+4. Click "Run workflow"
+
+The workflow will:
+- Calculate the next version automatically
+- Run tests (unless skipped)
+- Generate changelog from commits
+- Create and push the version tag
+- Create GitHub release (optionally with GoReleaser binaries)
+
+### Example: Patch Release
+
+```bash
+# No commands needed! Just use the GitHub UI:
+# Actions > Patch Release > Run workflow > Select "patch" > Run
+```
+
+## Manual Tag-Based Release (Traditional)
+
+For complete control over the release process:
 
 ### 1. Update Version Information
 
@@ -134,6 +161,54 @@ After release:
 - [ ] Announce release (optional)
 
 ## Automated Workflows
+
+### Patch Release Workflow
+
+**Trigger**: Manual via GitHub Actions UI
+
+**Features**:
+- Automatic version calculation (patch/minor/major)
+- Dry run mode for previewing releases
+- Optional test skipping for emergencies
+- OpSecurity Workflow (CodeQL)
+
+Runs on schedule and pull requests:
+- Security vulnerability scanning
+- Code quality analysis
+
+## Comparison: Patch Release vs Tag-Based Release
+
+| Feature | Patch Release Workflow | Tag-Based Release |
+|---------|----------------------|-------------------|
+| **Trigger** | Manual (GitHub UI) | Git tag push |
+| **Version** | Auto-calculated | Manual tag |
+| **Binaries** | Optional (flag) | Always built |
+| **Speed** | Fast (~2-3 min) | Slower (~5-10 min) |
+| **Use case** | Quick updates | Full releases |
+| **Dry run** | ✅ Available | ❌ Not available |
+
+## Best Practices
+
+**Use Patch Release for**:
+- Bug fixes
+- Minor feature additions
+- Documentation updates
+- Quick iterations during development
+
+**Use Tag-Based Release for**:
+- Major version releases
+- Releases requiring full binary distributions
+- Official production releases
+- Releases with breaking change
+- Full GoReleaser build pipeline
+- Multi-platform CLI binaries (Linux, macOS, Windows)
+- Automatic changelog generation
+- Release artifact uploads
+
+**Use cases**:
+- Official versioned releases
+- Releases with full binary distributions
+- Production releases
 
 ### CI Workflow
 

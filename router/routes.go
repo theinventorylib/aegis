@@ -18,8 +18,7 @@ import (
 // Protected Routes (require authentication):
 //
 //	POST {prefix}/logout - Invalidate session
-//	GET  {prefix}/user - Get current user data
-//	GET  {prefix}/session - Get current session info
+//	GET  {prefix}/session - Get current session with user data
 //	GET  {prefix}/sessions - List all user sessions
 //	DELETE {prefix}/sessions/:id - Revoke specific session
 //	DELETE {prefix}/sessions - Revoke all sessions
@@ -32,6 +31,10 @@ import (
 //
 // All core authentication routes are grouped under "default" for OpenAPI
 // documentation. Session management routes are additionally tagged with "Session".
+//
+// Note: Route metadata for login/signup is always registered for OpenAPI documentation,
+// but the actual handlers are only mounted when EnableEmailPassword is true.
+// User data is returned with session endpoints, not as a separate /user endpoint.
 //
 // Rate Limiting:
 //
@@ -66,44 +69,46 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 	authGroup := router.Group(prefix, "default")
 
 	// Mount Email/Password routes
+	authGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "POST",
+		Path:        prefix + "/login",
+		Summary:     "Email/Password Login",
+		Description: "Authenticate a user with email and password",
+		Tags:        []string{"default"},
+		Protected:   false,
+		RequestBody: &core.RequestBodyMeta{
+			Description: "Login credentials",
+			Required:    true,
+			Schema:      core.LoginRequest{},
+		},
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "Login successful", Schema: core.SchemaSessionWithUser},
+			"401": {Description: "Invalid credentials", Schema: core.SchemaError},
+		},
+	})
+
+	authGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "POST",
+		Path:        prefix + "/signup",
+		Summary:     "Email/Password Registration",
+		Description: "Register a new user with email and password",
+		Tags:        []string{"default"},
+		Protected:   false,
+		RequestBody: &core.RequestBodyMeta{
+			Description: "Registration details",
+			Required:    true,
+			Schema:      core.RegisterRequest{},
+		},
+		Responses: map[string]*core.ResponseMeta{
+			"201": {Description: "Registration successful", Schema: core.SchemaSessionWithUser},
+			"400": {Description: "Invalid input or user already exists", Schema: core.SchemaError},
+		},
+	})
+
+	// Mount Email/Password route handlers (conditionally based on config)
 	if config == nil || config.EnableEmailPassword {
 		authGroup.POST("/login", handlers.loginHandler)
-		authGroup.RegisterRouteMetadata(core.RouteMetadata{
-			Method:      "POST",
-			Path:        prefix + "/login",
-			Summary:     "Email/Password Login",
-			Description: "Authenticate a user with email and password",
-			Tags:        []string{"default"},
-			Protected:   false,
-			RequestBody: &core.RequestBodyMeta{
-				Description: "Login credentials",
-				Required:    true,
-				Schema:      core.LoginRequest{},
-			},
-			Responses: map[string]*core.ResponseMeta{
-				"200": {Description: "Login successful", Schema: core.SchemaSession},
-				"401": {Description: "Invalid credentials", Schema: core.SchemaError},
-			},
-		})
-
 		authGroup.POST("/signup", handlers.registerHandler)
-		authGroup.RegisterRouteMetadata(core.RouteMetadata{
-			Method:      "POST",
-			Path:        prefix + "/signup",
-			Summary:     "Email/Password Registration",
-			Description: "Register a new user with email and password",
-			Tags:        []string{"default"},
-			Protected:   false,
-			RequestBody: &core.RequestBodyMeta{
-				Description: "Registration details",
-				Required:    true,
-				Schema:      core.RegisterRequest{},
-			},
-			Responses: map[string]*core.ResponseMeta{
-				"200": {Description: "Registration successful", Schema: core.SchemaSession},
-				"400": {Description: "Invalid input or user already exists", Schema: core.SchemaError},
-			},
-		})
 	}
 
 	// Create auth middleware for protected routes
@@ -124,20 +129,6 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 		},
 	})
 
-	authGroup.GET("/user", requireAuth(http.HandlerFunc(handlers.userHandler)).ServeHTTP)
-	authGroup.RegisterRouteMetadata(core.RouteMetadata{
-		Method:      "GET",
-		Path:        prefix + "/user",
-		Summary:     "Get current user",
-		Description: "Retrieve the currently authenticated user's information",
-		Tags:        []string{"default"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "User information", Schema: core.SchemaUser},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-		},
-	})
-
 	// Protected session management routes - require active session
 	// Create a session group for better OpenAPI organization
 	sessionGroup := router.Group(prefix, "Session")
@@ -147,11 +138,11 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 		Method:      "GET",
 		Path:        prefix + "/session",
 		Summary:     "Get current session",
-		Description: "Retrieve the current session information",
+		Description: "Retrieve the current session information with user data",
 		Tags:        []string{"Session"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Current session information", Schema: core.SchemaSession},
+			"200": {Description: "Current session information", Schema: core.SchemaSessionWithUser},
 			"401": {Description: "Not authenticated", Schema: core.SchemaError},
 		},
 	})

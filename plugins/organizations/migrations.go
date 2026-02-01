@@ -58,7 +58,7 @@ func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
 	entries, err := migrationFS.ReadDir(dir)
 	if err != nil {
 		// If no migrations directory exists, return only initial schema
-		if strings.Contains(err.Error(), "no such file") {
+		if strings.Contains(err.Error(), "file does not exist") {
 			return []plugins.Migration{initial}, nil
 		}
 		return nil, fmt.Errorf("read migrations dir for %s: %w", dialect, err)
