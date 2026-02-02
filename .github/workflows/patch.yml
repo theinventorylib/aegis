@@ -75,28 +75,46 @@ jobs:
       - name: Calculate new version
         id: new_version
         run: |
-          MAJOR=${{ steps.get_version.outputs.major }}
-          MINOR=${{ steps.get_version.outputs.minor }}
-          PATCH=${{ steps.get_version.outputs.patch }}
+          LATEST_TAG="${{ steps.get_version.outputs.latest_tag }}"
           
-          case "${{ inputs.version_bump }}" in
-            major)
-              MAJOR=$((MAJOR + 1))
-              MINOR=0
-              PATCH=0
-              ;;
-            minor)
-              MINOR=$((MINOR + 1))
-              PATCH=0
-              ;;
-            patch)
-              PATCH=$((PATCH + 1))
-              ;;
-          esac
+          # Check if latest tag is a beta/pre-release
+          if [[ "$LATEST_TAG" =~ -beta\.[0-9]+$ ]]; then
+            # Extract beta number
+            BETA_NUM=$(echo "$LATEST_TAG" | grep -oP 'beta\.\K[0-9]+')
+            BASE_VERSION=$(echo "$LATEST_TAG" | sed 's/-beta\.[0-9]\+$//')
+            
+            # Increment beta number for next beta release
+            NEXT_BETA=$((BETA_NUM + 1))
+            NEW_VERSION="${BASE_VERSION}-beta.${NEXT_BETA}"
+            IS_PRERELEASE=true
+          else
+            # Regular version bump
+            MAJOR=${{ steps.get_version.outputs.major }}
+            MINOR=${{ steps.get_version.outputs.minor }}
+            PATCH=${{ steps.get_version.outputs.patch }}
+            
+            case "${{ inputs.version_bump }}" in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+            
+            NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+            IS_PRERELEASE=false
+          fi
           
-          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "New version: $NEW_VERSION"
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION (prerelease: $IS_PRERELEASE)"
 
       - name: Generate changelog
         id: changelog
@@ -154,7 +172,7 @@ jobs:
           name: Release ${{ steps.new_version.outputs.version }}
           body_path: CHANGELOG_RELEASE.md
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.new_version.outputs.is_prerelease }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
