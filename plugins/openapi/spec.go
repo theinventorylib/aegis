@@ -74,7 +74,7 @@ type Server struct {
 // ServerVariable represents a server URL template variable.
 type ServerVariable struct {
 	Enum        []string `json:"enum,omitempty"`
-	Default     string   `json:"default"`
+	Default     string   `json:"Default"`
 	Description string   `json:"description,omitempty"`
 }
 
@@ -103,7 +103,7 @@ type PathItem struct {
 // Example:
 //
 //	op := &Operation{
-//	  Tags:        []string{"default"},
+//	  Tags:        []string{"Default"},
 //	  Summary:     "Login",
 //	  Description: "Authenticate user with email and password",
 //	  RequestBody: &RequestBody{...},
