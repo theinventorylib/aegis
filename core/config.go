@@ -181,7 +181,7 @@ type CookieSettings struct {
 // DefaultAuthConfig returns default authentication configuration
 func DefaultAuthConfig() *AuthConfig {
 	return &AuthConfig{
-		EnableEmailPassword:                false, // Disabled by default
+		EnableEmailPassword:                true, // Enabled by default
 		PasswordPolicy:                     DefaultPasswordPolicyConfig(),
 		InvalidateSessionsOnPasswordChange: true, // Security best practice
 		UserFields:                         nil,  // Include all extension fields by default

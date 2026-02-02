@@ -29,7 +29,7 @@ import (
 //
 // Route Grouping:
 //
-// All core authentication routes are grouped under "default" for OpenAPI
+// All core authentication routes are grouped under "Default" for OpenAPI
 // documentation. Session management routes are additionally tagged with "Session".
 //
 // Note: Route metadata for login/signup is always registered for OpenAPI documentation,
@@ -66,15 +66,15 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 	handlers := NewHandlers(authService)
 
 	// Create route group for core authentication routes
-	authGroup := router.Group(prefix, "default")
+	authGroup := router.Group(prefix, "Default")
 
-	// Mount Email/Password routes
+	// Mount Email routes
 	authGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        prefix + "/login",
-		Summary:     "Email/Password Login",
+		Summary:     "Email Login",
 		Description: "Authenticate a user with email and password",
-		Tags:        []string{"default"},
+		Tags:        []string{"Default"},
 		Protected:   false,
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Login credentials",
@@ -90,9 +90,9 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 	authGroup.RegisterRouteMetadata(core.RouteMetadata{
 		Method:      "POST",
 		Path:        prefix + "/signup",
-		Summary:     "Email/Password Registration",
+		Summary:     "Email Registration",
 		Description: "Register a new user with email and password",
-		Tags:        []string{"default"},
+		Tags:        []string{"Default"},
 		Protected:   false,
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Registration details",
@@ -105,7 +105,7 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 		},
 	})
 
-	// Mount Email/Password route handlers (conditionally based on config)
+	// Mount Email route handlers (conditionally based on config)
 	if config == nil || config.EnableEmailPassword {
 		authGroup.POST("/login", handlers.loginHandler)
 		authGroup.POST("/signup", handlers.registerHandler)
@@ -121,7 +121,7 @@ func MountRoutes(router Router, authService *core.AuthService, config *core.Auth
 		Path:        prefix + "/logout",
 		Summary:     "Logout",
 		Description: "Invalidate the current session and log out the user",
-		Tags:        []string{"default"},
+		Tags:        []string{"Default"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Successfully logged out", Schema: "Success"},

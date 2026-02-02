@@ -349,7 +349,7 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 //	// POST /auth/jwt/token
 //	// etc.
 func (a *Aegis) MountRoutes(prefix string) {
-	// Mount core routes under the "default" subpath with optional rate limiter
+	// Mount core routes under the "Default" subpath with optional rate limiter
 	var coreAuth *core.AuthConfig
 	if a.config != nil {
 		coreAuth = a.config.CoreAuth

@@ -178,7 +178,7 @@ func New(cfg *Config) *Plugin {
 	})
 
 	// Add default tags
-	spec.AddTag(Tag{Name: "default", Description: "Core authentication endpoints"})
+	spec.AddTag(Tag{Name: "Default", Description: "Core authentication endpoints"})
 	spec.AddTag(Tag{Name: "Session", Description: "Session management endpoints"})
 
 	// Add common schemas

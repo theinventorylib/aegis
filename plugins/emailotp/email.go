@@ -211,7 +211,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 
 	// Email OTP Routes
 	handlers := NewHandlers(p)
-	emailGroup := router.Group(prefix, "EmailOTP")
+	emailGroup := router.Group(prefix, "Email OTP")
 
 	// Create auth middleware for protected routes
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
@@ -245,7 +245,7 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 		Path:        prefix + "/verify",
 		Summary:     "Verify Email OTP",
 		Description: "Verify a one-time password sent via email",
-		Tags:        []string{"EmailOTP"},
+		Tags:        []string{"Email OTP"},
 		Protected:   false,
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Email address and OTP code",
