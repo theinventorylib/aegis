@@ -1,0 +1,22 @@
+{
+  "name": "aegis-docs",
+  "version": "1.0.0",
+  "description": "Documentation for the Aegis authentication framework",
+  "main": "index.js",
+  "scripts": {
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview"
+  },
+  "keywords": [
+    "documentation",
+    "aegis",
+    "auth",
+    "go"
+  ],
+  "author": "The Inventory",
+  "license": "MIT",
+  "devDependencies": {
+    "vitepress": "^1.0.0"
+  }
+}
