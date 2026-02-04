@@ -33,6 +33,14 @@ func ValidateEmail(email string) error {
 		return fmt.Errorf("email is required")
 	}
 
+	if strings.Contains(email, " ") {
+		return fmt.Errorf("email cannot contain spaces")
+	}
+
+	if strings.Contains(email, "..") {
+		return fmt.Errorf("email cannot contain consecutive dots")
+	}
+
 	if err := validation.Validate(email, validation.Required, is.Email); err != nil {
 		return fmt.Errorf("invalid email format")
 	}
