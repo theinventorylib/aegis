@@ -324,7 +324,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members"),
 		Summary:     "Add organization member",
 		Description: "Add a new member to the organization (requires admin role)",
-		Tags:        []string{"Organizations", "Members"},
+		Tags:        []string{"Members"},
 		Protected:   true,
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Member details (userId and role)",
@@ -345,7 +345,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members"),
 		Summary:     "List organization members",
 		Description: "Retrieve all members of an organization",
-		Tags:        []string{"Organizations", "Members"},
+		Tags:        []string{"Members"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "List of organization members", Schema: SchemaMemberList},
@@ -362,7 +362,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members/:userId"),
 		Summary:     "Update member role",
 		Description: "Update a member's role in the organization (requires owner role)",
-		Tags:        []string{"Organizations", "Members"},
+		Tags:        []string{"Members"},
 		Protected:   true,
 		RequestBody: &core.RequestBodyMeta{
 			Description: "New role for the member",
@@ -383,7 +383,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members/:userId"),
 		Summary:     "Remove organization member",
 		Description: "Remove a member from the organization (requires admin role, cannot remove owner)",
-		Tags:        []string{"Organizations", "Members"},
+		Tags:        []string{"Members"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Member removed successfully", Schema: core.SchemaSuccess},
@@ -394,7 +394,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	})
 
 	// Organization-specific teams under orgGroup
-	orgTeams := orgGroup.Group("/:id/teams", "OrgTeams")
+	orgTeams := orgGroup.Group("/:id/teams", "Teams")
 
 	orgTeams.POST("/", requireAuth(http.HandlerFunc(p.CreateTeamHandler)).ServeHTTP)
 	orgTeams.RegisterRouteMetadata(core.RouteMetadata{
@@ -501,7 +501,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId/members"),
 		Summary:     "Add team member",
 		Description: "Add a member to a team (requires admin role, user must be organization member)",
-		Tags:        []string{"Teams", "Members"},
+		Tags:        []string{"Team Members"},
 		Protected:   true,
 		RequestBody: &core.RequestBodyMeta{
 			Description: "Team member details (userId and role)",
@@ -523,7 +523,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId/members"),
 		Summary:     "List team members",
 		Description: "Retrieve all members of a team",
-		Tags:        []string{"Teams", "Members"},
+		Tags:        []string{"Team Members"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "List of team members", Schema: SchemaTeamMemberList},
@@ -541,7 +541,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId/members/:userId"),
 		Summary:     "Update team member role",
 		Description: "Update a team member's role (requires admin role)",
-		Tags:        []string{"Teams", "Members"},
+		Tags:        []string{"Team Members"},
 		Protected:   true,
 		RequestBody: &core.RequestBodyMeta{
 			Description: "New role for the team member",
@@ -563,7 +563,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId/members/:userId"),
 		Summary:     "Remove team member",
 		Description: "Remove a member from a team (requires admin role)",
-		Tags:        []string{"Teams", "Members"},
+		Tags:        []string{"Team Members"},
 		Protected:   true,
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "Member removed from team successfully", Schema: core.SchemaSuccess},
@@ -573,6 +573,47 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			"404": {Description: "Team not found", Schema: core.SchemaError},
 		},
 	})
+}
+
+// EnrichUser implements plugins.UserEnricher to add organization memberships.
+//
+// This method is called automatically by the authentication system after user lookup.
+// It adds the user's organization memberships to the EnrichedUser, making them
+// available in API responses without requiring separate queries.
+//
+// Fields Added:
+//   - "organizations" ([]map[string]any): List of organizations the user belongs to,
+//     each containing id, name, and slug fields.
+//
+// Parameters:
+//   - ctx: Request context
+//   - user: EnrichedUser to populate with organization data
+//
+// Returns:
+//   - error: Always nil (organization lookup failure is not an error)
+func (p *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error {
+	if user == nil || user.User == nil {
+		return nil
+	}
+
+	orgs, err := p.GetUserOrganizations(ctx, user.ID)
+	if err != nil {
+		// Don't fail enrichment if lookup fails
+		return err
+	}
+
+	// Convert to simple list for API response
+	orgList := make([]map[string]any, len(orgs))
+	for i, org := range orgs {
+		orgList[i] = map[string]any{
+			"id":   org.ID,
+			"name": org.Name,
+			"slug": org.Slug,
+		}
+	}
+
+	user.Set("organizations", orgList)
+	return nil
 }
 
 // ========== BUSINESS LOGIC METHODS ==========
@@ -589,7 +630,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 
 // Organization operations
 
-// createOrganization creates a new organization and adds the creator as owner.
+// CreateOrganization creates a new organization and adds the creator as owner.
 //
 // This method performs two database operations atomically:
 //  1. Create organization record
@@ -604,7 +645,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 // Returns:
 //   - *Organization: Created organization with metadata
 //   - error: Database error or duplicate slug error
-func (p *Plugin) createOrganization(ctx context.Context, name, slug, ownerID string) (*Organization, error) {
+func (p *Plugin) CreateOrganization(ctx context.Context, name, slug, ownerID string) (*Organization, error) {
 	// Sanitize inputs
 	name = core.SanitizeString(name, nil)
 	slug = core.SanitizeUsername(slug, 50) // Slugs follow username-like rules
@@ -632,11 +673,13 @@ func (p *Plugin) createOrganization(ctx context.Context, name, slug, ownerID str
 	}, nil
 }
 
-func (p *Plugin) getOrganization(ctx context.Context, id string) (Organization, error) {
+// GetOrganization retrieves an organization by ID.
+func (p *Plugin) GetOrganization(ctx context.Context, id string) (Organization, error) {
 	return p.store.GetOrganization(ctx, id)
 }
 
-func (p *Plugin) updateOrganization(ctx context.Context, id, name, slug string) error {
+// UpdateOrganization updates an organization's name and slug.
+func (p *Plugin) UpdateOrganization(ctx context.Context, id, name, slug string) error {
 	// Sanitize inputs
 	name = core.SanitizeString(name, nil)
 	slug = core.SanitizeUsername(slug, 50)
@@ -644,11 +687,13 @@ func (p *Plugin) updateOrganization(ctx context.Context, id, name, slug string) 
 	return p.store.UpdateOrganization(ctx, id, name, slug, time.Now())
 }
 
-func (p *Plugin) deleteOrganization(ctx context.Context, id string) error {
+// DeleteOrganization soft-deletes an organization.
+func (p *Plugin) DeleteOrganization(ctx context.Context, id string) error {
 	return p.store.DeleteOrganization(ctx, id, time.Now())
 }
 
-func (p *Plugin) getUserOrganizations(ctx context.Context, userID string) ([]*Organization, error) {
+// GetUserOrganizations retrieves all organizations for a user.
+func (p *Plugin) GetUserOrganizations(ctx context.Context, userID string) ([]*Organization, error) {
 	orgs, err := p.store.ListUserOrganizations(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -663,7 +708,7 @@ func (p *Plugin) getUserOrganizations(ctx context.Context, userID string) ([]*Or
 
 // User Organization operations
 
-// isOrganizationMember checks if a user is a member of an organization.
+// IsOrganizationMember checks if a user is a member of an organization.
 //
 // This method is used by middleware to enforce organization access control.
 // Returns true only if the user has any role (owner, admin, or member).
@@ -675,12 +720,12 @@ func (p *Plugin) getUserOrganizations(ctx context.Context, userID string) ([]*Or
 //
 // Returns:
 //   - bool: true if user is a member with any role
-func (p *Plugin) isOrganizationMember(ctx context.Context, userID, orgID string) bool {
+func (p *Plugin) IsOrganizationMember(ctx context.Context, userID, orgID string) bool {
 	isMember, err := p.store.IsOrganizationMember(ctx, userID, orgID)
 	return err == nil && isMember
 }
 
-// isOwnerOrAdmin checks if a user is an owner or admin of an organization.
+// IsOwnerOrAdmin checks if a user is an owner or admin of an organization.
 //
 // This method enforces permission requirements for administrative actions:
 //   - Updating organization settings
@@ -694,12 +739,12 @@ func (p *Plugin) isOrganizationMember(ctx context.Context, userID, orgID string)
 //
 // Returns:
 //   - bool: true if user has owner or admin role
-func (p *Plugin) isOwnerOrAdmin(ctx context.Context, userID, orgID string) bool {
+func (p *Plugin) IsOwnerOrAdmin(ctx context.Context, userID, orgID string) bool {
 	isOwnerAdmin, err := p.store.IsOwnerOrAdmin(ctx, userID, orgID)
 	return err == nil && isOwnerAdmin
 }
 
-// isOwner checks if a user is the owner of an organization.
+// IsOwner checks if a user is the owner of an organization.
 //
 // This method enforces permission requirements for destructive actions:
 //   - Deleting organization
@@ -713,12 +758,12 @@ func (p *Plugin) isOwnerOrAdmin(ctx context.Context, userID, orgID string) bool 
 //
 // Returns:
 //   - bool: true if user has owner role
-func (p *Plugin) isOwner(ctx context.Context, userID, orgID string) bool {
+func (p *Plugin) IsOwner(ctx context.Context, userID, orgID string) bool {
 	isOwner, err := p.store.IsOwner(ctx, userID, orgID)
 	return err == nil && isOwner
 }
 
-// addOrganizationMember adds a user to an organization with a specified role.
+// AddOrganizationMember adds a user to an organization with a specified role.
 //
 // This method creates a membership record linking the user to the organization.
 // The caller must verify admin/owner permissions before calling this method.
@@ -736,20 +781,23 @@ func (p *Plugin) isOwner(ctx context.Context, userID, orgID string) bool {
 //
 // Returns:
 //   - error: Database error or duplicate membership
-func (p *Plugin) addOrganizationMember(ctx context.Context, orgID, userID, role string) error {
+func (p *Plugin) AddOrganizationMember(ctx context.Context, orgID, userID, role string) error {
 	now := time.Now()
 	return p.store.CreateMember(ctx, core.GenerateID(), userID, orgID, role, now, now)
 }
 
-func (p *Plugin) updateMemberRole(ctx context.Context, orgID, userID, role string) error {
+// UpdateMemberRole updates a user's role in an organization.
+func (p *Plugin) UpdateMemberRole(ctx context.Context, orgID, userID, role string) error {
 	return p.store.UpdateMemberRole(ctx, userID, orgID, role, time.Now())
 }
 
-func (p *Plugin) removeOrganizationMember(ctx context.Context, userID, orgID string) error {
+// RemoveOrganizationMember removes a user from an organization.
+func (p *Plugin) RemoveOrganizationMember(ctx context.Context, userID, orgID string) error {
 	return p.store.RemoveMember(ctx, userID, orgID)
 }
 
-func (p *Plugin) listOrganizationMembers(ctx context.Context, orgID string) ([]*Member, error) {
+// ListOrganizationMembers lists all members of an organization.
+func (p *Plugin) ListOrganizationMembers(ctx context.Context, orgID string) ([]*Member, error) {
 	members, err := p.store.ListOrganizationMembers(ctx, orgID)
 	if err != nil {
 		return nil, err
@@ -764,7 +812,8 @@ func (p *Plugin) listOrganizationMembers(ctx context.Context, orgID string) ([]*
 
 // Team operations
 
-func (p *Plugin) createTeam(ctx context.Context, orgID, name, description string) (*Team, error) {
+// CreateTeam creates a new team within an organization.
+func (p *Plugin) CreateTeam(ctx context.Context, orgID, name, description string) (*Team, error) {
 	// Sanitize inputs
 	name = core.SanitizeString(name, nil)
 	description = core.SanitizeMultiline(description, 500)
@@ -787,12 +836,14 @@ func (p *Plugin) createTeam(ctx context.Context, orgID, name, description string
 	}, nil
 }
 
-func (p *Plugin) getTeam(ctx context.Context, id string) (*Team, error) {
+// GetTeam retrieves a team by ID.
+func (p *Plugin) GetTeam(ctx context.Context, id string) (*Team, error) {
 	team, err := p.store.GetTeam(ctx, id)
 	return &team, err
 }
 
-func (p *Plugin) listTeams(ctx context.Context, orgID string) ([]*Team, error) {
+// ListTeams lists all teams in an organization.
+func (p *Plugin) ListTeams(ctx context.Context, orgID string) ([]*Team, error) {
 	teams, err := p.store.ListTeams(ctx, orgID)
 	if err != nil {
 		return nil, err
@@ -805,7 +856,8 @@ func (p *Plugin) listTeams(ctx context.Context, orgID string) ([]*Team, error) {
 	return result, nil
 }
 
-func (p *Plugin) updateTeam(ctx context.Context, id, name, description string) error {
+// UpdateTeam updates a team's name and description.
+func (p *Plugin) UpdateTeam(ctx context.Context, id, name, description string) error {
 	// Sanitize inputs
 	name = core.SanitizeString(name, nil)
 	description = core.SanitizeMultiline(description, 500)
@@ -813,26 +865,31 @@ func (p *Plugin) updateTeam(ctx context.Context, id, name, description string) e
 	return p.store.UpdateTeam(ctx, id, name, description, time.Now())
 }
 
-func (p *Plugin) deleteTeam(ctx context.Context, id string) error {
+// DeleteTeam deletes a team.
+func (p *Plugin) DeleteTeam(ctx context.Context, id string) error {
 	return p.store.DeleteTeam(ctx, id)
 }
 
 // Team Member operations
 
-func (p *Plugin) addTeamMember(ctx context.Context, teamID, userID, role string) error {
+// AddTeamMember adds a user to a team with a specified role.
+func (p *Plugin) AddTeamMember(ctx context.Context, teamID, userID, role string) error {
 	now := time.Now()
 	return p.store.CreateTeamMember(ctx, core.GenerateID(), teamID, userID, role, now, now)
 }
 
-func (p *Plugin) updateTeamMemberRole(ctx context.Context, teamID, userID, role string) error {
+// UpdateTeamMemberRole updates a user's role in a team.
+func (p *Plugin) UpdateTeamMemberRole(ctx context.Context, teamID, userID, role string) error {
 	return p.store.UpdateTeamMemberRole(ctx, teamID, userID, role, time.Now())
 }
 
-func (p *Plugin) removeTeamMember(ctx context.Context, teamID, userID string) error {
+// RemoveTeamMember removes a user from a team.
+func (p *Plugin) RemoveTeamMember(ctx context.Context, teamID, userID string) error {
 	return p.store.RemoveTeamMember(ctx, teamID, userID)
 }
 
-func (p *Plugin) listTeamMembers(ctx context.Context, teamID string) ([]*TeamMember, error) {
+// ListTeamMembers lists all members of a team.
+func (p *Plugin) ListTeamMembers(ctx context.Context, teamID string) ([]*TeamMember, error) {
 	members, err := p.store.ListTeamMembers(ctx, teamID)
 	if err != nil {
 		return nil, err
@@ -875,3 +932,6 @@ func (p *Plugin) GetSchemas() []plugins.Schema {
 
 	return schemas
 }
+
+// Ensure Plugin implements UserEnricher
+var _ plugins.UserEnricher = (*Plugin)(nil)

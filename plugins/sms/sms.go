@@ -320,6 +320,36 @@ func (p *Plugin) GetSchemas() []plugins.Schema {
 	return schemas
 }
 
+// EnrichUser implements plugins.UserEnricher to add phone verification status.
+//
+// This method is called automatically by the authentication system after user lookup.
+// It adds the user's phone verification status to the EnrichedUser, making it
+// available in API responses without requiring separate queries.
+//
+// Fields Added:
+//   - "phoneVerified" (bool): Whether the user's phone has been verified
+//
+// Parameters:
+//   - ctx: Request context
+//   - user: EnrichedUser to populate with phone verification data
+//
+// Returns:
+//   - error: If lookup fails
+func (p *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error {
+	if user == nil || user.User == nil {
+		return nil
+	}
+
+	// Get phone user data from store
+	phoneUser, err := p.store.GetUserByID(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	user.Set("phoneVerified", phoneUser.PhoneVerified)
+	return nil
+}
+
 // SendOTP generates and sends an OTP via SMS
 func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, purpose string) error {
 	// Sanitize phone number
@@ -467,3 +497,6 @@ func (p *Plugin) CreateUserWithPhoneAndPassword(ctx context.Context, name, phone
 
 	return u, nil
 }
+
+// Ensure Plugin implements UserEnricher
+var _ plugins.UserEnricher = (*Plugin)(nil)

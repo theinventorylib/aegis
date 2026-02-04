@@ -29,6 +29,21 @@ type Store interface {
 	//   - error: If user creation fails (e.g., duplicate phone)
 	CreateUser(ctx context.Context, user User) (*User, error)
 
+	// GetUserByID retrieves a user by their ID.
+	//
+	// Used for:
+	//   - Enriching user data with phone verification status
+	//   - Looking up phone data by user ID
+	//
+	// Parameters:
+	//   - ctx: Request context
+	//   - id: User ID to lookup
+	//
+	// Returns:
+	//   - *User: User with matching ID
+	//   - error: If user not found or database error
+	GetUserByID(ctx context.Context, id string) (*User, error)
+
 	// ========== Phone Management ==========
 
 	// GetUserByPhone retrieves a user by phone number.
