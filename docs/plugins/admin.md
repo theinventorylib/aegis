@@ -1,0 +1,23 @@
+# Admin Plugin
+
+The Admin plugin provides endpoints for managing users, sessions, and system configuration.
+
+## Installation
+
+```go
+import "github.com/theinventorylib/aegis/plugins/admin"
+```
+
+## Usage
+
+```go
+adminPlugin := admin.New(adminConfig)
+aegis.Use(ctx, adminPlugin)
+```
+
+## Features
+
+- List users
+- Ban/Unban users
+- View active sessions
+- Revoke sessions
