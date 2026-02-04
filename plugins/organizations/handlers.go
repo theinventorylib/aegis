@@ -43,7 +43,7 @@ func (p *Plugin) validateOrgAccess(w http.ResponseWriter, r *http.Request) (orgI
 		return "", false
 	}
 
-	if !p.isOrganizationMember(r.Context(), user.ID, orgID) {
+	if !p.IsOrganizationMember(r.Context(), user.ID, orgID) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return "", false
 	}
@@ -107,13 +107,13 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	org, err := p.createOrganization(r.Context(), req.Name, req.Slug, user.ID)
+	org, err := p.CreateOrganization(r.Context(), req.Name, req.Slug, user.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	core.WriteJSON(w, http.StatusCreated, map[string]any{
 		"success":      true,
 		"organization": org,
 	})
@@ -145,13 +145,13 @@ func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	orgs, err := p.getUserOrganizations(r.Context(), user.ID)
+	orgs, err := p.GetUserOrganizations(r.Context(), user.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success":       true,
 		"organizations": orgs,
 	})
@@ -187,13 +187,13 @@ func (p *Plugin) GetOrganizationHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	org, err := p.getOrganization(r.Context(), orgID)
+	org, err := p.GetOrganization(r.Context(), orgID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success":      true,
 		"organization": org,
 	})
@@ -213,7 +213,7 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !p.isOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
 		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
 		return
 	}
@@ -234,12 +234,12 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := p.updateOrganization(r.Context(), orgID, req.Name, req.Slug); err != nil {
+	if err := p.UpdateOrganization(r.Context(), orgID, req.Name, req.Slug); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Organization updated",
 	})
@@ -259,17 +259,17 @@ func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !p.isOwner(r.Context(), user.ID, orgID) {
+	if !p.IsOwner(r.Context(), user.ID, orgID) {
 		http.Error(w, "Forbidden - Owner role required", http.StatusForbidden)
 		return
 	}
 
-	if err := p.deleteOrganization(r.Context(), orgID); err != nil {
+	if err := p.DeleteOrganization(r.Context(), orgID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Organization deleted",
 	})
@@ -291,7 +291,7 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if !p.isOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
 		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
 		return
 	}
@@ -317,12 +317,12 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := p.addOrganizationMember(r.Context(), orgID, req.UserID, req.Role); err != nil {
+	if err := p.AddOrganizationMember(r.Context(), orgID, req.UserID, req.Role); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	core.WriteJSON(w, http.StatusCreated, map[string]any{
 		"success": true,
 		"message": "Member added to organization",
 	})
@@ -335,13 +335,13 @@ func (p *Plugin) ListOrganizationMembersHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	members, err := p.listOrganizationMembers(r.Context(), orgID)
+	members, err := p.ListOrganizationMembers(r.Context(), orgID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"members": members,
 	})
@@ -363,7 +363,7 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if !p.isOwner(r.Context(), user.ID, orgID) {
+	if !p.IsOwner(r.Context(), user.ID, orgID) {
 		http.Error(w, "Forbidden - Owner role required", http.StatusForbidden)
 		return
 	}
@@ -388,12 +388,12 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := p.updateMemberRole(r.Context(), orgID, userID, req.Role); err != nil {
+	if err := p.UpdateMemberRole(r.Context(), orgID, userID, req.Role); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Role updated",
 	})
@@ -415,22 +415,22 @@ func (p *Plugin) RemoveOrganizationMemberHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if !p.isOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
 		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
 		return
 	}
 
-	if p.isOwner(r.Context(), userID, orgID) {
+	if p.IsOwner(r.Context(), userID, orgID) {
 		http.Error(w, "Cannot remove owner", http.StatusBadRequest)
 		return
 	}
 
-	if err := p.removeOrganizationMember(r.Context(), orgID, userID); err != nil {
+	if err := p.RemoveOrganizationMember(r.Context(), orgID, userID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Member removed from organization",
 	})
@@ -452,7 +452,7 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !p.isOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
 		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
 		return
 	}
@@ -473,13 +473,13 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	team, err := p.createTeam(r.Context(), orgID, req.Name, req.Description)
+	team, err := p.CreateTeam(r.Context(), orgID, req.Name, req.Description)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	core.WriteJSON(w, http.StatusCreated, map[string]any{
 		"success": true,
 		"team":    team,
 	})
@@ -492,13 +492,13 @@ func (p *Plugin) ListTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teams, err := p.listTeams(r.Context(), orgID)
+	teams, err := p.ListTeams(r.Context(), orgID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"teams":   teams,
 	})
@@ -518,18 +518,18 @@ func (p *Plugin) GetTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	team, err := p.getTeam(r.Context(), teamID)
+	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
 		http.Error(w, "Team not found", http.StatusNotFound)
 		return
 	}
 
-	if !p.isOrganizationMember(r.Context(), user.ID, team.OrganizationID) {
+	if !p.IsOrganizationMember(r.Context(), user.ID, team.OrganizationID) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"team":    team,
 	})
@@ -549,13 +549,13 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	team, err := p.getTeam(r.Context(), teamID)
+	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
 		http.Error(w, "Team not found", http.StatusNotFound)
 		return
 	}
 
-	if !p.isOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
 		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
 		return
 	}
@@ -576,12 +576,12 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := p.updateTeam(r.Context(), teamID, req.Name, req.Description); err != nil {
+	if err := p.UpdateTeam(r.Context(), teamID, req.Name, req.Description); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Team updated",
 	})
@@ -601,23 +601,23 @@ func (p *Plugin) DeleteTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	team, err := p.getTeam(r.Context(), teamID)
+	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
 		http.Error(w, "Team not found", http.StatusNotFound)
 		return
 	}
 
-	if !p.isOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
 		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
 		return
 	}
 
-	if err := p.deleteTeam(r.Context(), teamID); err != nil {
+	if err := p.DeleteTeam(r.Context(), teamID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Team deleted",
 	})
@@ -639,13 +639,13 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	team, err := p.getTeam(r.Context(), teamID)
+	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
 		http.Error(w, "Team not found", http.StatusNotFound)
 		return
 	}
 
-	if !p.isOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
 		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
 		return
 	}
@@ -667,17 +667,17 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// User must be organization member before joining team
-	if !p.isOrganizationMember(r.Context(), req.UserID, team.OrganizationID) {
+	if !p.IsOrganizationMember(r.Context(), req.UserID, team.OrganizationID) {
 		http.Error(w, "User must be organization member first", http.StatusBadRequest)
 		return
 	}
 
-	if err := p.addTeamMember(r.Context(), teamID, req.UserID, req.Role); err != nil {
+	if err := p.AddTeamMember(r.Context(), teamID, req.UserID, req.Role); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	core.WriteJSON(w, http.StatusCreated, map[string]any{
 		"success": true,
 		"message": "Member added to team",
 	})
@@ -697,24 +697,24 @@ func (p *Plugin) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	team, err := p.getTeam(r.Context(), teamID)
+	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
 		http.Error(w, "Team not found", http.StatusNotFound)
 		return
 	}
 
-	if !p.isOrganizationMember(r.Context(), user.ID, team.OrganizationID) {
+	if !p.IsOrganizationMember(r.Context(), user.ID, team.OrganizationID) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	members, err := p.listTeamMembers(r.Context(), teamID)
+	members, err := p.ListTeamMembers(r.Context(), teamID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"members": members,
 	})
@@ -736,13 +736,13 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	team, err := p.getTeam(r.Context(), teamID)
+	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
 		http.Error(w, "Team not found", http.StatusNotFound)
 		return
 	}
 
-	if !p.isOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
 		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
 		return
 	}
@@ -762,12 +762,12 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := p.updateTeamMemberRole(r.Context(), teamID, userID, req.Role); err != nil {
+	if err := p.UpdateTeamMemberRole(r.Context(), teamID, userID, req.Role); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	core.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Team member role updated",
 	})
@@ -789,32 +789,20 @@ func (p *Plugin) RemoveTeamMemberHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	team, err := p.getTeam(r.Context(), teamID)
+	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
 		http.Error(w, "Team not found", http.StatusNotFound)
 		return
 	}
 
-	if !p.isOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
 		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
 		return
 	}
 
-	if err := p.removeTeamMember(r.Context(), teamID, userID); err != nil {
+	if err := p.RemoveTeamMember(r.Context(), teamID, userID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "Member removed from team",
-	})
-}
-
-// Helper function
-func writeJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	err := json.NewEncoder(w).Encode(data)
-	_ = err
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Member removed from team"})
 }

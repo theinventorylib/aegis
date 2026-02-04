@@ -72,6 +72,15 @@ func (s *DefaultSMSStore) GetUserByPhone(ctx context.Context, phone string) (*Us
 	return sqlcUserToUser(u), nil
 }
 
+// GetUserByID retrieves a user by their ID
+func (s *DefaultSMSStore) GetUserByID(ctx context.Context, id string) (*User, error) {
+	u, err := s.q.GetUserByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return sqlcUserToUser(u), nil
+}
+
 // UpdateUserPhone updates a user's phone number and verification status
 func (s *DefaultSMSStore) UpdateUserPhone(ctx context.Context, userID, phone string, verified bool) error {
 	params := sqlc.UpdateUserPhoneParams{

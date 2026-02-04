@@ -320,7 +320,7 @@ func (swu *SessionWithUser) ToAPIResponseFiltered(config *UserFieldsConfig) map[
 	}
 
 	if swu.User != nil {
-		resp["user"] = swu.ToAPIResponseFiltered(config)
+		resp["user"] = swu.User.ToAPIResponseFiltered(config)
 	}
 
 	return resp

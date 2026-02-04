@@ -300,6 +300,40 @@ func (p *Plugin) GetSchemas() []plugins.Schema {
 	return schemas
 }
 
+// EnrichUser implements plugins.UserEnricher to add email verification status.
+//
+// This method is called automatically by the authentication system after user lookup.
+// It adds the user's email verification status to the EnrichedUser, making it
+// available in API responses without requiring separate queries.
+//
+// Fields Added:
+//   - "emailVerified" (bool): Whether the user's email has been verified
+//
+// Parameters:
+//   - ctx: Request context
+//   - user: EnrichedUser to populate with email verification data
+//
+// Returns:
+//   - error: Always nil (lookup failure is not an error)
+func (p *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error {
+	if user == nil || user.User == nil {
+		return nil
+	}
+
+	if user.Email == "" {
+		return nil
+	}
+
+	emailUser, err := p.store.GetUserByEmail(ctx, user.Email)
+	if err != nil {
+		// Don't fail enrichment if lookup fails
+		return err
+	}
+
+	user.Set("emailVerified", emailUser.EmailVerified)
+	return nil
+}
+
 // SendOTP generates and sends an OTP code via email.
 //
 // OTP Generation and Delivery:
@@ -510,3 +544,6 @@ func (p *Plugin) CreateUserWithEmailAndPassword(ctx context.Context, name, email
 
 	return u, nil
 }
+
+// Ensure Plugin implements UserEnricher
+var _ plugins.UserEnricher = (*Plugin)(nil)

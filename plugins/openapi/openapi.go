@@ -478,3 +478,68 @@ func (p *Plugin) RegisterSchemaFromType(name string, example any) {
 	schema := GenerateSchema(example)
 	p.spec.AddSchema(name, schema)
 }
+
+// RegisterRouteMetadata adds a route to the OpenAPI spec from RouteMetadata.
+// This provides a simpler interface for registering user-defined routes
+// that aren't part of the Aegis authentication system.
+//
+// Example:
+//
+//	openapiPlugin.RegisterRouteMetadata(core.RouteMetadata{
+//	  Method:      "GET",
+//	  Path:        "/api/subscriptions",
+//	  Summary:     "List subscriptions",
+//	  Description: "Get all user subscriptions",
+//	  Tags:        []string{"Subscriptions"},
+//	  Protected:   true,
+//	})
+func (p *Plugin) RegisterRouteMetadata(meta core.RouteMetadata) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Create operation from metadata
+	op := &Operation{
+		Summary:     meta.Summary,
+		Description: meta.Description,
+		Tags:        meta.Tags,
+		Responses:   make(map[string]*Response),
+	}
+
+	// Add security requirement if protected
+	if meta.Protected {
+		op.Security = []SecurityRequirement{
+			{"cookieAuth": []string{}},
+			{"bearerAuth": []string{}},
+		}
+	}
+
+	// Handle Request Body
+	if meta.RequestBody != nil {
+		schema := p.resolveSchema(meta.RequestBody.Schema)
+		op.RequestBody = &RequestBody{
+			Description: meta.RequestBody.Description,
+			Required:    meta.RequestBody.Required,
+			Content: map[string]MediaType{
+				"application/json": {
+					Schema: schema,
+				},
+			},
+		}
+	}
+
+	// Handle Responses
+	for status, respMeta := range meta.Responses {
+		schema := p.resolveSchema(respMeta.Schema)
+		op.Responses[status] = &Response{
+			Description: respMeta.Description,
+			Content: map[string]MediaType{
+				"application/json": {
+					Schema: schema,
+				},
+			},
+		}
+	}
+
+	// Add path to spec
+	p.addPathOperation(meta.Path, meta.Method, op)
+}
