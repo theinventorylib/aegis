@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://theinventorylib.github.io/aegis/sitemap.xml

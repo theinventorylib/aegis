@@ -1,0 +1,183 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+/* Custom CSS for Aegis Documentation (Better Auth Inspired) */
+
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --bg-color: #ffffff;
+  --grid-color: rgba(0, 0, 0, 0.04);
+  --primary-glow: rgba(99, 102, 241, 0.4);
+}
+
+.dark {
+  --glass-bg: rgba(9, 9, 11, 0.8);
+  /* Zinc-950 approx */
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --bg-color: #09090b;
+  /* Zinc-950 */
+  --grid-color: rgba(255, 255, 255, 0.03);
+  --primary-glow: rgba(99, 102, 241, 0.2);
+}
+
+/* Base Body Styles */
+body {
+  background-color: var(--bg-color);
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Dedicated Hero Grid */
+.hero-grid {
+  background-image:
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+}
+
+/* Modern Button Styles (Better Auth Clean) */
+.btn-primary {
+  background-color: #18181b;
+  /* Zinc-900 */
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.dark .btn-primary {
+  background-color: #fafafa;
+  color: #000000;
+  border: 1px solid transparent;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  color: inherit;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background-color: var(--grid-color);
+}
+
+/* Minimalist Header and Aside */
+.docus-header {
+  backdrop-filter: blur(8px);
+  background-color: var(--glass-bg);
+  border-bottom: 1px solid var(--glass-border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.docus-aside {
+  background-color: var(--bg-color);
+  border-right: 1px solid var(--glass-border);
+}
+
+/* Sidebar Active Link Style */
+.aside-link.active {
+  background-color: var(--grid-color);
+  border-radius: 6px;
+  color: var(--primary-glow) !important;
+}
+
+/* Code Block Enhancements */
+.prose pre {
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.code-header {
+  background: #111;
+  padding: 0.4rem 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.code-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot-red {
+  background: #ff5f56;
+}
+
+.dot-yellow {
+  background: #ffbd2e;
+}
+
+.dot-green {
+  background: #27c93f;
+}
+
+.code-filename {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #666;
+}
+
+/* Custom animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out;
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Header Links styling (Minimalist) */
+.docus-header .navbar-link {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+}
+
+.docus-header .navbar-link:hover {
+  opacity: 0.7;
+}
+
+.docus-header .navbar-link.router-link-active {
+  color: var(--primary-glow) !important;
+}
