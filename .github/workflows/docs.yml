@@ -80,6 +80,10 @@ jobs:
             echo "No releases yet. Check the [GitHub repository](https://github.com/${{ github.repository }}) for updates." >> docs/content/changelog.md
           fi
 
+      - name: Build site
+        run: pnpm generate
+        working-directory: docs
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
