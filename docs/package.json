@@ -1,22 +1,17 @@
 {
   "name": "aegis-docs",
   "version": "1.0.0",
-  "description": "Documentation for the Aegis authentication framework",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
-    "docs:dev": "vitepress dev",
-    "docs:build": "vitepress build",
-    "docs:preview": "vitepress preview"
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
   },
-  "keywords": [
-    "documentation",
-    "aegis",
-    "auth",
-    "go"
-  ],
-  "author": "The Inventory",
-  "license": "MIT",
-  "devDependencies": {
-    "vitepress": "^1.0.0"
-  }
+  "dependencies": {
+    "@astrojs/starlight": "^0.24.5",
+    "astro": "^4.16.19",
+    "kleur": "^4.1.5"
+  },
+  "license": "MIT"
 }

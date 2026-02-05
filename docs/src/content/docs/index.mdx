@@ -1,0 +1,36 @@
+---
+title: Aegis
+description: The Modular Auth Framework for Go
+template: splash
+hero:
+  tagline: Type-safe, database-agnostic, and built for performance.
+  image:
+    file: ../../assets/logo.png
+  actions:
+    - text: Get Started
+      link: /aegis/guide/getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/theinventorylib/aegis
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Features
+
+<CardGrid stagger>
+	<Card title="Modular Architecture" icon="puzzle">
+		Extend functionality with 8+ official plugins including OAuth, JWT, and Multi-tenancy that you can opt-in to.
+	</Card>
+	<Card title="Type-Safe & Compiled" icon="approve-check">
+		Built with Go idioms in mind. No runtime schema magic—everything is strongly typed and checked at compile time.
+	</Card>
+	<Card title="Database Agnostic" icon="setting">
+		First-class support for PostgreSQL, MySQL, and SQLite using sqlc for type-safe queries.
+	</Card>
+	<Card title="High Performance" icon="rocket">
+		Designed for speed with minimal allocation overhead and efficient session management using Redis.
+	</Card>
+</CardGrid>

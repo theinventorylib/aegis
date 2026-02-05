@@ -1,4 +1,7 @@
-# Getting Started
+---
+title: Getting Started
+description: How to install and start using Aegis.
+---
 
 Aegis is a lightweight, modular authentication framework for Go. It provides the essential building blocks for secure authentication without forcing a specific database or router on you.
 
@@ -57,8 +60,3 @@ func main() {
     http.ListenAndServe(":8080", nil)
 }
 ```
-
-## Next Steps
-
-- Explore the [Architecture](/guide/architecture) to understand how Aegis works.
-- Check out the [Plugins](/plugins/) to add functionality like OAuth or Email/Password auth.
