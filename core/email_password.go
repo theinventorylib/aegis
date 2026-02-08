@@ -14,8 +14,12 @@ import (
 //
 // HTTP handlers are private (lowercase) and automatically mounted. For programmatic
 // use without HTTP, use the public methods:
-//   - Login(ctx, email, password, ipAddress, userAgent)
-//   - Register(ctx, name, email, password, ipAddress, userAgent)
+//   - Login(ctx, email, password)
+//   - Register(ctx, name, email, password)
+//
+// IP address and user agent are automatically extracted from the request context
+// (populated by AegisContextMiddleware). For non-HTTP usage, populate the context
+// with WithRequestMeta.
 type EmailPasswordHandlers struct {
 	authService *AuthService
 }
@@ -40,11 +44,10 @@ type LoginResult struct {
 }
 
 // Login authenticates a user with email and password programmatically.
-func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAddress, userAgent string) (*LoginResult, error) {
-	// Sanitize inputs that will be logged
+// IP address and user agent are automatically extracted from the request context.
+func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password string) (*LoginResult, error) {
+	// Sanitize inputs
 	email = SanitizeEmail(email)
-	ipAddress = SanitizeString(ipAddress, nil)
-	userAgent = SanitizeString(userAgent, nil)
 
 	// Check if account is locked out
 	if h.authService.loginAttemptTracker != nil {
@@ -53,7 +56,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAd
 			return nil, err
 		}
 		if locked {
-			_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, "", ipAddress, userAgent, false, map[string]any{
+			_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, "", false, map[string]any{
 				"email":     RedactForLog(email),
 				"reason":    "account_locked",
 				"remaining": remaining.String(),
@@ -71,7 +74,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAd
 			_ = lockout
 			_ = err
 		}
-		_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, "", ipAddress, userAgent, false, map[string]any{
+		_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, "", false, map[string]any{
 			"email":  RedactForLog(email),
 			"reason": "user_not_found",
 		})
@@ -89,7 +92,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAd
 			_ = lockout
 			_ = err
 		}
-		_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, uid, ipAddress, userAgent, false, map[string]any{
+		_ = h.authService.auditLogger.LogAuthEvent(ctx, AuditEventLoginFailed, uid, false, map[string]any{
 			"email":  RedactForLog(email),
 			"reason": "invalid_password",
 		})
@@ -103,7 +106,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, email, password, ipAd
 	}
 
 	// Create session
-	session, err := h.authService.Session.CreateSession(ctx, &user, ipAddress, userAgent)
+	session, err := h.authService.Session.CreateSession(ctx, &user)
 	if err != nil {
 		return nil, err
 	}
@@ -133,12 +136,10 @@ type RegisterResult struct {
 }
 
 // Register registers a new user with email and password programmatically.
-func (h *EmailPasswordHandlers) Register(ctx context.Context, name, email, password, ipAddress, userAgent string) (*RegisterResult, error) {
+// IP address and user agent are automatically extracted from the request context.
+func (h *EmailPasswordHandlers) Register(ctx context.Context, name, email, password string) (*RegisterResult, error) {
 	name = SanitizeString(name, nil)
 	email = SanitizeEmail(email)
-	// Sanitize inputs that will be logged
-	ipAddress = SanitizeString(ipAddress, nil)
-	userAgent = SanitizeString(userAgent, nil)
 
 	// Create user with password
 	user, err := h.authService.User.CreateUserWithEmail(ctx, name, email, password)
@@ -150,7 +151,7 @@ func (h *EmailPasswordHandlers) Register(ctx context.Context, name, email, passw
 	// Actually CreateUserWithEmail sets the email in the store.
 
 	// Create session (auto-login)
-	session, err := h.authService.Session.CreateSession(ctx, &user, ipAddress, userAgent)
+	session, err := h.authService.Session.CreateSession(ctx, &user)
 	if err != nil {
 		return nil, err
 	}

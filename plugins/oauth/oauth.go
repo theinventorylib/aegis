@@ -597,10 +597,8 @@ func (p *Plugin) CompleteAuth(ctx context.Context, w http.ResponseWriter, r *htt
 		return nil, nil, fmt.Errorf("failed to get or create user: %w", err)
 	}
 
-	// Create session
-	ipAddress := r.RemoteAddr
-	userAgent := r.Header.Get("User-Agent")
-	session, err := p.sessionService.CreateSession(ctx, &user.User, ipAddress, userAgent)
+	// Create session (IP and user agent are extracted from context)
+	session, err := p.sessionService.CreateSession(ctx, &user.User)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create session: %w", err)
 	}
@@ -801,3 +799,6 @@ func (p *Plugin) GetUserConnections(ctx context.Context, userID string) ([]*Conn
 func (p *Plugin) UnlinkAccount(ctx context.Context, userID, provider string) error {
 	return p.store.DeleteConnection(ctx, provider, userID)
 }
+
+// Ensure Plugin implements Plugin
+var _ plugins.Plugin = (*Plugin)(nil)

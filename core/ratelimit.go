@@ -382,7 +382,7 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 						keyVal = key[5:]
 					}
 				}
-				_ = limiter.auditLogger.LogAuthEvent(r.Context(), AuditEventRateLimitHit, "", getClientIP(r), r.UserAgent(), false, map[string]any{
+				_ = limiter.auditLogger.LogAuthEvent(r.Context(), AuditEventRateLimitHit, "", false, map[string]any{
 					"key_type":  keyType,
 					"key_hash":  HashShort(keyVal),
 					"path":      r.URL.Path,
