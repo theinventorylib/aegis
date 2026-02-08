@@ -22,7 +22,7 @@ export default defineNuxtConfig({
     baseURL: process.env.NODE_ENV === 'production' ? '/aegis/' : '/',
     head: {
       link: [
-        { rel: 'icon', type: 'image/x-icon', href: '/aegis/favicon.ico' }
+        { rel: 'icon', type: 'image/png', href: process.env.NODE_ENV === 'production' ? '/aegis/logo.png' : '/logo.png' }
       ]
     }
   },
