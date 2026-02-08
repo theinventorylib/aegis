@@ -18,12 +18,19 @@
 //     - Best for: Server-Side Rendered apps (Templ, HTML templates), SPAs on same domain.
 //     - Auth: HTTP-Only Cookies (secure, max-age, same-site).
 //     - Security: CSRF Protection enabled (requires Master Secret).
+//     - Bearer: Disabled by default (enable with config.WithBearerAuth(true)).
 //
 //  2. API Mode:
 //     - Best for: Mobile apps, CLI tools, Service-to-Service, standalone frontends.
-//     - Auth: "Authorization: Bearer <token>" header.
+//     - Auth: "Authorization: Bearer <token>" header (auto-enabled).
 //     - Security: CSRF checks skipped (cookies not used for auth).
 //     - Enabled via: config.WithAPIOnlyMode(true).
+//
+//  3. Dual Mode (Web + API):
+//     - Best for: Apps serving both browser clients and API consumers.
+//     - Auth: Both cookies and Bearer tokens accepted.
+//     - Security: CSRF Protection enabled for cookie-based requests.
+//     - Enabled via: config.WithBearerAuth(true) (without APIMode).
 //
 // Quick Start:
 //
@@ -285,6 +292,15 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 
 	// Create AuthService
 	aegis.auth = core.NewAuthService(cfg.CoreAuth, authConn, hashConfig, auditLogger, loginAttemptTracker)
+
+	// Enable Bearer token authentication if configured
+	// Bearer auth is auto-enabled in API mode unless explicitly disabled
+	if cfg.IsBearerAuthEnabled() {
+		aegis.auth.Session.EnableBearerAuth()
+		if cfg.Logger != nil {
+			cfg.Logger.Info("Bearer token authentication enabled")
+		}
+	}
 
 	if cfg.Logger != nil {
 		cfg.Logger.Info("Core services initialized successfully",

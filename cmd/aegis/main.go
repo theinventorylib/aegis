@@ -38,7 +38,6 @@ import (
 	"github.com/theinventorylib/aegis/exporter"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/plugins/admin"
-	"github.com/theinventorylib/aegis/plugins/bearer"
 	"github.com/theinventorylib/aegis/plugins/emailotp"
 	"github.com/theinventorylib/aegis/plugins/jwt"
 	"github.com/theinventorylib/aegis/plugins/oauth"
@@ -236,7 +235,6 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("AVAILABLE PLUGINS:")
 	fmt.Println("  - admin          Administrative endpoints for user management")
-	fmt.Println("  - bearer         Bearer token authentication support")
 	fmt.Println("  - emailotp       Email verification and authentication")
 	fmt.Println("  - jwt            JWT token generation and validation")
 	fmt.Println("  - oauth          OAuth provider integrations (Google, GitHub, etc.)")
@@ -269,7 +267,6 @@ var _ = context.Background()
 //
 // Available plugins:
 //   - admin: Administrative user management
-//   - bearer: Bearer token authentication
 //   - emailotp: Email OTP verification
 //   - jwt: JWT token authentication
 //   - oauth: OAuth provider integration
@@ -287,7 +284,6 @@ func getPluginsForExport(dialect plugins.Dialect, pluginNames []string) []plugin
 	// Create a map of all available plugins
 	allPlugins := map[string]plugins.Plugin{
 		"admin":         admin.New(nil, dialect),
-		"bearer":        bearer.New(nil),
 		"emailotp":      emailotp.New(nil, nil, dialect),
 		"jwt":           jwt.New(nil, nil, dialect),
 		"oauth":         oauth.New(nil, nil, dialect),

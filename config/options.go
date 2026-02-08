@@ -120,6 +120,14 @@ type Config struct {
 	// Use WithAPIOnlyMode to enable.
 	APIMode bool
 
+	// BearerAuth enables Bearer token authentication via the Authorization header.
+	// When enabled, clients can authenticate with "Authorization: Bearer <token>".
+	// OPTIONAL.
+	// Default: false (automatically enabled when APIMode is true)
+	// Use WithBearerAuth to enable explicitly.
+	// Can be disabled even in APIMode with WithBearerAuth(false).
+	BearerAuth *bool
+
 	// ========== PASSWORD HASHING (ARGON2ID) ==========
 
 	// Argon2Time is the number of iterations for Argon2id hashing.
@@ -289,6 +297,18 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// IsBearerAuthEnabled returns whether Bearer token authentication should be enabled.
+// Returns true if:
+//   - BearerAuth is explicitly set to true via WithBearerAuth(true), OR
+//   - APIMode is true and BearerAuth was not explicitly disabled
+func (c *Config) IsBearerAuthEnabled() bool {
+	if c.BearerAuth != nil {
+		return *c.BearerAuth
+	}
+	// Auto-enable in API mode when not explicitly set
+	return c.APIMode
+}
+
 // DeriveSecret derives a purpose-specific secret from the master secret.
 // This uses HKDF-SHA256 to cryptographically separate secrets for different purposes.
 // Returns nil if no master secret is configured.
@@ -425,9 +445,33 @@ func (c *Config) WithIDStrategy(strategy core.IDStrategy) *Config {
 }
 
 // WithAPIOnlyMode enables API-only mode (skips CSRF secret requirement)
-// Use this when building APIs without web UI
+// Use this when building APIs without web UI.
+// This automatically enables Bearer token authentication.
+// To disable bearer auth in API mode, call WithBearerAuth(false) after this.
 func (c *Config) WithAPIOnlyMode(enabled bool) *Config {
 	c.APIMode = enabled
+	return c
+}
+
+// WithBearerAuth explicitly enables or disables Bearer token authentication.
+// When enabled, the AuthMiddleware will accept session tokens via the
+// "Authorization: Bearer <token>" header in addition to cookies.
+//
+// Bearer auth is automatically enabled when APIMode is true.
+// Use WithBearerAuth(false) to explicitly disable it even in API mode.
+//
+// Example:
+//
+//	// Explicitly enable bearer auth for web+API dual mode
+//	cfg := config.Default().
+//		WithBearerAuth(true)
+//
+//	// API mode auto-enables bearer; explicitly disable it
+//	cfg := config.Default().
+//		WithAPIOnlyMode(true).
+//		WithBearerAuth(false)
+func (c *Config) WithBearerAuth(enabled bool) *Config {
+	c.BearerAuth = &enabled
 	return c
 }
 
