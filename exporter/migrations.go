@@ -339,9 +339,18 @@ atlas migrate apply --dir "file://%s" --url "%s://localhost/mydb"
 	_ = err
 	var sqlFiles []string
 	for _, file := range files {
-		if filepath.Ext(file.Name()) == ".sql" {
-			sqlFiles = append(sqlFiles, file.Name())
+		name := file.Name()
+		if filepath.Ext(name) != ".sql" {
+			continue
 		}
+		isUpDown := strings.HasSuffix(name, ".up.sql") || strings.HasSuffix(name, ".down.sql")
+		if e.format == FormatGolangMigrate && !isUpDown {
+			continue
+		}
+		if e.format != FormatGolangMigrate && isUpDown {
+			continue
+		}
+		sqlFiles = append(sqlFiles, name)
 	}
 	sort.Strings(sqlFiles)
 
