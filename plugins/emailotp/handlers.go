@@ -153,6 +153,15 @@ func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Mark email as verified after successful OTP validation
+	if err := h.plugin.MarkEmailVerified(r.Context(), req.Email); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to update email verification status",
+		})
+		return
+	}
+
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "OTP verified successfully",

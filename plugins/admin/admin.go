@@ -31,6 +31,7 @@
 //   - DELETE /admin/users/:id        - Delete user account
 //   - POST   /admin/users/:id/ban     - Ban user with reason
 //   - POST   /admin/users/:id/unban   - Unban user
+//   - PUT    /admin/users/:id/role    - Update user role
 //   - GET    /admin/stats             - Get platform statistics
 package admin
 
@@ -168,6 +169,7 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		}); ok {
 			// Register request schemas
 			oapi.RegisterSchemaFromType(SchemaBanUserRequest, BanUserRequest{})
+			oapi.RegisterSchemaFromType(SchemaUpdateRoleRequest, UpdateRoleRequest{})
 
 			// Register response schemas
 			oapi.RegisterSchemaFromType(SchemaAdminUser, User{})
@@ -286,6 +288,28 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		Responses: map[string]*core.ResponseMeta{
 			"200": {Description: "User unbanned", Schema: core.SchemaSuccess},
 			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		},
+	})
+
+	// Role management - protected
+	adminGroup.PUT("/users/:id/role", requireAdmin(http.HandlerFunc(a.updateRoleHandler)).ServeHTTP)
+	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+		Method:      "PUT",
+		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id/role"),
+		Summary:     "Update user role",
+		Description: "Update a user's role (admin only)",
+		Tags:        []string{"Admin"},
+		Protected:   true,
+		RequestBody: &core.RequestBodyMeta{
+			Description: "Role update details",
+			Required:    true,
+			Schema:      SchemaUpdateRoleRequest,
+		},
+		Responses: map[string]*core.ResponseMeta{
+			"200": {Description: "Role updated", Schema: core.SchemaSuccess},
+			"400": {Description: "Invalid request", Schema: core.SchemaError},
+			"401": {Description: "Not authorized", Schema: core.SchemaError},
+			"404": {Description: "User not found", Schema: core.SchemaError},
 		},
 	})
 
@@ -462,3 +486,6 @@ func (a *Plugin) GetAdminUser(ctx context.Context, userID string) (User, error) 
 
 // Ensure Admin implements UserEnricher
 var _ plugins.UserEnricher = (*Plugin)(nil)
+
+// Ensure Admin implements Plugin
+var _ plugins.Plugin = (*Plugin)(nil)

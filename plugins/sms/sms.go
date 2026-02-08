@@ -498,5 +498,57 @@ func (p *Plugin) CreateUserWithPhoneAndPassword(ctx context.Context, name, phone
 	return u, nil
 }
 
+// MarkPhoneVerified marks a user's phone as verified in the database.
+//
+// This is called automatically by VerifyOTPHandler after successful OTP verification.
+// It can also be called programmatically to mark a phone number as verified.
+//
+// Parameters:
+//   - ctx: Request context
+//   - phone: Phone number to mark as verified (E.164 format)
+//
+// Returns:
+//   - error: If user lookup or update fails
+//
+// Example:
+//
+//	err := plugin.MarkPhoneVerified(ctx, "+14155551234")
+func (p *Plugin) MarkPhoneVerified(ctx context.Context, phone string) error {
+	if p.store == nil {
+		return fmt.Errorf("store not configured")
+	}
+
+	user, err := p.store.GetUserByPhone(ctx, phone)
+	if err != nil {
+		return fmt.Errorf("user not found for phone: %w", err)
+	}
+
+	return p.store.UpdateUserPhone(ctx, user.ID, phone, true)
+}
+
+// UpdateUserPhone updates a user's phone number and verification status programmatically.
+//
+// Parameters:
+//   - ctx: Request context
+//   - userID: User ID to update
+//   - phone: New phone number (E.164 format)
+//   - verified: Whether the phone is verified
+//
+// Returns:
+//   - error: If update fails
+//
+// Example:
+//
+//	err := plugin.UpdateUserPhone(ctx, "user_123", "+14155551234", false)
+func (p *Plugin) UpdateUserPhone(ctx context.Context, userID, phone string, verified bool) error {
+	if p.store == nil {
+		return fmt.Errorf("store not configured")
+	}
+	return p.store.UpdateUserPhone(ctx, userID, phone, verified)
+}
+
 // Ensure Plugin implements UserEnricher
 var _ plugins.UserEnricher = (*Plugin)(nil)
+
+// Ensure Plugin implements Plugin
+var _ plugins.Plugin = (*Plugin)(nil)

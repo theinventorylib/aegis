@@ -543,3 +543,6 @@ func (p *Plugin) RegisterRouteMetadata(meta core.RouteMetadata) {
 	// Add path to spec
 	p.addPathOperation(meta.Path, meta.Method, op)
 }
+
+// Ensure Plugin implements Plugin
+var _ plugins.Plugin = (*Plugin)(nil)

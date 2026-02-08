@@ -69,6 +69,20 @@ type BanUserRequest struct {
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"` // Ban expiration (nil = permanent)
 }
 
+// UpdateRoleRequest represents a request to update a user's role.
+//
+// Validation:
+//   - role: Required, the new role to assign to the user (e.g., "admin", "user")
+//
+// Example:
+//
+//	{
+//	  "role": "admin"
+//	}
+type UpdateRoleRequest struct {
+	Role string `json:"role"` // New role to assign (required)
+}
+
 // ========== Response DTOs ==========
 
 // UserListResponse represents a paginated list of users.
