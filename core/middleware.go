@@ -157,7 +157,7 @@ func handleAuth(sessionService *SessionService, cookieManager *CookieManager, ne
 		}
 	} else if sessionService.IsBearerAuthEnabled() {
 		// Only check Authorization header if bearer auth is explicitly enabled
-		// This requires the bearer plugin to be registered
+		// This is enabled via config.WithBearerAuth(true) or config.WithAPIOnlyMode(true)
 		token := r.Header.Get("Authorization")
 		if token != "" {
 			// Remove "Bearer " prefix if present
