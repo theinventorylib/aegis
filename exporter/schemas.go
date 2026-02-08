@@ -169,9 +169,14 @@ Complete database schema exported from Aegis authentication library.
 	_ = err
 	var sqlFiles []string
 	for _, file := range files {
-		if filepath.Ext(file.Name()) == ".sql" {
-			sqlFiles = append(sqlFiles, file.Name())
+		name := file.Name()
+		if filepath.Ext(name) != ".sql" {
+			continue
 		}
+		if strings.HasSuffix(name, ".up.sql") || strings.HasSuffix(name, ".down.sql") {
+			continue
+		}
+		sqlFiles = append(sqlFiles, name)
 	}
 	sort.Strings(sqlFiles)
 
