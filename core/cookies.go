@@ -154,7 +154,7 @@ func (cm *CookieManager) GetSessionCookieName() string {
 //
 // Example:
 //
-//	session, _ := sessionService.CreateSession(ctx, user, ip, userAgent)
+//	session, _ := sessionService.CreateSession(ctx, user)
 //	cookieManager.SetSessionCookie(w, session.Token)
 func (cm *CookieManager) SetSessionCookie(w http.ResponseWriter, token string) {
 	cm.SetCookie(w, cm.GetSessionCookieName(), token, cm.config.SessionExpiry)

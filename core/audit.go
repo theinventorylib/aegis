@@ -117,7 +117,9 @@ type AuditLogger interface {
 
 	// LogAuthEvent is a convenience method for common authentication events.
 	// Creates and logs an AuditEvent with authentication-specific fields.
-	LogAuthEvent(ctx context.Context, eventType AuditEventType, userID, ipAddress, userAgent string, success bool, details map[string]any) error
+	// IP address and user agent are automatically extracted from the request
+	// context (populated by AegisContextMiddleware).
+	LogAuthEvent(ctx context.Context, eventType AuditEventType, userID string, success bool, details map[string]any) error
 }
 
 // NoOpAuditLogger is a no-op implementation that discards all events.
@@ -130,7 +132,7 @@ func (n *NoOpAuditLogger) LogEvent(_ context.Context, _ *AuditEvent) error {
 }
 
 // LogAuthEvent implements AuditLogger.
-func (n *NoOpAuditLogger) LogAuthEvent(_ context.Context, _ AuditEventType, _, _, _ string, _ bool, _ map[string]any) error {
+func (n *NoOpAuditLogger) LogAuthEvent(_ context.Context, _ AuditEventType, _ string, _ bool, _ map[string]any) error {
 	return nil
 }
 
@@ -186,13 +188,14 @@ func (l *LoggerAuditLogger) LogEvent(_ context.Context, event *AuditEvent) error
 }
 
 // LogAuthEvent implements AuditLogger.
-func (l *LoggerAuditLogger) LogAuthEvent(ctx context.Context, eventType AuditEventType, userID, ipAddress, userAgent string, success bool, details map[string]any) error {
+// IP address and user agent are extracted from the request context.
+func (l *LoggerAuditLogger) LogAuthEvent(ctx context.Context, eventType AuditEventType, userID string, success bool, details map[string]any) error {
 	event := &AuditEvent{
 		ID:        GenerateID(),
 		EventType: eventType,
 		UserID:    userID,
-		IPAddress: ipAddress,
-		UserAgent: userAgent,
+		IPAddress: GetIPAddress(ctx),
+		UserAgent: GetUserAgent(ctx),
 		Details:   details,
 		Timestamp: time.Now(),
 		Success:   success,

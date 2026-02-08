@@ -111,7 +111,7 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 
 	// Create session
 	if h.plugin.sessionService != nil {
-		session, err := h.plugin.sessionService.CreateSession(r.Context(), user, r.RemoteAddr, r.UserAgent())
+		session, err := h.plugin.sessionService.CreateSession(r.Context(), user)
 		if err != nil {
 			core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 				Success: false,
@@ -220,7 +220,7 @@ func (h *Handlers) RegisterWithPhoneHandler(w http.ResponseWriter, r *http.Reque
 
 	// Create session (auto-login)
 	if h.plugin.sessionService != nil {
-		session, err := h.plugin.sessionService.CreateSession(r.Context(), &user.User, r.RemoteAddr, r.UserAgent())
+		session, err := h.plugin.sessionService.CreateSession(r.Context(), &user.User)
 		if err != nil {
 			core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 				Success: false,
@@ -364,6 +364,15 @@ func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid or expired OTP",
+		})
+		return
+	}
+
+	// Mark phone as verified after successful OTP validation
+	if err := h.plugin.MarkPhoneVerified(r.Context(), req.PhoneNumber); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to update phone verification status",
 		})
 		return
 	}

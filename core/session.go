@@ -96,20 +96,20 @@ func NewSessionService(userStore auth.UserStore, sessionStore auth.SessionStore,
 // cached in Redis for fast subsequent lookups.
 //
 // Parameters:
-//   - ctx: Request context for cancellation
+//   - ctx: Request context for cancellation. Must contain RequestMeta
+//     (populated by AegisContextMiddleware) for IP address and user agent.
 //   - user: The authenticated user to create a session for
-//   - ipAddress: Client IP address for security auditing
-//   - userAgent: Client user agent for security auditing
 //
 // Returns the created session with populated Token and RefreshToken fields.
 // These tokens should be sent to the client (typically via HTTP-only cookies
 // or Authorization header).
 //
 // Logs a successful login audit event upon session creation.
-func (s *SessionService) CreateSession(ctx context.Context, user *auth.User, ipAddress, userAgent string) (*auth.Session, error) {
-	// Sanitize session metadata
-	ipAddress = SanitizeString(ipAddress, nil)
-	userAgent = SanitizeString(userAgent, nil)
+func (s *SessionService) CreateSession(ctx context.Context, user *auth.User) (*auth.Session, error) {
+	// Extract IP address and user agent from request context
+	// (populated by AegisContextMiddleware)
+	ipAddress := SanitizeString(GetIPAddress(ctx), nil)
+	userAgent := SanitizeString(GetUserAgent(ctx), nil)
 
 	uid := user.GetID()
 
@@ -142,7 +142,7 @@ func (s *SessionService) CreateSession(ctx context.Context, user *auth.User, ipA
 		s.cacheSession(ctx, &session)
 	}
 
-	_ = s.auditLogger.LogAuthEvent(ctx, AuditEventLoginSuccess, uid, ipAddress, userAgent, true, nil)
+	_ = s.auditLogger.LogAuthEvent(ctx, AuditEventLoginSuccess, uid, true, nil)
 	return &session, nil
 }
 
@@ -276,7 +276,7 @@ func (s *SessionService) DeleteSession(ctx context.Context, token string) error 
 	err = s.sessionStore.Delete(ctx, token)
 	if err == nil {
 		s.invalidateSessionCache(ctx, &session)
-		_ = s.auditLogger.LogAuthEvent(ctx, AuditEventLogout, session.UserID, session.IPAddress, session.UserAgent, true, nil)
+		_ = s.auditLogger.LogAuthEvent(ctx, AuditEventLogout, session.UserID, true, nil)
 	}
 	return err
 }

@@ -45,7 +45,7 @@ func (h *Handlers) loginHandler(w http.ResponseWriter, r *http.Request) {
 	// Sanitize inputs
 	req.Email = core.SanitizeEmail(req.Email)
 
-	result, err := h.auth.EmailPassword.Login(r.Context(), req.Email, req.Password, r.RemoteAddr, r.UserAgent())
+	result, err := h.auth.EmailPassword.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		status := http.StatusUnauthorized
 		msg := err.Error()
@@ -108,7 +108,7 @@ func (h *Handlers) registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.auth.EmailPassword.Register(r.Context(), req.Name, req.Email, req.Password, r.RemoteAddr, r.UserAgent())
+	result, err := h.auth.EmailPassword.Register(r.Context(), req.Name, req.Email, req.Password)
 	if err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,

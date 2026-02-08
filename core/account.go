@@ -125,13 +125,13 @@ func (s *AccountService) UpdatePassword(ctx context.Context, userID, newPassword
 		// Log the error but don't fail the password update
 		// Session invalidation is best-effort - if it fails, existing sessions remain valid
 		// until they expire naturally, but the password has been changed successfully
-		_ = s.auditLogger.LogAuthEvent(ctx, "session_deletion_failed", userID, "", "", false, map[string]any{
+		_ = s.auditLogger.LogAuthEvent(ctx, "session_deletion_failed", userID, false, map[string]any{
 			"error":  err.Error(),
 			"reason": "password_change",
 		})
 	}
 
-	_ = s.auditLogger.LogAuthEvent(ctx, AuditEventPasswordChanged, userID, "", "", true, nil)
+	_ = s.auditLogger.LogAuthEvent(ctx, AuditEventPasswordChanged, userID, true, nil)
 	return nil
 }
 
