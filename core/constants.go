@@ -126,7 +126,8 @@ const (
 	// DefaultCookieHTTPOnly is the default HttpOnly attribute
 	DefaultCookieHTTPOnly = true
 	// DefaultCookieSecure is the default Secure attribute
-	DefaultCookieSecure = false
+	// Ensures cookies are only sent over HTTPS in production
+	DefaultCookieSecure = true
 )
 
 // Provider constants
