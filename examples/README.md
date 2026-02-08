@@ -49,11 +49,11 @@ This directory contains practical examples demonstrating how to use Aegis for di
 - Stateless JWT authentication
 - API-only mode (no cookies)
 - Short-lived access tokens + refresh tokens
-- API key generation (Bearer tokens)
+- API key generation (Bearer tokens, auto-enabled in API mode)
 - CORS configuration
 - Token revocation
 
-**Key Technologies:** JWT plugin, Bearer plugin, CORS
+**Key Technologies:** JWT plugin, Bearer auth (config), CORS
 
 ---
 
