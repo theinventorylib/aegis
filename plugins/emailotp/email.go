@@ -545,5 +545,57 @@ func (p *Plugin) CreateUserWithEmailAndPassword(ctx context.Context, name, email
 	return u, nil
 }
 
+// MarkEmailVerified marks a user's email as verified in the database.
+//
+// This is called automatically by VerifyOTPHandler after successful OTP verification.
+// It can also be called programmatically to mark an email as verified.
+//
+// Parameters:
+//   - ctx: Request context
+//   - email: Email address to mark as verified
+//
+// Returns:
+//   - error: If user lookup or update fails
+//
+// Example:
+//
+//	err := plugin.MarkEmailVerified(ctx, "user@example.com")
+func (p *Plugin) MarkEmailVerified(ctx context.Context, email string) error {
+	if p.store == nil {
+		return fmt.Errorf("store not configured")
+	}
+
+	user, err := p.store.GetUserByEmail(ctx, email)
+	if err != nil {
+		return fmt.Errorf("user not found for email: %w", err)
+	}
+
+	return p.store.UpdateUserEmail(ctx, user.ID, email, true)
+}
+
+// UpdateUserEmail updates a user's email address and verification status programmatically.
+//
+// Parameters:
+//   - ctx: Request context
+//   - userID: User ID to update
+//   - email: New email address
+//   - verified: Whether the email is verified
+//
+// Returns:
+//   - error: If update fails
+//
+// Example:
+//
+//	err := plugin.UpdateUserEmail(ctx, "user_123", "new@example.com", false)
+func (p *Plugin) UpdateUserEmail(ctx context.Context, userID, email string, verified bool) error {
+	if p.store == nil {
+		return fmt.Errorf("store not configured")
+	}
+	return p.store.UpdateUserEmail(ctx, userID, email, verified)
+}
+
 // Ensure Plugin implements UserEnricher
 var _ plugins.UserEnricher = (*Plugin)(nil)
+
+// Ensure Plugin implements Plugin
+var _ plugins.Plugin = (*Plugin)(nil)

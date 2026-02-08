@@ -935,3 +935,6 @@ func (p *Plugin) RotateKeys(ctx context.Context) error {
 func (p *Plugin) CleanupExpiredKeys(ctx context.Context) error {
 	return p.store.DeleteExpiredJWKS(ctx)
 }
+
+// Ensure Plugin implements Plugin
+var _ plugins.Plugin = (*Plugin)(nil)

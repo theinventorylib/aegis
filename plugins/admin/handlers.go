@@ -125,6 +125,62 @@ func (a *Plugin) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ========== ROLE MANAGEMENT HANDLERS ==========
+
+// updateRoleHandler updates a user's role.
+func (a *Plugin) updateRoleHandler(w http.ResponseWriter, r *http.Request) {
+	userID := core.GetSanitizedPathParam(r, "id")
+	if userID == "" {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "User ID required",
+		})
+		return
+	}
+
+	var req UpdateRoleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "Invalid request",
+		})
+		return
+	}
+
+	// Sanitize role input
+	req.Role = core.SanitizeString(req.Role, nil)
+
+	if req.Role == "" {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "Role is required",
+		})
+		return
+	}
+
+	// Verify user exists before assigning role
+	if _, err := a.GetUser(r.Context(), userID); err != nil {
+		core.WriteJSON(w, http.StatusNotFound, &core.Response{
+			Success: false,
+			Error:   "User not found",
+		})
+		return
+	}
+
+	if err := a.AssignRole(r.Context(), userID, req.Role); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to update role",
+		})
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Role updated",
+	})
+}
+
 // ========== BAN MANAGEMENT HANDLERS ==========
 
 // banUserHandler bans a user with a reason and optional expiry date.

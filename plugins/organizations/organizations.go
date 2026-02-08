@@ -935,3 +935,6 @@ func (p *Plugin) GetSchemas() []plugins.Schema {
 
 // Ensure Plugin implements UserEnricher
 var _ plugins.UserEnricher = (*Plugin)(nil)
+
+// Ensure Plugin implements Plugin
+var _ plugins.Plugin = (*Plugin)(nil)
