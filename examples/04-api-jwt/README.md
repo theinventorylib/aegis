@@ -8,7 +8,7 @@ This example demonstrates how to build a stateless REST API with JWT authenticat
 - API-only mode (no cookies, no CSRF)
 - Short-lived access tokens (15 minutes)
 - Long-lived refresh tokens (7 days)
-- API key authentication (Bearer tokens)
+- API key authentication (Bearer tokens, auto-enabled in API mode)
 - Token revocation/blacklisting
 - CORS enabled for cross-origin requests
 - Role-based access control ready
@@ -43,13 +43,12 @@ createdb aegis_jwt
 # Install Aegis CLI
 go install github.com/theinventorylib/aegis/cmd/aegis@latest
 
-# Export migrations with JWT and Bearer plugins
-aegis export --dialect postgres --plugins jwt,bearer --output ./migrations
+# Export migrations with JWT plugin
+aegis export --dialect postgres --plugins jwt --output ./migrations
 
 # Run migrations
 psql aegis_jwt < migrations/001_aegis_auth_schema.sql
 psql aegis_jwt < migrations/002_jwt_schema.sql
-psql aegis_jwt < migrations/003_bearer_schema.sql
 ```
 
 ### 4. Configure Application
@@ -166,52 +165,7 @@ Response:
 }
 ```
 
-### 5. Create API Key (Long-lived Token)
-
-For server-to-server authentication, create an API key:
-
-```bash
-curl -X POST http://localhost:8080/auth/bearer/create \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Production Server",
-    "expires_in": "365d"
-  }'
-```
-
-Response:
-```json
-{
-  "success": true,
-  "api_key": "ak_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-}
-```
-
-**Important:** Save this key securely! It won't be shown again.
-
-Use the API key like a JWT:
-
-```bash
-curl http://localhost:8080/api/profile \
-  -H "Authorization: Bearer ak_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-```
-
-### 6. List API Keys
-
-```bash
-curl http://localhost:8080/auth/bearer/list \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-### 7. Revoke API Key
-
-```bash
-curl -X DELETE http://localhost:8080/auth/bearer/key_id \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-### 8. Revoke JWT Token
+### 5. Revoke JWT Token
 
 To logout or invalidate a token before expiry:
 

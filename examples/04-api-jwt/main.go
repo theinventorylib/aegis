@@ -5,7 +5,7 @@
 //   - JWT token generation and validation
 //   - Stateless authentication (no session storage)
 //   - Token refresh mechanism
-//   - Bearer token authentication
+//   - Bearer token authentication (auto-enabled in API mode)
 //
 // Run this example:
 //  1. Set up a PostgreSQL database
@@ -31,7 +31,6 @@ import (
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/plugins/bearer"
 	"github.com/theinventorylib/aegis/plugins/jwt"
 	"github.com/theinventorylib/aegis/router"
 )
@@ -75,16 +74,13 @@ func main() {
 	}
 	jwtPlugin := jwt.New(jwtConfig, nil, plugins.DialectPostgres)
 
-	// 5. Create Bearer token plugin for API key authentication
-	bearerConfig := &bearer.Config{}
-	bearerPlugin := bearer.New(bearerConfig)
-
-	// 6. Create Aegis instance in API-only mode
+	// 5. Create Aegis instance in API-only mode
+	// Bearer token auth is auto-enabled via WithAPIOnlyMode
 	a, err := aegis.New(context.Background(),
 		config.WithDB(db),
 		config.WithRouter(r),
 		config.WithSecret([]byte("your-32-byte-secret-key-here!!!!")),
-		config.WithAPIOnlyMode(true), // Disable cookies and CSRF
+		config.WithAPIOnlyMode(true), // Disable cookies/CSRF, auto-enable Bearer auth
 	)
 	if err != nil {
 		log.Fatal("Failed to create Aegis instance:", err)
@@ -94,26 +90,19 @@ func main() {
 	if err := a.Use(context.Background(), jwtPlugin); err != nil {
 		log.Fatal("Failed to register JWT plugin:", err)
 	}
-	if err := a.Use(context.Background(), bearerPlugin); err != nil {
-		log.Fatal("Failed to register Bearer plugin:", err)
-	}
 
-	// 7. Mount Aegis routes
+	// 6. Mount Aegis routes
 	// JWT plugin adds these routes:
 	//   - POST /auth/jwt/token         - Generate JWT from session
 	//   - POST /auth/jwt/refresh       - Refresh JWT token
 	//   - POST /auth/jwt/revoke        - Revoke JWT token
-	// Bearer plugin adds:
-	//   - POST /auth/bearer/create     - Create API key
-	//   - GET  /auth/bearer/list       - List API keys
-	//   - DELETE /auth/bearer/:id      - Revoke API key
 	a.MountRoutes("/auth")
 
-	// 8. Public endpoints
+	// 6. Public endpoints
 	mux.Get("/", apiDocsHandler)
 	mux.Get("/health", healthHandler)
 
-	// 9. Protected endpoints (JWT or Bearer token required)
+	// 7. Protected endpoints (JWT or Bearer token required)
 	mux.Group(func(r chi.Router) {
 		r.Use(a.RequireAuth())
 
@@ -123,7 +112,7 @@ func main() {
 		r.Delete("/api/data/{id}", deleteDataHandler)
 	})
 
-	// 10. Admin endpoints (example of role-based access)
+	// 8. Admin endpoints (example of role-based access)
 	mux.Group(func(r chi.Router) {
 		r.Use(a.RequireAuth())
 		// In production, add role checking middleware here
@@ -231,26 +220,7 @@ curl -X POST http://localhost:8080/auth/jwt/refresh \\
             </div>
         </div>
         
-        <div class="section">
-            <h2>🔑 API Key Endpoints</h2>
-            
-            <div class="endpoint">
-                <span class="method post">POST</span> <code>/auth/bearer/create</code>
-                <p>Create a long-lived API key (requires authentication)</p>
-                <p><strong>Body:</strong> <code>{"name": "My API Key", "expires_in": "30d"}</code></p>
-                <p><strong>Returns:</strong> API key (save it securely!)</p>
-            </div>
-            
-            <div class="endpoint">
-                <span class="method get">GET</span> <code>/auth/bearer/list</code>
-                <p>List all API keys for authenticated user</p>
-            </div>
-            
-            <div class="endpoint">
-                <span class="method delete">DELETE</span> <code>/auth/bearer/:id</code>
-                <p>Revoke an API key</p>
-            </div>
-        </div>
+
         
         <div class="section">
             <h2>📊 Protected API Endpoints</h2>
@@ -284,7 +254,7 @@ curl -X POST http://localhost:8080/auth/jwt/refresh \\
                 <li><strong>Short-lived tokens:</strong> Access tokens expire in 15 minutes</li>
                 <li><strong>Refresh tokens:</strong> Long-lived (7 days) for obtaining new access tokens</li>
                 <li><strong>Token revocation:</strong> Blacklist tokens before expiry</li>
-                <li><strong>API keys:</strong> Long-lived tokens for service-to-service authentication</li>
+                <li><strong>Bearer auth:</strong> Auto-enabled in API mode via config</li>
                 <li><strong>CORS enabled:</strong> Safe cross-origin requests</li>
             </ul>
         </div>
@@ -294,7 +264,7 @@ curl -X POST http://localhost:8080/auth/jwt/refresh \\
             <ul>
                 <li>Store tokens securely (never in localStorage for web apps)</li>
                 <li>Implement token refresh logic before expiry</li>
-                <li>Use API keys for server-to-server communication</li>
+                <li>Bearer auth is auto-enabled in API mode (no plugin needed)</li>
                 <li>Set short expiry times for access tokens (5-15 minutes)</li>
                 <li>Always use HTTPS in production</li>
                 <li>Implement rate limiting for public endpoints</li>
