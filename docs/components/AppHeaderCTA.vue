@@ -24,7 +24,7 @@ const isActive = (to: string) => {
       v-for="link in links"
       :key="link.to"
       :to="link.to"
-      class="sm:hidden md:flex lg:flex px-4 py-2 text-sm font-medium transition-all duration-200 border-b-2"
+      class="hidden md:flex lg:flex px-4 py-2 text-sm font-medium transition-all duration-200 border-b-2"
       :class="[
         isActive(link.to) 
           ? 'text-blue-500 border-blue-500 bg-blue-500/5' 

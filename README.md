@@ -21,15 +21,17 @@
 - **Password Authentication**: Argon2id hashing built into core (not a plugin)
 - **Developer Friendly**: No auto-migration magic, fully typed API
 
-### 8 Official Plugins
+### 7 Official Plugins
 - **Email** - Email verification via OTP and email+password auth
 - **SMS** - Phone number verification via OTP
 - **OAuth** - Social login (Google, GitHub, and more)
 - **JWT** - Token generation, validation, and rotation
-- **Bearer** - Bearer token authentication support
 - **Admin** - Administrative endpoints for user management
 - **Organizations** - Multi-tenant organization and team support
 - **OpenAPI** - Interactive API documentation with Scalar UI
+
+### Built-in Features
+- **Bearer Auth** - Token authentication via `Authorization` header (config option, auto-enabled in API mode)
 
 ### CLI Tool
 - **Migration Export**: Export database migrations in multiple formats

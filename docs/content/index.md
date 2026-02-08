@@ -4,59 +4,7 @@ seo:
   description: A modular, database-agnostic authentication framework for Go with session management, CSRF protection, and official plugins for Email, SMS, OAuth, JWT, and more.
 ---
 
-::u-page-hero
----
-orientation: horizontal
-class: "relative overflow-hidden pt-24 pb-48 hero-grid"
----
-
-<div class="edge-glow-top"></div>
-
-#title
-<span class="text-black dark:text-white">Aegis</span>
-
-#description
-The most robust authentication framework for Go developers. Simple, modular, and built for performance.
-
-#links
-  :::u-button
-  ---
-  to: /get-started/installation
-  class: "btn-primary translate-z-0"
-  ---
-  Get started
-  <span class="i-lucide-arrow-right"></span>
-  :::
-
-  :::u-button
-  ---
-  to: https://github.com/theinventorylib/aegis
-  variant: ghost
-  class: "hover:opacity-60 transition-opacity font-medium"
-  ---
-  <span class="simple-icons-github mr-2"></span>
-  GitHub
-  :::
-
-#image
-<div class="relative group mt-8 sm:mt-0">
-  <div class="relative bg-black/90 rounded-xl border border-white/5 overflow-hidden shadow-2xl backdrop-blur-sm">
-    <div class="code-header">
-      <div class="code-dots"><div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div></div>
-      <div class="code-filename">main.go</div>
-    </div>
-    <div class="p-8 font-mono text-[13px] leading-relaxed">
-      <span class="text-blue-400">auth</span>, <span class="text-red-400">_</span> := aegis.<span class="text-yellow-400">New</span>(ctx, &config.Config{<br/>
-      &nbsp;&nbsp;DB: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;db,<br/>
-      &nbsp;&nbsp;Secret: &nbsp;<span class="text-green-400">"secure-key"</span>,<br/>
-      &nbsp;&nbsp;Plugins: []aegis.Plugin{<br/>
-      &nbsp;&nbsp;&nbsp;&nbsp;email.<span class="text-yellow-400">New</span>(),<br/>
-      &nbsp;&nbsp;&nbsp;&nbsp;oauth.<span class="text-yellow-400">New</span>(),<br/>
-      &nbsp;&nbsp;},<br/>
-      })
-    </div>
-  </div>
-</div>
+::hero-section
 ::
 
 ::u-page-section
@@ -147,7 +95,7 @@ Core Features
   Modular Plugins
   
   #description
-  Extend Aegis with official plugins for Email OTP, SMS, OAuth, JWT, Bearer tokens, Admin management, and multi-tenant Organizations.
+  Extend Aegis with official plugins for Email OTP, SMS, OAuth, JWT, Admin management, and multi-tenant Organizations.
   :::
 
   :::u-page-feature
@@ -226,7 +174,7 @@ Extend Aegis with our growing ecosystem of official plugins. Each plugin is self
   color: indigo
   ---
   #title
-  JWT & Bearer
+  JWT
   
   #description
   Standardized token generation, validation, and rotation for API authentication.
@@ -267,97 +215,6 @@ Extend Aegis with our growing ecosystem of official plugins. Each plugin is self
   #description
   Interactive documentation for your auth endpoints with Scalar UI.
   :::
-::
-
-::u-page-section
-#title
-Quick Start Example
-
-#description
-Get started with Aegis in just a few lines of code.
-
-::code-group
-```go [main.go]
-package main
-
-import (
-    "database/sql"
-    "log"
-    "net/http"
-    
-    "github.com/go-chi/chi/v5"
-    _ "github.com/lib/pq"
-    "github.com/theinventorylib/aegis"
-    "github.com/theinventorylib/aegis/core"
-    "github.com/theinventorylib/aegis/router"
-)
-
-func main() {
-    // Connect to database
-    db, _ := sql.Open("postgres", 
-        "postgres://localhost/aegis?sslmode=disable")
-    defer db.Close()
-    
-    // Initialize Aegis
-    auth := aegis.New(&core.Config{
-        DB:      db,
-        Secret:  "your-secret-key-32-chars-minimum!",
-        BaseURL: "http://localhost:8080",
-    })
-    
-    // Create router
-    r := chi.NewRouter()
-    
-    // Mount auth routes
-    router.Mount(r, auth)
-    
-    // Protected route
-    r.Group(func(r chi.Router) {
-        r.Use(auth.RequireAuth())
-        r.Get("/api/profile", profileHandler)
-    })
-    
-    // Start server
-    log.Println("Server running on :8080")
-    http.ListenAndServe(":8080", r)
-}
-
-func profileHandler(w http.ResponseWriter, r *http.Request) {
-    user := core.GetUser(r.Context())
-    w.Write([]byte("Hello " + user.Email))
-}
-```
-
-```bash [Install]
-# Install Aegis
-go get github.com/theinventorylib/aegis
-
-# Install CLI
-go install github.com/theinventorylib/aegis/cmd/aegis@latest
-
-# Export migrations
-aegis migrate export \
-  --driver postgres \
-  --format sql \
-  --out ./migrations
-```
-
-```bash [Usage]
-# Sign up
-curl -X POST http://localhost:8080/auth/signup \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"SecurePass123!"}'
-
-# Sign in
-curl -X POST http://localhost:8080/auth/signin \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"SecurePass123!"}' \
-  -c cookies.txt
-
-# Access protected route
-curl http://localhost:8080/api/profile -b cookies.txt
-```
-::
 ::
 
 ::u-page-section
