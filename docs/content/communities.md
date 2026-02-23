@@ -24,14 +24,4 @@ layout: default
   ---
   Join our Discord server to chat with other developers.
   ::
-
-  ::card
-  ---
-  icon: simple-icons:x
-  title: Twitter
-  to: https://twitter.com/theinventorylib
-  target: _blank
-  ---
-  Follow us on Twitter for the latest updates.
-  ::
 ::

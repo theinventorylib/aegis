@@ -66,10 +66,11 @@ func GenerateSchema(v any) *Schema {
 		t = t.Elem()
 	}
 
-	return generateSchemaType(t)
+	seen := make(map[reflect.Type]bool)
+	return generateSchemaType(t, seen)
 }
 
-func generateSchemaType(t reflect.Type) *Schema {
+func generateSchemaType(t reflect.Type, seen map[reflect.Type]bool) *Schema {
 	// Handle pointers by dereferencing them recursively
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
@@ -77,6 +78,12 @@ func generateSchemaType(t reflect.Type) *Schema {
 
 	switch t.Kind() {
 	case reflect.Struct:
+		if seen[t] {
+			return &Schema{Type: "object", Description: "Recursive type"}
+		}
+		seen[t] = true
+		defer delete(seen, t)
+
 		// Handle special types
 		if t == reflect.TypeFor[time.Time]() {
 			return DateTimeSchema("")
@@ -115,7 +122,7 @@ func generateSchemaType(t reflect.Type) *Schema {
 
 			// Handle embedded fields (flattened if no name in json tag)
 			if field.Anonymous && (jsonTag == "" || name == "") {
-				embeddedSchema := generateSchemaType(field.Type)
+				embeddedSchema := generateSchemaType(field.Type, seen)
 				if embeddedSchema.Type == "object" {
 					maps.Copy(properties, embeddedSchema.Properties)
 					required = append(required, embeddedSchema.Required...)
@@ -129,7 +136,7 @@ func generateSchemaType(t reflect.Type) *Schema {
 			}
 
 			// Generate base schema for field
-			fieldSchema := generateSchemaType(field.Type)
+			fieldSchema := generateSchemaType(field.Type, seen)
 
 			// Parse validation tags and apply constraints
 			validationTag := field.Tag.Get("validation")
@@ -161,7 +168,7 @@ func generateSchemaType(t reflect.Type) *Schema {
 		if t.Elem().Kind() == reflect.Uint8 {
 			return &Schema{Type: "string", Description: "Base64 encoded bytes"}
 		}
-		return ArraySchema("", generateSchemaType(t.Elem()))
+		return ArraySchema("", generateSchemaType(t.Elem(), seen))
 
 	case reflect.String:
 		return StringSchema("")
@@ -179,7 +186,7 @@ func generateSchemaType(t reflect.Type) *Schema {
 	case reflect.Map:
 		return &Schema{
 			Type:                 "object",
-			AdditionalProperties: generateSchemaType(t.Elem()),
+			AdditionalProperties: generateSchemaType(t.Elem(), seen),
 		}
 
 	case reflect.Interface:

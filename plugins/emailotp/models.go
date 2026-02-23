@@ -86,6 +86,7 @@ type VerifyOTPRequest struct {
 //	}
 type User struct {
 	auth.User
+	// TODO: email is alredy provided by the user, look into this
 	Email         *string `json:"email,omitempty"` // User email address
 	EmailVerified bool    `json:"emailVerified"`   // Email verification status
 }

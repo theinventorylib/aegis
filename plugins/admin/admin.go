@@ -385,16 +385,17 @@ func (a *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error 
 		return nil
 	}
 
-	role, err := a.store.GetRole(ctx, user.ID)
+	adminUser, err := a.store.GetByID(ctx, user.ID)
 	if err != nil {
 		// Even if lookup fails, we don't want to fail the whole enrichment process
 		// Silently ignore role lookup errors as they're not critical
 		return err
 	}
 
-	if role != "" {
-		user.Set(ExtKeyRole, role)
+	if adminUser.Role != "" {
+		user.Set(ExtKeyRole, adminUser.Role)
 	}
+	// TODO: enrich with the other fields
 
 	return nil
 }
