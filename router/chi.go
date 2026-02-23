@@ -194,7 +194,7 @@ func (g *ChiGroupRouter) DELETE(path string, handler http.HandlerFunc) {
 // Note: Due to chi's routing model, middleware added via Use() on a group
 // affects the parent router. For group-scoped middleware, wrap handlers
 // individually when registering routes.
-func (g *ChiGroupRouter) Use(middleware func(http.Handler) http.Handler) {
+func (g *ChiGroupRouter) Use(_ func(http.Handler) http.Handler) {
 	// Chi doesn't have true group-scoped middleware when using this pattern.
 	// Handlers should be wrapped individually for group-specific middleware.
 	// This is a no-op to maintain API compatibility.
