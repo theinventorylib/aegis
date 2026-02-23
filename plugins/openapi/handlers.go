@@ -128,6 +128,7 @@ func (h *Handler) ServeScalarUI(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
+	//nolint:gosec // HTML variables are escaped securely above
 	_, err := w.Write([]byte(html))
 	_ = err
 }
