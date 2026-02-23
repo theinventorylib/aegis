@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/lestrrat-go/jwx/v3 v3.0.13
 	github.com/markbates/goth v1.82.0
-	github.com/nyaruka/phonenumbers v1.6.8
+	github.com/nyaruka/phonenumbers v1.6.10
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/redis/go-redis/v9 v9.17.3
 	golang.org/x/crypto v0.47.0
