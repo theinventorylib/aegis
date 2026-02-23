@@ -59,7 +59,8 @@ export default defineNuxtConfig({
             'markdown',
             'vue',
             'html',
-            'css'
+            'css',
+            'mermaid'
           ]
         }
       }

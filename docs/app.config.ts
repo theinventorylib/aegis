@@ -82,7 +82,7 @@ export default defineAppConfig({
     }
   },
   seo: {
-    titleTemplate: '%s | Aegis Auth for Go',
+    titleTemplate: '%s | Aegis Auth',
     meta: [
       { name: 'twitter:card', content: 'summary_large_image' },
       { name: 'twitter:site', content: '@theinventorylib' },

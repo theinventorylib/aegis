@@ -13,6 +13,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "better-sqlite3": "^12.5.0",
     "docus": "latest",
+    "mermaid": "^11.12.3",
     "nuxt": "^4.2.2",
     "tailwindcss": "^4.1.18"
   },

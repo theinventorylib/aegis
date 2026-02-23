@@ -39,6 +39,6 @@ const lines = [
   { type: 'command', cmd: 'go ', args: 'install github.com/theinventorylib/aegis/cmd/aegis@latest' },
   { type: 'blank' },
   { type: 'comment', text: '# Export migrations for your database' },
-  { type: 'command', cmd: 'aegis ', args: 'migrate export --driver postgres --out ./migrations' },
+  { type: 'command', cmd: 'aegis ', args: 'migrate export --dialect postgres --output ./migrations' },
 ]
 </script>
