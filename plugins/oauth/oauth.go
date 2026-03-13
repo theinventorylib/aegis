@@ -571,6 +571,8 @@ func (p *Plugin) CompleteAuth(ctx context.Context, w http.ResponseWriter, r *htt
 	// Get authorization params from callback
 	params := r.URL.Query()
 	if params.Encode() == "" && r.Method == "POST" {
+		// Limit request body size to prevent memory exhaustion
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
 		if err := r.ParseForm(); err == nil {
 			params = r.Form
 		}
