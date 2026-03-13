@@ -117,6 +117,7 @@ jobs:
           echo "New version: $NEW_VERSION (prerelease: $IS_PRERELEASE)"
 
       - name: Generate changelog
+        if: ${{ inputs.version_bump == 'patch' && !inputs.use_goreleaser }}
         id: changelog
         run: |
           LATEST_TAG="${{ steps.get_version.outputs.latest_tag }}"
@@ -187,9 +188,12 @@ jobs:
           echo "- Version bump: ${{ inputs.version_bump }}" >> $GITHUB_STEP_SUMMARY
           echo "- Use GoReleaser: ${{ inputs.use_goreleaser }}" >> $GITHUB_STEP_SUMMARY
           echo "- Skip tests: ${{ inputs.skip_tests }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Changelog Preview:" >> $GITHUB_STEP_SUMMARY
-          cat CHANGELOG_RELEASE.md >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ inputs.version_bump }}" == "patch" && "${{ inputs.use_goreleaser }}" == "false" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Changelog Preview:" >> $GITHUB_STEP_SUMMARY
+            cat CHANGELOG_RELEASE.md >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Release summary
         if: ${{ !inputs.dry_run }}
