@@ -4,12 +4,11 @@
 // supporting multiple SQL dialects (PostgreSQL, MySQL, SQLite).
 //
 // Migration Versioning:
-//   - Version 001: Initial schema (oauth_connections table)
-//   - Version 002+: Additional migrations (indexes, columns, etc.)
+//   - Version 001+: Migrations from migrations/<dialect>/<version>_<description>.<up|down>.sql
 //
 // File Naming Convention:
-//   - Up migrations: 002_add_index.up.sql
-//   - Down migrations: 002_add_index.down.sql
+//   - Up migrations: 001_initial.up.sql
+//   - Down migrations: 001_initial.down.sql
 package oauth
 
 import (
@@ -22,11 +21,6 @@ import (
 
 	"github.com/theinventorylib/aegis/plugins"
 )
-
-// schemaFS embeds initial schema files for each SQL dialect.
-//
-//go:embed internal/sql/*/*.sql
-var schemaFS embed.FS
 
 // migrationFS embeds incremental migration files for each SQL dialect.
 //
@@ -45,29 +39,15 @@ var migrationFS embed.FS
 //   - []plugins.Migration: Ordered list of migrations (version ASC)
 //   - error: File read error or unsupported dialect
 func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
-	// Load initial schema as version 001
-	schemaPath := fmt.Sprintf("internal/sql/%s/schema.sql", dialect)
-	schemaContent, err := schemaFS.ReadFile(schemaPath)
-	if err != nil {
-		return nil, fmt.Errorf("read schema file for %s: %w", dialect, err)
-	}
-	initial := plugins.Migration{
-		Version:     1,
-		Description: "initial",
-		Up:          string(schemaContent),
-		Down:        "", // No down for initial schema
-	}
-
 	migrations := make(map[int]*plugins.Migration)
-	migrations[1] = &initial
 
-	// Load additional migrations
+	// Load all migrations
 	dir := fmt.Sprintf("migrations/%s", dialect)
 	entries, err := migrationFS.ReadDir(dir)
 	if err != nil {
-		// If no migrations dir, just return initial
+		// If no migrations dir, return empty
 		if strings.Contains(err.Error(), "file does not exist") {
-			return []plugins.Migration{initial}, nil
+			return []plugins.Migration{}, nil
 		}
 		return nil, fmt.Errorf("read migrations dir for %s: %w", dialect, err)
 	}
@@ -103,7 +83,7 @@ func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
 		migType := strings.TrimSuffix(typeExt, ".sql") // up or down
 
 		version, err := strconv.Atoi(versionStr)
-		if err != nil || version < 2 { // Skip version 001 as it's handled by schema
+		if err != nil || version < 1 {
 			continue
 		}
 

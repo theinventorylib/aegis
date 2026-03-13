@@ -2,6 +2,7 @@ version: "2"
 sql:
   - engine: "postgresql"
     schema:
+      - "internal/sql/postgres/auth_schema.sql"
       - "internal/sql/postgres/schema.sql"
     queries:
       - "internal/sql/postgres/queries.sql"

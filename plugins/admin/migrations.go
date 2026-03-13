@@ -11,56 +11,38 @@ import (
 	"github.com/theinventorylib/aegis/plugins"
 )
 
-//go:embed internal/sql/*/*.sql
-var schemaFS embed.FS
-
 //go:embed migrations/*/*.sql
 var migrationFS embed.FS
 
 // GetMigrations returns all database migrations for the admin plugin.
 //
 // This function loads migrations from embedded SQL files and returns them in
-// version order. The initial schema is always treated as version 001.
+// version order.
 //
 // Version Numbering:
-//   - Version 001: Initial schema from internal/sql/<dialect>/schema.sql
-//   - Version 002+: Additional migrations from migrations/<dialect>/<version>_<description>.<up|down>.sql
+//   - Version 001+: Migrations from migrations/<dialect>/<version>_<description>.<up|down>.sql
 //
 // Migration File Format:
-//   - Up migration: 002_add_ban_fields.up.sql
-//   - Down migration: 002_add_ban_fields.down.sql
+//   - Up migration: 001_initial.up.sql
+//   - Down migration: 001_initial.down.sql
 //
 // Parameters:
 //   - dialect: Database dialect (postgres, mysql, sqlite)
 //
 // Returns:
 //   - []plugins.Migration: Sorted list of migrations (oldest first)
-//   - error: If schema files cannot be read or parsed
+//   - error: If migration files cannot be read or parsed
 func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
-	// Load initial schema as version 001
-	schemaPath := fmt.Sprintf("internal/sql/%s/schema.sql", dialect)
-	schemaContent, err := schemaFS.ReadFile(schemaPath)
-	if err != nil {
-		return nil, fmt.Errorf("read schema file for %s: %w", dialect, err)
-	}
-	initial := plugins.Migration{
-		Version:     1,
-		Description: "initial",
-		Up:          string(schemaContent),
-		Down:        "", // No down migration for initial schema
-	}
-
-	// Pre-allocate map with a reasonable initial capacity (e.g., 10 migrations + initial)
+	// Pre-allocate map with a reasonable initial capacity (e.g., 10 migrations)
 	migrations := make(map[int]*plugins.Migration, 10)
-	migrations[1] = &initial
 
-	// Load additional migrations from migrations/<dialect>/ directory
+	// Load all migrations from migrations/<dialect>/ directory
 	dir := fmt.Sprintf("migrations/%s", dialect)
 	entries, err := migrationFS.ReadDir(dir)
 	if err != nil {
-		// If no migrations directory exists, return only initial schema
+		// If no migrations directory exists, return empty slice
 		if strings.Contains(err.Error(), "file does not exist") {
-			return []plugins.Migration{initial}, nil
+			return []plugins.Migration{}, nil
 		}
 		return nil, fmt.Errorf("read migrations dir for %s: %w", dialect, err)
 	}
@@ -76,7 +58,7 @@ func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
 		}
 
 		// Parse filename format: <version>_<description>.<up|down>.sql
-		// Example: 002_add_ban_fields.up.sql
+		// Example: 001_initial.up.sql
 		parts := strings.SplitN(name, "_", 2)
 		if len(parts) != 2 {
 			continue
@@ -98,9 +80,9 @@ func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
 		}
 		migType := strings.TrimSuffix(typeExt, ".sql") // "up" or "down"
 
-		// Parse version number (must be >= 002)
+		// Parse version number (must be >= 1)
 		version, err := strconv.Atoi(versionStr)
-		if err != nil || version < 2 { // Skip version 001 (handled by schema)
+		if err != nil || version < 1 {
 			continue
 		}
 

@@ -143,6 +143,29 @@ jobs:
           
           cat CHANGELOG_RELEASE.md
 
+      - name: Update changelog
+        if: ${{ !inputs.dry_run }}
+        run: |
+          NEW_VERSION="${{ steps.new_version.outputs.version }}"
+          DATE=$(date +%Y-%m-%d)
+          
+          # Extract the changelog content (remove header and footer)
+          CHANGELOG_CONTENT=$(sed '1,2d; $d' CHANGELOG_RELEASE.md)
+          
+          # Update changelog.md by replacing [Unreleased] with new version and adding back [Unreleased]
+          sed -i "s/## \[Unreleased\]/## [$NEW_VERSION] - $DATE\n$CHANGELOG_CONTENT\n\n## [Unreleased]/" docs/content/changelog.md
+
+      - name: Commit changelog
+        if: ${{ !inputs.dry_run }}
+        run: |
+          NEW_VERSION="${{ steps.new_version.outputs.version }}"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add docs/content/changelog.md
+          git commit -m "Update changelog for $NEW_VERSION"
+
       - name: Create and push tag
         if: ${{ !inputs.dry_run }}
         run: |

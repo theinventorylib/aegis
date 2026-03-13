@@ -4,19 +4,15 @@
 // supporting multiple SQL dialects (PostgreSQL, MySQL, SQLite).
 //
 // Migration Versioning:
-//   - Version 001: Initial schema (internal/sql/<dialect>/schema.sql)
-//   - Version 002+: Additional migrations (migrations/<dialect>/<version>_<desc>.<up|down>.sql)
+//   - Version 001+: Migrations from migrations/<dialect>/<version>_<description>.<up|down>.sql
 //
 // File Naming Convention:
-//   - Up migrations: 002_altered.up.sql, 003_add_index.up.sql
-//   - Down migrations: 002_altered.down.sql, 003_add_index.down.sql
+//   - Up migrations: 001_initial.up.sql
+//   - Down migrations: 001_initial.down.sql
 //
 // Directory Structure:
 //
 //	jwt/
-//	  internal/sql/
-//	    postgres/schema.sql
-//	    mysql/schema.sql
 //	  migrations/
 //	    postgres/
 //	      002_altered.up.sql
@@ -40,12 +36,6 @@ import (
 	"github.com/theinventorylib/aegis/plugins"
 )
 
-// schemaFS embeds initial schema files for each SQL dialect.
-// Files are located at: internal/sql/<dialect>/schema.sql
-//
-//go:embed internal/sql/*/*.sql
-var schemaFS embed.FS
-
 // migrationFS embeds incremental migration files for each SQL dialect.
 // Files are located at: migrations/<dialect>/<version>_<description>.<up|down>.sql
 //
@@ -54,25 +44,22 @@ var migrationFS embed.FS
 
 // GetMigrations returns all database migrations for the specified SQL dialect.
 //
-// This function combines the initial schema (version 001) with any additional
-// migrations (version 002+) to produce a complete, ordered list of migrations.
+// This function gets all migrations to produce a complete, ordered list of migrations.
 //
 // Version Numbering:
-//   - Version 001: Always the initial schema.sql (CREATE TABLE statements)
-//   - Version 002+: Additional migrations from migrations/<dialect>/ directory
+//   - Version 001+: Additional migrations from migrations/<dialect>/ directory
 //
 // File Naming:
 //   - Format: <version>_<description>.<type>.sql
-//   - Example: 002_add_expiry_index.up.sql
+//   - Example: 001_initial.up.sql
 //   - Type: "up" (apply) or "down" (rollback)
 //
 // Migration Loading:
-//  1. Load schema.sql as version 001 with no down migration
-//  2. Scan migrations/<dialect>/ for version 002+ files
-//  3. Parse version number and type (up/down) from filename
-//  4. Group up/down migrations by version
-//  5. Sort by version number ascending
-//  6. Return ordered migration list
+//  1. Scan migrations/<dialect>/ for files
+//  2. Parse version number and type (up/down) from filename
+//  3. Group up/down migrations by version
+//  4. Sort by version number ascending
+//  5. Return ordered migration list
 //
 // Parameters:
 //   - dialect: SQL dialect (DialectPostgres, DialectMySQL, DialectSQLite)
@@ -92,29 +79,15 @@ var migrationFS embed.FS
 //	    // Execute m.Up SQL to apply migration
 //	}
 func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
-	// Load initial schema as version 001
-	schemaPath := fmt.Sprintf("internal/sql/%s/schema.sql", dialect)
-	schemaContent, err := schemaFS.ReadFile(schemaPath)
-	if err != nil {
-		return nil, fmt.Errorf("read schema file for %s: %w", dialect, err)
-	}
-	initial := plugins.Migration{
-		Version:     1,
-		Description: "initial",
-		Up:          string(schemaContent),
-		Down:        "", // No down for initial schema
-	}
-
 	migrations := make(map[int]*plugins.Migration)
-	migrations[1] = &initial
 
-	// Load additional migrations
+	// Load all migrations
 	dir := fmt.Sprintf("migrations/%s", dialect)
 	entries, err := migrationFS.ReadDir(dir)
 	if err != nil {
-		// If no migrations dir, just return initial
+		// If no migrations dir, return empty
 		if strings.Contains(err.Error(), "file does not exist") {
-			return []plugins.Migration{initial}, nil
+			return []plugins.Migration{}, nil
 		}
 		return nil, fmt.Errorf("read migrations dir for %s: %w", dialect, err)
 	}
@@ -150,7 +123,7 @@ func GetMigrations(dialect plugins.Dialect) ([]plugins.Migration, error) {
 		migType := strings.TrimSuffix(typeExt, ".sql") // up or down
 
 		version, err := strconv.Atoi(versionStr)
-		if err != nil || version < 2 { // Skip version 001 as it's handled by schema
+		if err != nil || version < 1 {
 			continue
 		}
 
