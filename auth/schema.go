@@ -14,13 +14,13 @@ import (
 // Embedded schema SQL for each supported database dialect.
 // These are the initial schema definitions (migration version 001).
 
-//go:embed internal/sql/postgres/schema.sql
+//go:embed migrations/postgres/001_initial.up.sql
 var postgresSchema string
 
-//go:embed internal/sql/mysql/schema.sql
+//go:embed migrations/mysql/001_initial.up.sql
 var mysqlSchema string
 
-//go:embed internal/sql/sqlite/schema.sql
+//go:embed migrations/sqlite/001_initial.up.sql
 var sqliteSchema string
 
 // Dialect represents a database dialect/driver.

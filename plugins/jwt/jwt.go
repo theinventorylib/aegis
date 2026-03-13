@@ -893,8 +893,8 @@ func (p *Plugin) StartKeyRotation(ctx context.Context) {
 		for {
 			select {
 			case <-ticker.C:
-				// Use background context for rotation since ctx might be canceled
-				if err := p.RotateKeys(context.Background()); err != nil {
+				// Rotate keys using the provided context
+				if err := p.RotateKeys(ctx); err != nil {
 					// Log error but continue - key rotation failure doesn't break existing tokens
 					if p.logger != nil {
 						p.logger.Error("JWT key rotation failed", "error", err)

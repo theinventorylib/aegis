@@ -18,14 +18,3 @@ type User struct {
 	Disabled      int32          `json:"disabled"`
 	EmailVerified int32          `json:"email_verified"`
 }
-
-type Verification struct {
-	ID          string `json:"id"`
-	Identifier  string `json:"identifier"`
-	Token       string `json:"token"`
-	Type        string `json:"type"`
-	ExpiresAt   string `json:"expires_at"`
-	CreatedAt   string `json:"created_at"`
-	Attempts    int32  `json:"attempts"`
-	MaxAttempts int32  `json:"max_attempts"`
-}

@@ -7,13 +7,13 @@ import (
 	"github.com/theinventorylib/aegis/plugins"
 )
 
-//go:embed internal/sql/postgres/schema.sql
+//go:embed migrations/postgres/001_initial.up.sql
 var postgresSchema string
 
-//go:embed internal/sql/mysql/schema.sql
+//go:embed migrations/mysql/001_initial.up.sql
 var mysqlSchema string
 
-//go:embed internal/sql/sqlite/schema.sql
+//go:embed migrations/sqlite/001_initial.up.sql
 var sqliteSchema string
 
 // GetSchema returns the database schema for the admin plugin.
