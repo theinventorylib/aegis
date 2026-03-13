@@ -16,7 +16,7 @@ var postgresAuthSchema string
 // postgresSchema contains the PostgreSQL-specific OAuth schema.
 // Defines oauth_connections table with foreign key to auth.users.
 //
-//go:embed internal/sql/postgres/schema.sql
+//go:embed migrations/postgres/001_initial.up.sql
 var postgresSchema string
 
 // mysqlSchema contains the MySQL-specific OAuth schema.

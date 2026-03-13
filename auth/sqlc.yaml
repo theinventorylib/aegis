@@ -1,8 +1,10 @@
 version: "2"
 sql:
   - engine: "postgresql"
-    schema: "internal/sql/postgres/schema.sql"
-    queries: "internal/sql/postgres/queries.sql"
+    schema: 
+      - "migrations/postgres"
+    queries: 
+      - "internal/sql/postgres"
     gen:
       go:
         emit_json_tags: true

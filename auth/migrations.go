@@ -9,14 +9,8 @@ import (
 	"strings"
 )
 
-// schemaFS embeds the initial SQL schema files for different database dialects.
-// These files contain the baseline table definitions (version 001).
-//
-//go:embed internal/sql/*/*.sql
-var schemaFS embed.FS
-
-// migrationFS embeds incremental migration files for schema evolution.
-// These represent changes made after the initial schema (version 002+).
+// migrationFS embeds all migration files for schema evolution.
+// These represent all migrations (version 001+).
 //
 //go:embed migrations/*/*.sql
 var migrationFS embed.FS
@@ -26,11 +20,10 @@ var migrationFS embed.FS
 // script (to revert it), enabling bidirectional schema evolution.
 type Migration struct {
 	// Version is the numeric migration version (e.g., 1, 2, 3).
-	// Version 1 is always the initial schema.
 	Version int
 
 	// Description is a human-readable summary of what this migration does
-	// (e.g., "add_user_roles", "alter_session_index").
+	// (e.g., "initial", "add_user_roles", "alter_session_index").
 	Description string
 
 	// Up is the SQL to apply this migration (create tables, add columns, etc.).
@@ -43,8 +36,7 @@ type Migration struct {
 // GetMigrations returns all migrations for the specified database dialect in version order.
 //
 // Migration versioning:
-//   - Version 001: The initial schema from internal/sql/<dialect>/schema.sql
-//   - Version 002+: Additional migrations from migrations/<dialect>/*.sql
+//   - Version 001+: All migrations from migrations/<dialect>/*.sql
 //
 // Migration file naming convention:
 //
@@ -52,6 +44,8 @@ type Migration struct {
 //
 // Examples:
 //
+//	001_initial.up.sql     - Initial schema migration
+//	001_initial.down.sql   - Revert initial schema
 //	002_add_user_roles.up.sql     - Applies migration 002
 //	002_add_user_roles.down.sql   - Reverts migration 002
 //	003_alter_sessions.up.sql     - Applies migration 003
@@ -66,35 +60,15 @@ type Migration struct {
 //   - Slice of migrations sorted by version
 //   - Error if the dialect is not supported or if migration files are malformed
 func GetMigrations(dialect Dialect) ([]Migration, error) {
-	// Load initial schema as version 001
-	schemaPath := fmt.Sprintf("internal/sql/%s/schema.sql", dialect)
-	schemaContent, err := schemaFS.ReadFile(schemaPath)
-	if err != nil {
-		return nil, fmt.Errorf("read schema file for %s: %w", dialect, err)
-	}
-	initial := Migration{
-		Version:     1,
-		Description: "initial",
-		Up:          string(schemaContent),
-		Down: `
--- Core schema cleanup
-DROP TABLE IF EXISTS session;
-DROP TABLE IF EXISTS verification;
-DROP TABLE IF EXISTS accounts;
-DROP TABLE IF EXISTS user;
-`,
-	}
-
 	migrations := make(map[int]*Migration)
-	migrations[1] = &initial
 
-	// Load additional migrations
+	// Load all migrations
 	dir := fmt.Sprintf("migrations/%s", dialect)
 	entries, err := migrationFS.ReadDir(dir)
 	if err != nil {
-		// If no migrations dir, just return initial
+		// If no migrations dir, return empty
 		if strings.Contains(err.Error(), "file does not exist") {
-			return []Migration{initial}, nil
+			return []Migration{}, nil
 		}
 		return nil, fmt.Errorf("read migrations dir for %s: %w", dialect, err)
 	}
@@ -109,7 +83,7 @@ DROP TABLE IF EXISTS user;
 		}
 
 		// Parse migration filename: "<version>_<description>.<type>.sql"
-		// Example: "002_add_roles.up.sql" -> version=002, description="add_roles", type="up"
+		// Example: "001_initial.up.sql" -> version=001, description="initial", type="up"
 		parts := strings.SplitN(name, "_", 2)
 		if len(parts) != 2 {
 			continue // Skip malformed filenames
@@ -117,7 +91,7 @@ DROP TABLE IF EXISTS user;
 		versionStr := parts[0]
 		rest := parts[1] // "description.type.sql"
 
-		// Split description and type: "add_roles.up.sql" -> "add_roles", "up.sql"
+		// Split description and type: "initial.up.sql" -> "initial", "up.sql"
 		descParts := strings.SplitN(rest, ".", 2)
 		if len(descParts) != 2 {
 			continue // Missing extension
@@ -130,10 +104,10 @@ DROP TABLE IF EXISTS user;
 		}
 		migType := strings.TrimSuffix(typeExt, ".sql") // "up" or "down"
 
-		// Parse version number (must be >= 2 since version 1 is the base schema)
+		// Parse version number (must be >= 1)
 		version, err := strconv.Atoi(versionStr)
-		if err != nil || version < 2 {
-			continue // Skip version 001 (handled by schema.sql) and invalid versions
+		if err != nil || version < 1 {
+			continue // Skip invalid versions
 		}
 
 		content, err := migrationFS.ReadFile(filepath.Join(dir, name))

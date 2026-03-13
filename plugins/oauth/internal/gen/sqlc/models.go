@@ -23,3 +23,13 @@ type OauthConnection struct {
 	CreatedAt      string         `json:"created_at"`
 	UpdatedAt      string         `json:"updated_at"`
 }
+
+type User struct {
+	ID        string         `json:"id"`
+	Avatar    sql.NullString `json:"avatar"`
+	Name      string         `json:"name"`
+	Email     sql.NullString `json:"email"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
+	Disabled  int32          `json:"disabled"`
+}
