@@ -8,6 +8,5 @@ const (
 
 	// Response schemas
 	SchemaAdminUser        = "AdminUser"
-	SchemaUserListResponse = "UserListResponse"
 	SchemaAdminStats       = "AdminStats"
 )

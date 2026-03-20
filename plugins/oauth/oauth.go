@@ -64,6 +64,7 @@ import (
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/plugins/openapi"
 	"github.com/theinventorylib/aegis/router"
 )
 
@@ -293,49 +294,45 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 }
 
 // MountRoutes registers HTTP routes for the OAuth plugin
-func (p *Plugin) MountRoutes(router router.Router, prefix string) {
-	// Register schemas with OpenAPI if available
-	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
-		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example any)
-		}); ok {
-			// Request schemas
-			oapi.RegisterSchemaFromType(SchemaLinkAccountRequest, LinkAccountRequest{})
-		}
-	}
-
+func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	handlers := NewHandlers(p)
 
 	// Create route group for OAuth plugin
-	oauthGroup := router.Group(prefix, "OAuth")
+	oauthGroup := r.Group(prefix, "OAuth")
 
 	// OAuth authentication routes
 	oauthGroup.GET("/:provider", handlers.beginAuthHandler)
-	oauthGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        prefix + "/{provider}",
 		Summary:     "Begin OAuth flow",
 		Description: "Initiate OAuth authentication with the specified provider (e.g., google, github)",
 		Tags:        []string{"OAuth"},
-		Protected:   false,
-		Responses: map[string]*core.ResponseMeta{
-			"302": {Description: "Redirect to OAuth provider", Schema: "Redirect"},
-			"400": {Description: "Invalid or unsupported provider", Schema: core.SchemaError},
+		Params: []openapi.Param{
+			{Name: "provider", In: "path", Type: "string", Required: true, Description: "OAuth provider name"},
+		},
+		Responses: openapi.Responses{
+			302: openapi.TextResponse("Redirect to OAuth provider"),
+			400: openapi.RefResponse("Invalid or unsupported provider", "Error"),
 		},
 	})
 
 	oauthGroup.GET("/:provider/callback", handlers.callbackHandler)
-	oauthGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        prefix + "/{provider}/callback",
 		Summary:     "OAuth callback",
 		Description: "Handle OAuth provider callback and create session",
 		Tags:        []string{"OAuth"},
-		Protected:   false,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Authentication successful, session created", Schema: core.SchemaSession},
-			"302": {Description: "Redirect after successful authentication", Schema: "Redirect"},
-			"400": {Description: "Invalid callback or authorization failed", Schema: core.SchemaError},
+		Params: []openapi.Param{
+			{Name: "provider", In: "path", Type: "string", Required: true, Description: "OAuth provider name"},
+			{Name: "code", In: "query", Type: "string", Description: "Authorization code"},
+			{Name: "state", In: "query", Type: "string", Description: "CSRF state token"},
+		},
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[OAuthCallbackResponse]("Authentication successful, session created"),
+			302: openapi.TextResponse("Redirect after successful authentication"),
+			400: openapi.RefResponse("Invalid callback or authorization failed", "Error"),
 		},
 	})
 
@@ -343,35 +340,30 @@ func (p *Plugin) MountRoutes(router router.Router, prefix string) {
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	oauthGroup.POST("/logout", handlers.logoutHandler)
-	oauthGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/logout",
 		Summary:     "OAuth logout",
 		Description: "Clear OAuth state and logout",
 		Tags:        []string{"OAuth"},
-		Protected:   false, // Logout itself is often public to ensure clear state
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Logged out successfully", Schema: core.SchemaSuccess},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Logged out successfully", "Success"),
 		},
 	})
 
 	oauthGroup.POST("/link", requireAuth(http.HandlerFunc(handlers.linkAccountHandler)).ServeHTTP)
-	oauthGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/link",
 		Summary:     "Link OAuth account",
 		Description: "Link an OAuth provider to the currently authenticated user",
 		Tags:        []string{"OAuth"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "OAuth provider to link",
-			Required:    true,
-			Schema:      SchemaLinkAccountRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Account linked successfully", Schema: core.SchemaSuccess},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"400": {Description: "Invalid request or provider", Schema: core.SchemaError},
+		Auth:        true,
+		Body:        openapi.BodyOf[LinkAccountRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Account linked successfully", "Success"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			400: openapi.RefResponse("Invalid request or provider", "Error"),
 		},
 	})
 }

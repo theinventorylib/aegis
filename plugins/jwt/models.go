@@ -168,6 +168,15 @@ type AccessToken struct {
 
 	// AccessExpiry is when the access token expires (UTC)
 	AccessExpiry time.Time `json:"access_expiry"`
+
+	// TokenType is the auth scheme name returned to clients.
+	// Aegis returns the constant "Bearer".
+	TokenType string `json:"token_type"`
+}
+
+// LogoutResponse is the data payload returned by POST /logout.
+type LogoutResponse struct {
+	UserID string `json:"user_id"`
 }
 
 // JWKS represents a JSON Web Key Set response.

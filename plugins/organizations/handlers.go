@@ -18,6 +18,8 @@ import (
 //   - Update: Admin or owner
 //   - Delete: Owner only
 
+
+
 // validateOrgAccess validates user authentication and organization membership.
 //
 // This helper method checks if the authenticated user has access to the organization
@@ -145,15 +147,20 @@ func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	orgs, err := p.GetUserOrganizations(r.Context(), user.ID)
+	pagination := core.ParsePagination(r)
+
+	orgs, totalCount, err := p.GetUserOrganizations(r.Context(), user.ID, pagination.Offset, pagination.Limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success":       true,
-		"organizations": orgs,
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*Organization]{
+		Items:      orgs,
+		TotalCount: totalCount,
+		Page:       pagination.Page,
+		Offset:     pagination.Offset,
+		Limit:      pagination.Limit,
 	})
 }
 
@@ -335,15 +342,20 @@ func (p *Plugin) ListOrganizationMembersHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	members, err := p.ListOrganizationMembers(r.Context(), orgID)
+	pagination := core.ParsePagination(r)
+
+	members, totalCount, err := p.ListOrganizationMembers(r.Context(), orgID, pagination.Offset, pagination.Limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"members": members,
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*Member]{
+		Items:      members,
+		TotalCount: totalCount,
+		Page:       pagination.Page,
+		Offset:     pagination.Offset,
+		Limit:      pagination.Limit,
 	})
 }
 
@@ -492,15 +504,20 @@ func (p *Plugin) ListTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teams, err := p.ListTeams(r.Context(), orgID)
+	pagination := core.ParsePagination(r)
+
+	teams, totalCount, err := p.ListTeams(r.Context(), orgID, pagination.Offset, pagination.Limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"teams":   teams,
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*Team]{
+		Items:      teams,
+		TotalCount: totalCount,
+		Page:       pagination.Page,
+		Offset:     pagination.Offset,
+		Limit:      pagination.Limit,
 	})
 }
 
@@ -708,15 +725,20 @@ func (p *Plugin) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	members, err := p.ListTeamMembers(r.Context(), teamID)
+	pagination := core.ParsePagination(r)
+
+	members, totalCount, err := p.ListTeamMembers(r.Context(), teamID, pagination.Offset, pagination.Limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"members": members,
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*TeamMember]{
+		Items:      members,
+		TotalCount: totalCount,
+		Page:       pagination.Page,
+		Offset:     pagination.Offset,
+		Limit:      pagination.Limit,
 	})
 }
 

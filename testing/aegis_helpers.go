@@ -15,7 +15,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/theinventorylib/aegis"
 	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/router"
 )
 
@@ -142,8 +141,7 @@ func SetupTestAegisWithConfig(t testing.TB, testCfg *TestConfig, configModifier 
 // testRouter is a minimal router implementation for testing.
 // It satisfies the router.Router interface.
 type testRouter struct {
-	routes   []testRoute
-	metadata []core.RouteMetadata
+	routes []testRoute
 }
 
 type testRoute struct {
@@ -187,13 +185,7 @@ func (r *testRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	http.NotFound(w, req)
 }
 
-func (r *testRouter) RegisterRouteMetadata(metadata core.RouteMetadata) {
-	r.metadata = append(r.metadata, metadata)
-}
 
-func (r *testRouter) GetRouteMetadata() []core.RouteMetadata {
-	return r.metadata
-}
 
 // Group returns a GroupRouter for route grouping.
 func (r *testRouter) Group(path string, groupName string) router.GroupRouter {
@@ -235,13 +227,7 @@ func (g *testGroupRouterImpl) Use(_ func(http.Handler) http.Handler) {
 	// For testing, we don't need to track middleware
 }
 
-func (g *testGroupRouterImpl) RegisterRouteMetadata(metadata core.RouteMetadata) {
-	// Add group name to tags
-	if g.groupName != "" {
-		metadata.Tags = append([]string{g.groupName}, metadata.Tags...)
-	}
-	g.parent.metadata = append(g.parent.metadata, metadata)
-}
+
 
 // Group creates a nested test group by combining prefixes.
 func (g *testGroupRouterImpl) Group(path string, groupName string) router.GroupRouter {

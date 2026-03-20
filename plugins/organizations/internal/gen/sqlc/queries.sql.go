@@ -10,6 +10,53 @@ import (
 	"database/sql"
 )
 
+const countOrganizationMembers = `-- name: CountOrganizationMembers :one
+SELECT COUNT(*) FROM members WHERE organization_id = $1
+`
+
+func (q *Queries) CountOrganizationMembers(ctx context.Context, organizationID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countOrganizationMembers, organizationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countTeamMembers = `-- name: CountTeamMembers :one
+SELECT COUNT(*) FROM team_member WHERE team_id = $1
+`
+
+func (q *Queries) CountTeamMembers(ctx context.Context, teamID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countTeamMembers, teamID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countTeams = `-- name: CountTeams :one
+SELECT COUNT(*) FROM team WHERE organization_id = $1
+`
+
+func (q *Queries) CountTeams(ctx context.Context, organizationID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countTeams, organizationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countUserOrganizations = `-- name: CountUserOrganizations :one
+SELECT COUNT(*)
+FROM organization o
+JOIN members uo ON o.id = uo.organization_id
+WHERE uo.user_id = $1 AND o.disabled = 0
+`
+
+func (q *Queries) CountUserOrganizations(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countUserOrganizations, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createMember = `-- name: CreateMember :exec
 
 INSERT INTO members (id, user_id, organization_id, role, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
@@ -302,11 +349,17 @@ func (q *Queries) IsOwnerOrAdmin(ctx context.Context, arg IsOwnerOrAdminParams) 
 }
 
 const listOrganizationMembers = `-- name: ListOrganizationMembers :many
-SELECT id, user_id, organization_id, role, created_at, updated_at FROM members WHERE organization_id = $1 ORDER BY created_at ASC
+SELECT id, user_id, organization_id, role, created_at, updated_at FROM members WHERE organization_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3
 `
 
-func (q *Queries) ListOrganizationMembers(ctx context.Context, organizationID string) ([]Member, error) {
-	rows, err := q.db.QueryContext(ctx, listOrganizationMembers, organizationID)
+type ListOrganizationMembersParams struct {
+	OrganizationID string `json:"organization_id"`
+	Limit          int32  `json:"limit"`
+	Offset         int32  `json:"offset"`
+}
+
+func (q *Queries) ListOrganizationMembers(ctx context.Context, arg ListOrganizationMembersParams) ([]Member, error) {
+	rows, err := q.db.QueryContext(ctx, listOrganizationMembers, arg.OrganizationID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -336,11 +389,17 @@ func (q *Queries) ListOrganizationMembers(ctx context.Context, organizationID st
 }
 
 const listTeamMembers = `-- name: ListTeamMembers :many
-SELECT id, team_id, user_id, role, created_at, updated_at FROM team_member WHERE team_id = $1 ORDER BY created_at ASC
+SELECT id, team_id, user_id, role, created_at, updated_at FROM team_member WHERE team_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3
 `
 
-func (q *Queries) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMember, error) {
-	rows, err := q.db.QueryContext(ctx, listTeamMembers, teamID)
+type ListTeamMembersParams struct {
+	TeamID string `json:"team_id"`
+	Limit  int32  `json:"limit"`
+	Offset int32  `json:"offset"`
+}
+
+func (q *Queries) ListTeamMembers(ctx context.Context, arg ListTeamMembersParams) ([]TeamMember, error) {
+	rows, err := q.db.QueryContext(ctx, listTeamMembers, arg.TeamID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -370,11 +429,17 @@ func (q *Queries) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMem
 }
 
 const listTeams = `-- name: ListTeams :many
-SELECT id, organization_id, name, description, created_at, updated_at FROM team WHERE organization_id = $1 ORDER BY created_at ASC
+SELECT id, organization_id, name, description, created_at, updated_at FROM team WHERE organization_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3
 `
 
-func (q *Queries) ListTeams(ctx context.Context, organizationID string) ([]Team, error) {
-	rows, err := q.db.QueryContext(ctx, listTeams, organizationID)
+type ListTeamsParams struct {
+	OrganizationID string `json:"organization_id"`
+	Limit          int32  `json:"limit"`
+	Offset         int32  `json:"offset"`
+}
+
+func (q *Queries) ListTeams(ctx context.Context, arg ListTeamsParams) ([]Team, error) {
+	rows, err := q.db.QueryContext(ctx, listTeams, arg.OrganizationID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -408,8 +473,14 @@ SELECT o.id, o.name, o.slug, o.created_at, o.updated_at
 FROM organization o
 JOIN members uo ON o.id = uo.organization_id
 WHERE uo.user_id = $1 AND o.disabled = 0
-ORDER BY o.created_at DESC
+ORDER BY o.created_at DESC LIMIT $2 OFFSET $3
 `
+
+type ListUserOrganizationsParams struct {
+	UserID string `json:"user_id"`
+	Limit  int32  `json:"limit"`
+	Offset int32  `json:"offset"`
+}
 
 type ListUserOrganizationsRow struct {
 	ID        string `json:"id"`
@@ -419,8 +490,8 @@ type ListUserOrganizationsRow struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-func (q *Queries) ListUserOrganizations(ctx context.Context, userID string) ([]ListUserOrganizationsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listUserOrganizations, userID)
+func (q *Queries) ListUserOrganizations(ctx context.Context, arg ListUserOrganizationsParams) ([]ListUserOrganizationsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUserOrganizations, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

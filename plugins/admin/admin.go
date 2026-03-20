@@ -42,6 +42,7 @@ import (
 
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/plugins/openapi"
 	"github.com/theinventorylib/aegis/router"
 )
 
@@ -147,7 +148,6 @@ func (a *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 		return err
 	}
 
-	// Schema registration moved to MountRoutes to ensure all plugins are initialized
 	return nil
 }
 
@@ -162,22 +162,6 @@ func (a *Plugin) GetMigrations() []plugins.Migration {
 
 // MountRoutes registers administrative management endpoints.
 func (a *Plugin) MountRoutes(r router.Router, prefix string) {
-	// Register schemas with OpenAPI if available
-	if plugin, ok := a.aegis.GetPlugin("openapi"); ok {
-		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example any)
-		}); ok {
-			// Register request schemas
-			oapi.RegisterSchemaFromType(SchemaBanUserRequest, BanUserRequest{})
-			oapi.RegisterSchemaFromType(SchemaUpdateRoleRequest, UpdateRoleRequest{})
-
-			// Register response schemas
-			oapi.RegisterSchemaFromType(SchemaAdminUser, User{})
-			oapi.RegisterSchemaFromType(SchemaUserListResponse, UserListResponse{})
-			oapi.RegisterSchemaFromType(SchemaAdminStats, StatsResponse{})
-		}
-	}
-
 	// Create admin middleware - ALL admin routes require admin role
 	requireAdmin := a.RequireAdminMiddleware()
 
@@ -186,145 +170,159 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 
 	// User management - all protected
 	adminGroup.GET("/users", requireAdmin(http.HandlerFunc(a.listUsersHandler)).ServeHTTP)
-	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        prefix + "/users",
 		Summary:     "List users",
 		Description: "List all users (admin only)",
 		Tags:        []string{"Admin"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "List of users", Schema: SchemaUserListResponse},
-			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		Auth:        true,
+		Params:      openapi.PaginationQueryParams(),
+		Responses: openapi.Responses{
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[User]]("List of users"),
+			401: openapi.RefResponse("Not authorized", "Error"),
 		},
 	})
 
 	adminGroup.GET("/users/:id", requireAdmin(http.HandlerFunc(a.getUserHandler)).ServeHTTP)
-	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id"),
+		Path:        prefix + "/users/{id}",
 		Summary:     "Get user",
 		Description: "Get user details by ID (admin only)",
 		Tags:        []string{"Admin"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "User details", Schema: SchemaAdminUser},
-			"401": {Description: "Not authorized", Schema: core.SchemaError},
-			"404": {Description: "User not found", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[User]("User details"),
+			401: openapi.RefResponse("Not authorized", "Error"),
+			404: openapi.RefResponse("User not found", "Error"),
 		},
 	})
 
 	adminGroup.POST("/users/:id/disable", requireAdmin(http.HandlerFunc(a.disableUserHandler)).ServeHTTP)
-	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id/disable"),
+		Path:        prefix + "/users/{id}/disable",
 		Summary:     "Disable user",
 		Description: "Disable a user account (admin only)",
 		Tags:        []string{"Admin"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "User disabled", Schema: core.SchemaSuccess},
-			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("User disabled", "Success"),
+			401: openapi.RefResponse("Not authorized", "Error"),
 		},
 	})
 
 	adminGroup.POST("/users/:id/enable", requireAdmin(http.HandlerFunc(a.enableUserHandler)).ServeHTTP)
-	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id/enable"),
+		Path:        prefix + "/users/{id}/enable",
 		Summary:     "Enable user",
 		Description: "Enable a user account (admin only)",
 		Tags:        []string{"Admin"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "User enabled", Schema: core.SchemaSuccess},
-			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("User enabled", "Success"),
+			401: openapi.RefResponse("Not authorized", "Error"),
 		},
 	})
 
 	adminGroup.DELETE("/users/:id", requireAdmin(http.HandlerFunc(a.deleteUserHandler)).ServeHTTP)
-	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "DELETE",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id"),
+		Path:        prefix + "/users/{id}",
 		Summary:     "Delete user",
 		Description: "Delete a user account (admin only)",
 		Tags:        []string{"Admin"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "User deleted", Schema: core.SchemaSuccess},
-			"401": {Description: "Not authorized", Schema: core.SchemaError},
-			"404": {Description: "User not found", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("User deleted", "Success"),
+			401: openapi.RefResponse("Not authorized", "Error"),
+			404: openapi.RefResponse("User not found", "Error"),
 		},
 	})
 
 	// Ban management - protected
 	adminGroup.POST("/users/:id/ban", requireAdmin(http.HandlerFunc(a.banUserHandler)).ServeHTTP)
-	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id/ban"),
+		Path:        prefix + "/users/{id}/ban",
 		Summary:     "Ban user",
 		Description: "Ban a user with reason and expiry (admin only)",
 		Tags:        []string{"Admin"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Ban details",
-			Required:    true,
-			Schema:      SchemaBanUserRequest,
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
 		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "User banned", Schema: core.SchemaSuccess},
-			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		Body: openapi.BodyOf[BanUserRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("User banned", "Success"),
+			401: openapi.RefResponse("Not authorized", "Error"),
 		},
 	})
 
 	adminGroup.POST("/users/:id/unban", requireAdmin(http.HandlerFunc(a.unbanUserHandler)).ServeHTTP)
-	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id/unban"),
+		Path:        prefix + "/users/{id}/unban",
 		Summary:     "Unban user",
 		Description: "Remove ban from user (admin only)",
 		Tags:        []string{"Admin"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "User unbanned", Schema: core.SchemaSuccess},
-			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("User unbanned", "Success"),
+			401: openapi.RefResponse("Not authorized", "Error"),
 		},
 	})
 
 	// Role management - protected
 	adminGroup.PUT("/users/:id/role", requireAdmin(http.HandlerFunc(a.updateRoleHandler)).ServeHTTP)
-	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "PUT",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/users/:id/role"),
+		Path:        prefix + "/users/{id}/role",
 		Summary:     "Update user role",
 		Description: "Update a user's role (admin only)",
 		Tags:        []string{"Admin"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Role update details",
-			Required:    true,
-			Schema:      SchemaUpdateRoleRequest,
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
 		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Role updated", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request", Schema: core.SchemaError},
-			"401": {Description: "Not authorized", Schema: core.SchemaError},
-			"404": {Description: "User not found", Schema: core.SchemaError},
+		Body: openapi.BodyOf[UpdateRoleRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Role updated", "Success"),
+			400: openapi.RefResponse("Invalid request", "Error"),
+			401: openapi.RefResponse("Not authorized", "Error"),
+			404: openapi.RefResponse("User not found", "Error"),
 		},
 	})
 
 	// Stats and analytics - protected
 	adminGroup.GET("/stats", requireAdmin(http.HandlerFunc(a.getStatsHandler)).ServeHTTP)
-	adminGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        prefix + "/stats",
 		Summary:     "Admin stats",
 		Description: "Get platform statistics (admin only)",
 		Tags:        []string{"Admin"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Statistics", Schema: SchemaAdminStats},
-			"401": {Description: "Not authorized", Schema: core.SchemaError},
+		Auth:        true,
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[StatsResponse]("Statistics"),
+			401: openapi.RefResponse("Not authorized", "Error"),
 		},
 	})
 }

@@ -1,4 +1,4 @@
-package router
+package defaults
 
 import (
 	"encoding/json"
@@ -295,8 +295,10 @@ func (h *Handlers) listSessionsHandler(w http.ResponseWriter, r *http.Request) {
 		uid = um2.ID
 	}
 
+	pagination := core.ParsePagination(r)
+
 	// Use core SessionService.GetUserSessions
-	sessions, err := h.auth.Session.GetUserSessions(ctx, uid)
+	sessions, err := h.auth.Session.GetUserSessions(ctx, uid, pagination.Offset, pagination.Limit)
 	if err != nil {
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
@@ -305,9 +307,21 @@ func (h *Handlers) listSessionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.Response{
-		Success: true,
-		Data:    sessions,
+	totalCount, err := h.auth.Session.CountUserSessions(ctx, uid)
+	if err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to count sessions",
+		})
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*auth.Session]{
+		Items:      sessions,
+		TotalCount: totalCount,
+		Page:       pagination.Page,
+		Offset:     pagination.Offset,
+		Limit:      pagination.Limit,
 	})
 }
 

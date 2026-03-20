@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"github.com/theinventorylib/aegis/auth"
 	"github.com/theinventorylib/aegis/core"
 )
 
@@ -15,11 +16,11 @@ import (
 // This function adds standard response schemas:
 //   - Error: {"success": false, "error": "message"}
 //   - Success: {"success": true, "message": "message"}
+//   - Session: auth.Session model
+//   - User: auth.User model
+//   - RefreshTokenRequest: {"refreshToken": "..."}
 //
 // These schemas are referenced by core routes and plugins.
-//
-// Note: User and Session schemas are auto-registered from Go types
-// during Init() to ensure they stay in sync with model definitions.
 func addCommonSchemas(spec *Spec) {
 	// Error response schema - manually defined as it's a simple structure
 	spec.AddSchema(core.SchemaError, ObjectSchema("Error response", map[string]*Schema{
@@ -33,6 +34,14 @@ func addCommonSchemas(spec *Spec) {
 		"message": StringSchema("Success message"),
 	}, []string{"success"}))
 
-	// Note: User and Session schemas should be auto-registered from models
-	// This is done in the Init() method or by plugins
+	// Session schema - auto-generated from auth.Session model
+	spec.AddSchema("Session", GenerateSchema(auth.Session{}))
+
+	// User schema - auto-generated from auth.User model
+	spec.AddSchema("User", GenerateSchema(auth.User{}))
+
+	// RefreshTokenRequest schema - used by core session refresh and JWT refresh
+	spec.AddSchema("RefreshTokenRequest", ObjectSchema("Refresh token request", map[string]*Schema{
+		"refreshToken": StringSchema("The refresh token to use"),
+	}, []string{"refreshToken"}))
 }

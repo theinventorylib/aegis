@@ -36,6 +36,25 @@ type PaginationParams struct {
 	Offset int
 }
 
+// PaginatedResponse is a standard pagination envelope for list endpoints.
+//
+// It is intended to be wrapped as core.Response.Data (i.e. core.Response{Data: PaginatedResponse[T]}).
+// This keeps pagination metadata consistent across endpoints without per-resource DTOs.
+type PaginatedResponse[T any] struct {
+	Items      []T `json:"items"`
+	TotalCount int `json:"totalCount"`
+	Page       int `json:"page"`
+	Offset     int `json:"offset"`
+	Limit      int `json:"limit"`
+}
+
+// SessionRefreshResponse represents the data payload returned by the session
+// refresh endpoint. This is wrapped in a core.Response envelope.
+type SessionRefreshResponse struct {
+	// ExpiresAt is when the new session expires
+	ExpiresAt string `json:"expiresAt"`
+}
+
 // HTTPLogger is an optional interface for logging HTTP helper errors.
 // This is a subset of structured logging interfaces (zap, logrus, slog).
 type HTTPLogger interface {
@@ -85,85 +104,6 @@ func ParsePagination(r *http.Request) PaginationParams {
 		Limit:  limit,
 		Offset: offset,
 	}
-}
-
-// RequestBodyMeta describes the expected request body for an API endpoint.
-// Used by the OpenAPI plugin for automatic documentation generation.
-type RequestBodyMeta struct {
-	// Description explains what the request body contains
-	Description string
-
-	// Required indicates if a request body must be provided
-	Required bool
-
-	// Schema is either:
-	//   - A string with the schema name (e.g., "CreateUserRequest")
-	//   - An inline schema definition (struct or map)
-	Schema any
-}
-
-// ResponseMeta describes a possible response for an API endpoint.
-// Used by the OpenAPI plugin for automatic documentation generation.
-type ResponseMeta struct {
-	// Description explains what this response represents
-	Description string
-
-	// Schema is either:
-	//   - A string with the schema name (e.g., "User", "Error")
-	//   - An inline schema definition (struct or map)
-	Schema any
-}
-
-// RouteMetadata contains OpenAPI documentation metadata for a route.
-//
-// This metadata enables automatic API documentation generation via the OpenAPI
-// plugin. Developers annotate routes with this metadata, and the OpenAPI spec
-// is automatically generated.
-//
-// Example:
-//
-//	metadata := &core.RouteMetadata{
-//		Method:      "POST",
-//		Path:        "/auth/login",
-//		Summary:     "Authenticate user",
-//		Description: "Login with email and password",
-//		Tags:        []string{"Authentication"},
-//		Protected:   false,
-//		RequestBody: &core.RequestBodyMeta{
-//			Description: "Login credentials",
-//			Required:    true,
-//			Schema:      "LoginRequest",
-//		},
-//		Responses: map[string]*core.ResponseMeta{
-//			"200": {Description: "Successful login", Schema: "LoginResponse"},
-//			"401": {Description: "Invalid credentials", Schema: "Error"},
-//		},
-//	}
-type RouteMetadata struct {
-	// Method is the HTTP method (GET, POST, PUT, DELETE, PATCH, etc.)
-	Method string
-
-	// Path is the route path (e.g., "/auth/logout", "/users/:id")
-	Path string
-
-	// Summary is a short one-line description of the endpoint
-	Summary string
-
-	// Description is a detailed explanation of what the endpoint does
-	Description string
-
-	// Tags are used for grouping operations in documentation (e.g., ["Auth", "Users"])
-	Tags []string
-
-	// Protected indicates if the endpoint requires authentication
-	Protected bool
-
-	// RequestBody describes the expected request body (optional)
-	RequestBody *RequestBodyMeta
-
-	// Responses maps HTTP status codes to response descriptions
-	// Example: {"200": {...}, "401": {...}, "500": {...}}
-	Responses map[string]*ResponseMeta
 }
 
 // WriteJSON writes a JSON response with the given status code and data.

@@ -89,3 +89,9 @@ type User struct {
 	Phone         *string `json:"phone,omitempty"` // User phone number in E.164 format
 	PhoneVerified bool    `json:"phoneVerified"`   // Phone verification status
 }
+
+// SMSAuthResponse is the data payload returned by SMS phone+password login
+// and registration endpoints.
+type SMSAuthResponse struct {
+	User *auth.User `json:"user"`
+}

@@ -2,8 +2,6 @@ package router
 
 import (
 	"net/http"
-
-	"github.com/theinventorylib/aegis/core"
 )
 
 // Router is the interface for HTTP routers in Aegis.
@@ -14,24 +12,8 @@ import (
 // Implementations must support:
 //   - Standard HTTP methods (GET, POST, PUT, PATCH, DELETE)
 //   - Middleware chain using standard http.Handler interface
-//   - Route metadata registration for OpenAPI documentation
 //   - http.Handler compliance for ServeHTTP
 //   - Route grouping for organizing related routes
-//
-// Example implementation (using chi):
-//
-//	type ChiRouter struct {
-//		*chi.Mux
-//		metadata []core.RouteMetadata
-//	}
-//
-//	func (r *ChiRouter) RegisterRouteMetadata(m core.RouteMetadata) {
-//		r.metadata = append(r.metadata, m)
-//	}
-//
-//	func (r *ChiRouter) GetRouteMetadata() []core.RouteMetadata {
-//		return r.metadata
-//	}
 type Router interface {
 	// GET registers a GET route handler
 	GET(path string, handler http.HandlerFunc)
@@ -55,17 +37,9 @@ type Router interface {
 	// ServeHTTP implements http.Handler for serving requests
 	ServeHTTP(w http.ResponseWriter, r *http.Request)
 
-	// RegisterRouteMetadata registers OpenAPI metadata for a route
-	// This metadata is used by the OpenAPI plugin for automatic documentation
-	RegisterRouteMetadata(metadata core.RouteMetadata)
-
-	// GetRouteMetadata returns all registered route metadata
-	// Used by the OpenAPI plugin to generate specifications
-	GetRouteMetadata() []core.RouteMetadata
-
 	// Group creates a sub-router with a prefix for grouping related routes.
 	// Routes mounted to the returned GroupRouter will be prefixed with the given path.
-	// The groupName is used for OpenAPI documentation to categorize routes.
+	// The groupName is used for organizational purposes.
 	//
 	// Example:
 	//   jwtGroup := router.Group("/jwt", "JWT")
@@ -77,8 +51,7 @@ type Router interface {
 // GroupRouter represents a sub-router for grouping related routes.
 //
 // GroupRouter provides the same HTTP method registration as Router,
-// but routes are prefixed with the group's path. The groupName is
-// automatically added to route metadata for OpenAPI documentation.
+// but routes are prefixed with the group's path.
 //
 // Example:
 //
@@ -108,12 +81,6 @@ type GroupRouter interface {
 
 	// Group creates a nested sub-group within this group.
 	// Nested groups inherit the parent's prefix and allow further
-	// organization of routes. The returned GroupRouter is prefixed
-	// with the nested path and will include the provided groupName
-	// in route metadata tags when registering routes.
+	// organization of routes.
 	Group(path string, groupName string) GroupRouter
-
-	// RegisterRouteMetadata registers OpenAPI metadata for a route within this group
-	// The groupName is automatically added to the Tags field if not already present
-	RegisterRouteMetadata(metadata core.RouteMetadata)
 }

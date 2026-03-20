@@ -28,6 +28,22 @@ func (q *Queries) CleanupExpiredVerifications(ctx context.Context, expiresAt str
 	return err
 }
 
+const countSessionsByUserID = `-- name: CountSessionsByUserID :one
+SELECT COUNT(*) FROM session WHERE user_id = $1 AND expires_at > $2
+`
+
+type CountSessionsByUserIDParams struct {
+	UserID    string `json:"user_id"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+func (q *Queries) CountSessionsByUserID(ctx context.Context, arg CountSessionsByUserIDParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSessionsByUserID, arg.UserID, arg.ExpiresAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT COUNT(*) FROM "user" WHERE disabled = 0
 `
@@ -370,16 +386,23 @@ func (q *Queries) GetSessionByToken(ctx context.Context, arg GetSessionByTokenPa
 }
 
 const getSessionsByUserID = `-- name: GetSessionsByUserID :many
-SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent FROM session WHERE user_id = $1 AND expires_at > $2
+SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent FROM session WHERE user_id = $1 AND expires_at > $2 LIMIT $3 OFFSET $4
 `
 
 type GetSessionsByUserIDParams struct {
 	UserID    string `json:"user_id"`
 	ExpiresAt string `json:"expires_at"`
+	Limit     int32  `json:"limit"`
+	Offset    int32  `json:"offset"`
 }
 
 func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUserIDParams) ([]Session, error) {
-	rows, err := q.db.QueryContext(ctx, getSessionsByUserID, arg.UserID, arg.ExpiresAt)
+	rows, err := q.db.QueryContext(ctx, getSessionsByUserID,
+		arg.UserID,
+		arg.ExpiresAt,
+		arg.Limit,
+		arg.Offset,
+	)
 	if err != nil {
 		return nil, err
 	}

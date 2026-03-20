@@ -349,9 +349,9 @@ func (s *SessionService) Logout(ctx context.Context, token string) error {
 	return s.DeleteSession(ctx, token)
 }
 
-// GetUserSessions retrieves all active sessions for a user
-func (s *SessionService) GetUserSessions(ctx context.Context, userID string) ([]*auth.Session, error) {
-	sessions, err := s.sessionStore.GetByUserID(ctx, userID)
+// GetUserSessions retrieves a paginated list of active sessions for a user
+func (s *SessionService) GetUserSessions(ctx context.Context, userID string, offset, limit int) ([]*auth.Session, error) {
+	sessions, err := s.sessionStore.GetByUserID(ctx, userID, offset, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -360,6 +360,11 @@ func (s *SessionService) GetUserSessions(ctx context.Context, userID string) ([]
 		result[i] = &sessions[i]
 	}
 	return result, nil
+}
+
+// CountUserSessions returns the total number of active sessions for a user
+func (s *SessionService) CountUserSessions(ctx context.Context, userID string) (int, error) {
+	return s.sessionStore.CountByUserID(ctx, userID)
 }
 
 // DeleteUserSessions deletes all sessions for a user
@@ -380,7 +385,8 @@ func (s *SessionService) DeleteUserSessions(ctx context.Context, userID string) 
 //   - error: AuthErrorCodeSessionNotFound if session does not exist or belong to user,
 //     or database error.
 func (s *SessionService) RevokeSessionByID(ctx context.Context, userID, sessionID string) error {
-	sessions, err := s.GetUserSessions(ctx, userID)
+	// Fetch up to 100 sessions to find the one to revoke
+	sessions, err := s.GetUserSessions(ctx, userID, 0, 50)
 	if err != nil {
 		return err
 	}

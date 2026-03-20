@@ -3,6 +3,7 @@ package organizations
 import (
 	"context"
 	"database/sql"
+	"math"
 	"time"
 
 	"github.com/theinventorylib/aegis/plugins/organizations/internal/gen/sqlc"
@@ -100,8 +101,24 @@ func (s *DefaultOrganizationStore) DeleteOrganization(ctx context.Context, id st
 }
 
 // ListUserOrganizations retrieves all organizations for a user.
-func (s *DefaultOrganizationStore) ListUserOrganizations(ctx context.Context, userID string) ([]Organization, error) {
-	orgs, err := s.q.ListUserOrganizations(ctx, userID)
+func (s *DefaultOrganizationStore) ListUserOrganizations(ctx context.Context, userID string, offset, limit int) ([]Organization, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if offset > math.MaxInt32 {
+		offset = math.MaxInt32
+	}
+	if limit > math.MaxInt32 {
+		limit = math.MaxInt32
+	}
+	orgs, err := s.q.ListUserOrganizations(ctx, sqlc.ListUserOrganizationsParams{
+		UserID: userID,
+		Limit:  int32(limit),
+		Offset: int32(offset),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +127,11 @@ func (s *DefaultOrganizationStore) ListUserOrganizations(ctx context.Context, us
 		result[i] = sqlcOrganizationToOrganization(o)
 	}
 	return result, nil
+}
+
+func (s *DefaultOrganizationStore) CountUserOrganizations(ctx context.Context, userID string) (int, error) {
+	count, err := s.q.CountUserOrganizations(ctx, userID)
+	return int(count), err
 }
 
 // Member operations
@@ -182,8 +204,24 @@ func (s *DefaultOrganizationStore) RemoveMember(ctx context.Context, userID, org
 }
 
 // ListOrganizationMembers retrieves all members of an organization.
-func (s *DefaultOrganizationStore) ListOrganizationMembers(ctx context.Context, orgID string) ([]Member, error) {
-	members, err := s.q.ListOrganizationMembers(ctx, orgID)
+func (s *DefaultOrganizationStore) ListOrganizationMembers(ctx context.Context, orgID string, offset, limit int) ([]Member, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if offset > math.MaxInt32 {
+		offset = math.MaxInt32
+	}
+	if limit > math.MaxInt32 {
+		limit = math.MaxInt32
+	}
+	members, err := s.q.ListOrganizationMembers(ctx, sqlc.ListOrganizationMembersParams{
+		OrganizationID: orgID,
+		Limit:          int32(limit),
+		Offset:         int32(offset),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +230,11 @@ func (s *DefaultOrganizationStore) ListOrganizationMembers(ctx context.Context, 
 		result[i] = sqlcMemberToMember(m)
 	}
 	return result, nil
+}
+
+func (s *DefaultOrganizationStore) CountOrganizationMembers(ctx context.Context, orgID string) (int, error) {
+	count, err := s.q.CountOrganizationMembers(ctx, orgID)
+	return int(count), err
 }
 
 // Team operations
@@ -219,8 +262,24 @@ func (s *DefaultOrganizationStore) GetTeam(ctx context.Context, id string) (Team
 }
 
 // ListTeams retrieves all teams in an organization.
-func (s *DefaultOrganizationStore) ListTeams(ctx context.Context, orgID string) ([]Team, error) {
-	teams, err := s.q.ListTeams(ctx, orgID)
+func (s *DefaultOrganizationStore) ListTeams(ctx context.Context, orgID string, offset, limit int) ([]Team, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if offset > math.MaxInt32 {
+		offset = math.MaxInt32
+	}
+	if limit > math.MaxInt32 {
+		limit = math.MaxInt32
+	}
+	teams, err := s.q.ListTeams(ctx, sqlc.ListTeamsParams{
+		OrganizationID: orgID,
+		Limit:          int32(limit),
+		Offset:         int32(offset),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -229,6 +288,11 @@ func (s *DefaultOrganizationStore) ListTeams(ctx context.Context, orgID string) 
 		result[i] = sqlcTeamToTeam(t)
 	}
 	return result, nil
+}
+
+func (s *DefaultOrganizationStore) CountTeams(ctx context.Context, orgID string) (int, error) {
+	count, err := s.q.CountTeams(ctx, orgID)
+	return int(count), err
 }
 
 // UpdateTeam updates a team's details.
@@ -275,8 +339,24 @@ func (s *DefaultOrganizationStore) GetTeamMember(ctx context.Context, teamID, us
 }
 
 // ListTeamMembers retrieves all members of a team.
-func (s *DefaultOrganizationStore) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMember, error) {
-	members, err := s.q.ListTeamMembers(ctx, teamID)
+func (s *DefaultOrganizationStore) ListTeamMembers(ctx context.Context, teamID string, offset, limit int) ([]TeamMember, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if offset > math.MaxInt32 {
+		offset = math.MaxInt32
+	}
+	if limit > math.MaxInt32 {
+		limit = math.MaxInt32
+	}
+	members, err := s.q.ListTeamMembers(ctx, sqlc.ListTeamMembersParams{
+		TeamID: teamID,
+		Limit:  int32(limit),
+		Offset: int32(offset),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -285,6 +365,11 @@ func (s *DefaultOrganizationStore) ListTeamMembers(ctx context.Context, teamID s
 		result[i] = sqlcTeamMemberToTeamMember(m)
 	}
 	return result, nil
+}
+
+func (s *DefaultOrganizationStore) CountTeamMembers(ctx context.Context, teamID string) (int, error) {
+	count, err := s.q.CountTeamMembers(ctx, teamID)
+	return int(count), err
 }
 
 // UpdateTeamMemberRole updates a team member's role.

@@ -88,6 +88,7 @@ import (
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/router/defaults"
 )
 
 // Aegis is the main entry point for the Aegis authentication framework.
@@ -371,7 +372,7 @@ func (a *Aegis) MountRoutes(prefix string) {
 		coreAuth = a.config.CoreAuth
 	}
 	corePrefix := prefix + "/default"
-	router.MountRoutes(a.router, a.auth, coreAuth, corePrefix, a.rateLimiter)
+	defaults.MountRoutes(a.router, a.auth, coreAuth, corePrefix, a.rateLimiter)
 
 	// Get sorted plugins for mounting
 	sortedPlugins := a.GetPlugins()
