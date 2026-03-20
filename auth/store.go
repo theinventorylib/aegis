@@ -121,9 +121,12 @@ type SessionStore interface {
 	// Returns sql.ErrNoRows or equivalent if no session is found.
 	GetByRefreshToken(ctx context.Context, refreshToken string) (Session, error)
 
-	// GetByUserID retrieves all active sessions for a specific user.
+	// GetByUserID retrieves a paginated list of active sessions for a specific user.
 	// Returns an empty slice if the user has no active sessions.
-	GetByUserID(ctx context.Context, userID string) ([]Session, error)
+	GetByUserID(ctx context.Context, userID string, offset, limit int) ([]Session, error)
+
+	// CountByUserID returns the total number of active sessions for a user.
+	CountByUserID(ctx context.Context, userID string) (int, error)
 
 	// Update modifies an existing session's data (e.g., extending expiration).
 	// Returns an error if the session does not exist.

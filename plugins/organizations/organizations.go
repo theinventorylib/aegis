@@ -65,6 +65,7 @@ import (
 
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/plugins/openapi"
 	"github.com/theinventorylib/aegis/router"
 )
 
@@ -189,33 +190,6 @@ func (p *Plugin) GetMigrations() []plugins.Migration {
 
 // MountRoutes registers HTTP routes for the organizations plugin
 func (p *Plugin) MountRoutes(r router.Router, prefix string) {
-	// Register schemas with OpenAPI if available
-	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
-		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example any)
-		}); ok {
-			// Request schemas
-			oapi.RegisterSchemaFromType(SchemaCreateOrganizationRequest, CreateOrganizationRequest{})
-			oapi.RegisterSchemaFromType(SchemaUpdateOrganizationRequest, UpdateOrganizationRequest{})
-			oapi.RegisterSchemaFromType(SchemaAddOrganizationMemberRequest, AddOrganizationMemberRequest{})
-			oapi.RegisterSchemaFromType(SchemaUpdateMemberRoleRequest, UpdateMemberRoleRequest{})
-			oapi.RegisterSchemaFromType(SchemaCreateTeamRequest, CreateTeamRequest{})
-			oapi.RegisterSchemaFromType(SchemaUpdateTeamRequest, UpdateTeamRequest{})
-			oapi.RegisterSchemaFromType(SchemaAddTeamMemberRequest, AddTeamMemberRequest{})
-			oapi.RegisterSchemaFromType(SchemaUpdateTeamMemberRoleRequest, UpdateTeamMemberRoleRequest{})
-
-			// Response schemas
-			oapi.RegisterSchemaFromType(SchemaOrganization, Organization{})
-			oapi.RegisterSchemaFromType(SchemaOrganizationList, []Organization{})
-			oapi.RegisterSchemaFromType(SchemaTeam, Team{})
-			oapi.RegisterSchemaFromType(SchemaTeamList, []Team{})
-			oapi.RegisterSchemaFromType(SchemaMember, Member{})
-			oapi.RegisterSchemaFromType(SchemaMemberList, []Member{})
-			oapi.RegisterSchemaFromType(SchemaTeamMember, TeamMember{})
-			oapi.RegisterSchemaFromType(SchemaTeamMemberList, []TeamMember{})
-		}
-	}
-
 	// Create auth middleware - ALL organization routes require authentication
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
@@ -224,94 +198,95 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 
 	// Create organization (POST to prefix)
 	orgGroup.POST("/", requireAuth(http.HandlerFunc(p.CreateOrganizationHandler)).ServeHTTP)
-	orgGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix,
 		Summary:     "Create organization",
 		Description: "Create a new organization with the authenticated user as owner",
 		Tags:        []string{"Organizations"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Organization details",
-			Required:    true,
-			Schema:      SchemaCreateOrganizationRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"201": {Description: "Organization created successfully", Schema: SchemaOrganization},
-			"400": {Description: "Invalid request or validation error", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
+		Auth:        true,
+		Body:        openapi.BodyOf[CreateOrganizationRequest](),
+		Responses: openapi.Responses{
+			201: openapi.DataResponseOf[Organization]("Organization created successfully"),
+			400: openapi.RefResponse("Invalid request or validation error", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
 		},
 	})
 
 	// List organizations (GET to prefix)
 	orgGroup.GET("/", requireAuth(http.HandlerFunc(p.ListOrganizationsHandler)).ServeHTTP)
-	orgGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        prefix,
 		Summary:     "List user organizations",
 		Description: "Retrieve all organizations the authenticated user is a member of",
 		Tags:        []string{"Organizations"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "List of organizations", Schema: SchemaOrganizationList},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"500": {Description: "Internal server error", Schema: core.SchemaError},
+		Auth:        true,
+		Responses: openapi.Responses{
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[Organization]]("List of organizations"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			500: openapi.RefResponse("Internal server error", "Error"),
 		},
 	})
 
 	// Organization detail routes
 	orgGroup.GET("/:id", requireAuth(http.HandlerFunc(p.GetOrganizationHandler)).ServeHTTP)
-	orgGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/:id"),
+		Path:        prefix + "/{id}",
 		Summary:     "Get organization",
 		Description: "Retrieve details of a specific organization",
 		Tags:        []string{"Organizations"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Organization details", Schema: SchemaOrganization},
-			"400": {Description: "Invalid organization ID", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Not a member of this organization", Schema: core.SchemaError},
-			"404": {Description: "Organization not found", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[Organization]("Organization details"),
+			400: openapi.RefResponse("Invalid organization ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Not a member of this organization", "Error"),
+			404: openapi.RefResponse("Organization not found", "Error"),
 		},
 	})
 
 	orgGroup.PUT("/:id", requireAuth(http.HandlerFunc(p.UpdateOrganizationHandler)).ServeHTTP)
-	orgGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "PUT",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/:id"),
+		Path:        prefix + "/{id}",
 		Summary:     "Update organization",
 		Description: "Update organization details (requires owner or admin role)",
 		Tags:        []string{"Organizations"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Updated organization details",
-			Required:    true,
-			Schema:      UpdateOrganizationRequest{},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
 		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Organization updated successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request or validation error", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Insufficient permissions", Schema: core.SchemaError},
+		Body: openapi.BodyOf[UpdateOrganizationRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Organization updated successfully", "Success"),
+			400: openapi.RefResponse("Invalid request or validation error", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
 		},
 	})
 
 	orgGroup.DELETE("/:id", requireAuth(http.HandlerFunc(p.DeleteOrganizationHandler)).ServeHTTP)
-	orgGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "DELETE",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/:id"),
+		Path:        prefix + "/{id}",
 		Summary:     "Delete organization",
 		Description: "Delete an organization (requires owner role)",
 		Tags:        []string{"Organizations"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Organization deleted successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid organization ID", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Only owner can delete organization", Schema: core.SchemaError},
-			"500": {Description: "Internal server error", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Organization deleted successfully", "Success"),
+			400: openapi.RefResponse("Invalid organization ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Only owner can delete organization", "Error"),
+			500: openapi.RefResponse("Internal server error", "Error"),
 		},
 	})
 
@@ -319,77 +294,83 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	membersGroup := orgGroup.Group("/:id/members", "Members")
 
 	membersGroup.POST("/", requireAuth(http.HandlerFunc(p.AddOrganizationMemberHandler)).ServeHTTP)
-	membersGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members"),
+		Path:        prefix + "/{id}/members",
 		Summary:     "Add organization member",
 		Description: "Add a new member to the organization (requires admin role)",
 		Tags:        []string{"Members"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Member details (userId and role)",
-			Required:    true,
-			Schema:      SchemaAddOrganizationMemberRequest,
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
 		},
-		Responses: map[string]*core.ResponseMeta{
-			"201": {Description: "Member added successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request or validation error", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Insufficient permissions", Schema: core.SchemaError},
+		Body: openapi.BodyOf[AddOrganizationMemberRequest](),
+		Responses: openapi.Responses{
+			201: openapi.RefResponse("Member added successfully", "Success"),
+			400: openapi.RefResponse("Invalid request or validation error", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
 		},
 	})
 
 	membersGroup.GET("/", requireAuth(http.HandlerFunc(p.ListOrganizationMembersHandler)).ServeHTTP)
-	membersGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members"),
+		Path:        prefix + "/{id}/members",
 		Summary:     "List organization members",
 		Description: "Retrieve all members of an organization",
 		Tags:        []string{"Members"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "List of organization members", Schema: SchemaMemberList},
-			"400": {Description: "Invalid organization ID", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Not a member of this organization", Schema: core.SchemaError},
-			"500": {Description: "Internal server error", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[Member]]("List of organization members"),
+			400: openapi.RefResponse("Invalid organization ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Not a member of this organization", "Error"),
+			500: openapi.RefResponse("Internal server error", "Error"),
 		},
 	})
 
 	membersGroup.PATCH("/:userId", requireAuth(http.HandlerFunc(p.UpdateMemberRoleHandler)).ServeHTTP)
-	membersGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "PATCH",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members/:userId"),
+		Path:        prefix + "/{id}/members/{userId}",
 		Summary:     "Update member role",
 		Description: "Update a member's role in the organization (requires owner role)",
 		Tags:        []string{"Members"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "New role for the member",
-			Required:    true,
-			Schema:      SchemaUpdateMemberRoleRequest,
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
 		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Role updated successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request or validation error", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Only owner can update roles", Schema: core.SchemaError},
+		Body: openapi.BodyOf[UpdateMemberRoleRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Role updated successfully", "Success"),
+			400: openapi.RefResponse("Invalid request or validation error", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Only owner can update roles", "Error"),
 		},
 	})
 
 	membersGroup.DELETE("/:userId", requireAuth(http.HandlerFunc(p.RemoveOrganizationMemberHandler)).ServeHTTP)
-	membersGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "DELETE",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/members/:userId"),
+		Path:        prefix + "/{id}/members/{userId}",
 		Summary:     "Remove organization member",
 		Description: "Remove a member from the organization (requires admin role, cannot remove owner)",
 		Tags:        []string{"Members"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Member removed successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request or cannot remove owner", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Insufficient permissions", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Member removed successfully", "Success"),
+			400: openapi.RefResponse("Invalid request or cannot remove owner", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
 		},
 	})
 
@@ -397,40 +378,42 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	orgTeams := orgGroup.Group("/:id/teams", "Teams")
 
 	orgTeams.POST("/", requireAuth(http.HandlerFunc(p.CreateTeamHandler)).ServeHTTP)
-	orgTeams.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/teams"),
+		Path:        prefix + "/{id}/teams",
 		Summary:     "Create team",
 		Description: "Create a new team within an organization (requires admin role)",
 		Tags:        []string{"Teams"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Team details",
-			Required:    true,
-			Schema:      SchemaCreateTeamRequest,
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
 		},
-		Responses: map[string]*core.ResponseMeta{
-			"201": {Description: "Team created successfully", Schema: SchemaTeam},
-			"400": {Description: "Invalid request or validation error", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Insufficient permissions", Schema: core.SchemaError},
+		Body: openapi.BodyOf[CreateTeamRequest](),
+		Responses: openapi.Responses{
+			201: openapi.DataResponseOf[Team]("Team created successfully"),
+			400: openapi.RefResponse("Invalid request or validation error", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
 		},
 	})
 
 	orgTeams.GET("/", requireAuth(http.HandlerFunc(p.ListTeamsHandler)).ServeHTTP)
-	orgTeams.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/:id/teams"),
+		Path:        prefix + "/{id}/teams",
 		Summary:     "List organization teams",
 		Description: "Retrieve all teams in an organization",
 		Tags:        []string{"Teams"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "List of teams", Schema: SchemaTeamList},
-			"400": {Description: "Invalid organization ID", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Not a member of this organization", Schema: core.SchemaError},
-			"500": {Description: "Internal server error", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[Team]]("List of teams"),
+			400: openapi.RefResponse("Invalid organization ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Not a member of this organization", "Error"),
+			500: openapi.RefResponse("Internal server error", "Error"),
 		},
 	})
 
@@ -438,139 +421,150 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	teamsGroup := orgGroup.Group("/teams", "Teams")
 
 	teamsGroup.GET(":/teamId", requireAuth(http.HandlerFunc(p.GetTeamHandler)).ServeHTTP)
-	teamsGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId"),
+		Path:        prefix + "/teams/{teamId}",
 		Summary:     "Get team",
 		Description: "Retrieve details of a specific team",
 		Tags:        []string{"Teams"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Team details", Schema: SchemaTeam},
-			"400": {Description: "Invalid team ID", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Not a member of this organization", Schema: core.SchemaError},
-			"404": {Description: "Team not found", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "teamId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[Team]("Team details"),
+			400: openapi.RefResponse("Invalid team ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Not a member of this organization", "Error"),
+			404: openapi.RefResponse("Team not found", "Error"),
 		},
 	})
 
 	teamsGroup.PUT("/:teamId", requireAuth(http.HandlerFunc(p.UpdateTeamHandler)).ServeHTTP)
-	teamsGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "PUT",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId"),
+		Path:        prefix + "/teams/{teamId}",
 		Summary:     "Update team",
 		Description: "Update team details (requires admin role)",
 		Tags:        []string{"Teams"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Updated team details",
-			Required:    true,
-			Schema:      SchemaUpdateTeamRequest,
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "teamId", In: "path", Type: "string", Required: true},
 		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Team updated successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request or validation error", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Insufficient permissions", Schema: core.SchemaError},
-			"404": {Description: "Team not found", Schema: core.SchemaError},
+		Body: openapi.BodyOf[UpdateTeamRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Team updated successfully", "Success"),
+			400: openapi.RefResponse("Invalid request or validation error", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Team not found", "Error"),
 		},
 	})
 
 	teamsGroup.DELETE("/:teamId", requireAuth(http.HandlerFunc(p.DeleteTeamHandler)).ServeHTTP)
-	teamsGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "DELETE",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId"),
+		Path:        prefix + "/teams/{teamId}",
 		Summary:     "Delete team",
 		Description: "Delete a team (requires admin role)",
 		Tags:        []string{"Teams"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Team deleted successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid team ID", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Insufficient permissions", Schema: core.SchemaError},
-			"404": {Description: "Team not found", Schema: core.SchemaError},
-			"500": {Description: "Internal server error", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "teamId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Team deleted successfully", "Success"),
+			400: openapi.RefResponse("Invalid team ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Team not found", "Error"),
+			500: openapi.RefResponse("Internal server error", "Error"),
 		},
 	})
 
 	// Team Member Management - all protected
 	r.POST(prefix+"/teams/:teamId/members", requireAuth(http.HandlerFunc(p.AddTeamMemberHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId/members"),
+		Path:        prefix + "/teams/{teamId}/members",
 		Summary:     "Add team member",
 		Description: "Add a member to a team (requires admin role, user must be organization member)",
 		Tags:        []string{"Team Members"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Team member details (userId and role)",
-			Required:    true,
-			Schema:      SchemaAddTeamMemberRequest,
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "teamId", In: "path", Type: "string", Required: true},
 		},
-		Responses: map[string]*core.ResponseMeta{
-			"201": {Description: "Member added to team successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request or user not organization member", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Insufficient permissions", Schema: core.SchemaError},
-			"404": {Description: "Team not found", Schema: core.SchemaError},
+		Body: openapi.BodyOf[AddTeamMemberRequest](),
+		Responses: openapi.Responses{
+			201: openapi.RefResponse("Member added to team successfully", "Success"),
+			400: openapi.RefResponse("Invalid request or user not organization member", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Team not found", "Error"),
 		},
 	})
 
 	r.GET(prefix+"/teams/:teamId/members", requireAuth(http.HandlerFunc(p.ListTeamMembersHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId/members"),
+		Path:        prefix + "/teams/{teamId}/members",
 		Summary:     "List team members",
 		Description: "Retrieve all members of a team",
 		Tags:        []string{"Team Members"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "List of team members", Schema: SchemaTeamMemberList},
-			"400": {Description: "Invalid team ID", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Not a member of this organization", Schema: core.SchemaError},
-			"404": {Description: "Team not found", Schema: core.SchemaError},
-			"500": {Description: "Internal server error", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "teamId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[TeamMember]]("List of team members"),
+			400: openapi.RefResponse("Invalid team ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Not a member of this organization", "Error"),
+			404: openapi.RefResponse("Team not found", "Error"),
+			500: openapi.RefResponse("Internal server error", "Error"),
 		},
 	})
 
 	r.PATCH(prefix+"/teams/:teamId/members/:userId", requireAuth(http.HandlerFunc(p.UpdateTeamMemberRoleHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "PATCH",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId/members/:userId"),
+		Path:        prefix + "/teams/{teamId}/members/{userId}",
 		Summary:     "Update team member role",
 		Description: "Update a team member's role (requires admin role)",
 		Tags:        []string{"Team Members"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "New role for the team member",
-			Required:    true,
-			Schema:      SchemaUpdateTeamMemberRoleRequest,
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "teamId", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
 		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Team member role updated successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request or validation error", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Insufficient permissions", Schema: core.SchemaError},
-			"404": {Description: "Team not found", Schema: core.SchemaError},
+		Body: openapi.BodyOf[UpdateTeamMemberRoleRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Team member role updated successfully", "Success"),
+			400: openapi.RefResponse("Invalid request or validation error", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Team not found", "Error"),
 		},
 	})
 
 	r.DELETE(prefix+"/teams/:teamId/members/:userId", requireAuth(http.HandlerFunc(p.RemoveTeamMemberHandler)).ServeHTTP)
-	r.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "DELETE",
-		Path:        router.NormalizePathToOpenAPI(prefix + "/teams/:teamId/members/:userId"),
+		Path:        prefix + "/teams/{teamId}/members/{userId}",
 		Summary:     "Remove team member",
 		Description: "Remove a member from a team (requires admin role)",
 		Tags:        []string{"Team Members"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Member removed from team successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"403": {Description: "Insufficient permissions", Schema: core.SchemaError},
-			"404": {Description: "Team not found", Schema: core.SchemaError},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "teamId", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Member removed from team successfully", "Success"),
+			400: openapi.RefResponse("Invalid request", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Team not found", "Error"),
 		},
 	})
 }
@@ -596,7 +590,7 @@ func (p *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error 
 		return nil
 	}
 
-	orgs, err := p.GetUserOrganizations(ctx, user.ID)
+	orgs, _, err := p.GetUserOrganizations(ctx, user.ID, 0, 50)
 	if err != nil {
 		// Don't fail enrichment if lookup fails
 		return err
@@ -693,17 +687,22 @@ func (p *Plugin) DeleteOrganization(ctx context.Context, id string) error {
 }
 
 // GetUserOrganizations retrieves all organizations for a user.
-func (p *Plugin) GetUserOrganizations(ctx context.Context, userID string) ([]*Organization, error) {
-	orgs, err := p.store.ListUserOrganizations(ctx, userID)
+func (p *Plugin) GetUserOrganizations(ctx context.Context, userID string, offset, limit int) ([]*Organization, int, error) {
+	orgs, err := p.store.ListUserOrganizations(ctx, userID, offset, limit)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	count, err := p.store.CountUserOrganizations(ctx, userID)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	result := make([]*Organization, len(orgs))
 	for i := range orgs {
 		result[i] = &orgs[i]
 	}
-	return result, nil
+	return result, count, nil
 }
 
 // User Organization operations
@@ -797,17 +796,22 @@ func (p *Plugin) RemoveOrganizationMember(ctx context.Context, userID, orgID str
 }
 
 // ListOrganizationMembers lists all members of an organization.
-func (p *Plugin) ListOrganizationMembers(ctx context.Context, orgID string) ([]*Member, error) {
-	members, err := p.store.ListOrganizationMembers(ctx, orgID)
+func (p *Plugin) ListOrganizationMembers(ctx context.Context, orgID string, offset, limit int) ([]*Member, int, error) {
+	members, err := p.store.ListOrganizationMembers(ctx, orgID, offset, limit)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	count, err := p.store.CountOrganizationMembers(ctx, orgID)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	result := make([]*Member, len(members))
 	for i := range members {
 		result[i] = &members[i]
 	}
-	return result, nil
+	return result, count, nil
 }
 
 // Team operations
@@ -843,17 +847,22 @@ func (p *Plugin) GetTeam(ctx context.Context, id string) (*Team, error) {
 }
 
 // ListTeams lists all teams in an organization.
-func (p *Plugin) ListTeams(ctx context.Context, orgID string) ([]*Team, error) {
-	teams, err := p.store.ListTeams(ctx, orgID)
+func (p *Plugin) ListTeams(ctx context.Context, orgID string, offset, limit int) ([]*Team, int, error) {
+	teams, err := p.store.ListTeams(ctx, orgID, offset, limit)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	count, err := p.store.CountTeams(ctx, orgID)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	result := make([]*Team, len(teams))
 	for i := range teams {
 		result[i] = &teams[i]
 	}
-	return result, nil
+	return result, count, nil
 }
 
 // UpdateTeam updates a team's name and description.
@@ -889,17 +898,22 @@ func (p *Plugin) RemoveTeamMember(ctx context.Context, teamID, userID string) er
 }
 
 // ListTeamMembers lists all members of a team.
-func (p *Plugin) ListTeamMembers(ctx context.Context, teamID string) ([]*TeamMember, error) {
-	members, err := p.store.ListTeamMembers(ctx, teamID)
+func (p *Plugin) ListTeamMembers(ctx context.Context, teamID string, offset, limit int) ([]*TeamMember, int, error) {
+	members, err := p.store.ListTeamMembers(ctx, teamID, offset, limit)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	count, err := p.store.CountTeamMembers(ctx, teamID)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	result := make([]*TeamMember, len(members))
 	for i := range members {
 		result[i] = &members[i]
 	}
-	return result, nil
+	return result, count, nil
 }
 
 // Dependencies returns plugin dependencies

@@ -143,3 +143,10 @@ type Tokens struct {
 type LinkAccountRequest struct {
 	Provider string `json:"provider"`
 }
+
+// OAuthCallbackResponse is the data payload returned by OAuth callback
+// endpoints after successfully creating a session.
+type OAuthCallbackResponse struct {
+	User    *User       `json:"user"`
+	Session *auth.Session `json:"session"`
+}

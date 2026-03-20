@@ -85,22 +85,7 @@ type UpdateRoleRequest struct {
 
 // ========== Response DTOs ==========
 
-// UserListResponse represents a paginated list of users.
-//
-// Example Response:
-//
-//	{
-//	  "users": [{"id": "user_1", "email": "user1@example.com", "role": "admin"}],
-//	  "totalCount": 100,
-//	  "offset": 0,
-//	  "limit": 20
-//	}
-type UserListResponse struct {
-	Users      []User `json:"users"`      // Users in current page
-	TotalCount int    `json:"totalCount"` // Total number of users
-	Offset     int    `json:"offset"`     // Current offset (for pagination)
-	Limit      int    `json:"limit"`      // Page size
-}
+// Note: list endpoints should use core.PaginatedResponse[T] for pagination metadata.
 
 // StatsResponse represents platform statistics.
 //

@@ -47,7 +47,9 @@ type OrganizationStore interface {
 	DeleteOrganization(ctx context.Context, id string, updatedAt time.Time) error
 
 	// ListUserOrganizations retrieves all organizations a user is a member of.
-	ListUserOrganizations(ctx context.Context, userID string) ([]Organization, error)
+	ListUserOrganizations(ctx context.Context, userID string, offset, limit int) ([]Organization, error)
+
+	CountUserOrganizations(ctx context.Context, userID string) (int, error)
 
 	// ========== Member operations ==========
 
@@ -80,7 +82,9 @@ type OrganizationStore interface {
 	RemoveMember(ctx context.Context, userID, orgID string) error
 
 	// ListOrganizationMembers retrieves all members of an organization.
-	ListOrganizationMembers(ctx context.Context, orgID string) ([]Member, error)
+	ListOrganizationMembers(ctx context.Context, orgID string, offset, limit int) ([]Member, error)
+
+	CountOrganizationMembers(ctx context.Context, orgID string) (int, error)
 
 	// ========== Team operations ==========
 
@@ -91,7 +95,9 @@ type OrganizationStore interface {
 	GetTeam(ctx context.Context, id string) (Team, error)
 
 	// ListTeams retrieves all teams in an organization.
-	ListTeams(ctx context.Context, orgID string) ([]Team, error)
+	ListTeams(ctx context.Context, orgID string, offset, limit int) ([]Team, error)
+
+	CountTeams(ctx context.Context, orgID string) (int, error)
 
 	// UpdateTeam updates team name and/or description.
 	UpdateTeam(ctx context.Context, id, name, description string, updatedAt time.Time) error
@@ -112,7 +118,9 @@ type OrganizationStore interface {
 	GetTeamMember(ctx context.Context, teamID, userID string) (TeamMember, error)
 
 	// ListTeamMembers retrieves all members of a team.
-	ListTeamMembers(ctx context.Context, teamID string) ([]TeamMember, error)
+	ListTeamMembers(ctx context.Context, teamID string, offset, limit int) ([]TeamMember, error)
+
+	CountTeamMembers(ctx context.Context, teamID string) (int, error)
 
 	// UpdateTeamMemberRole changes a team member's role.
 	UpdateTeamMemberRole(ctx context.Context, teamID, userID, role string, updatedAt time.Time) error

@@ -5,7 +5,7 @@
 //   - Scalar documentation UI (interactive browser interface)
 //   - Automatic schema generation from Go structs
 //   - Security scheme definitions (cookie, bearer)
-//   - Route metadata collection and transformation
+//   - Global pending queue for decoupled route registration
 //
 // Documentation Features:
 //   - Auto-generates schemas from Go types using reflection
@@ -13,50 +13,67 @@
 //   - Supports request/response body documentation
 //   - Security requirements (protected vs public routes)
 //   - Tag-based organization
-//
-// Route Structure:
-//   - GET /openapi.json - OpenAPI specification (JSON)
-//   - GET /docs         - Scalar documentation UI (if enabled)
+//   - Automatic operationId derivation from Method+Path
+//   - Forces required: true on all path parameters
 //
 // Usage:
 //
-//	cfg := &openapi.Config{
-//	  Title:          "My API",
-//	  Version:        "1.0.0",
-//	  EnableScalarUI: true,
-//	}
-//	plugin := openapi.New(cfg)
-//	aegis.RegisterPlugin(plugin)
+// Any plugin or user code calls openapi.Doc() to register a route:
+//
+//	openapi.Doc(openapi.Route{
+//	    Method:  "GET",
+//	    Path:    "/api/users/{id}",
+//	    Summary: "Get user by ID",
+//	    Tags:    []string{"Users"},
+//	    Auth:    true,
+//	    Params: []openapi.Param{
+//	        {Name: "id", In: "path", Type: "string", Required: true},
+//	    },
+//	    Responses: openapi.Responses{
+//	        200: openapi.ResponseOf[UserResponse]("User retrieved"),
+//	    },
+//	})
+//
+// The OpenAPI plugin is always registered last in a.Use():
+//
+//	a.Use(ctx, openapi.New(&openapi.Config{
+//	    Title:      "My App API",
+//	    Version:    "1.0.0",
+//	    EnableDocs: true,
+//	    DocsPath:   "/docs",
+//	    SpecPath:   "/openapi.json",
+//	}))
 package openapi
 
 import (
 	"context"
-	"reflect"
+	"fmt"
 	"sync"
 
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/router"
 )
 
 // Plugin provides automatic OpenAPI 3.0 documentation generation.
 //
-// This plugin integrates with the Aegis routing system to collect route metadata
-// and generate comprehensive API documentation with interactive UI.
+// This plugin integrates with the Aegis routing system to collect route
+// documentation registered via the global Doc() function and generate
+// comprehensive API documentation with interactive UI.
 //
 // Features:
-//   - Real-time spec generation from route metadata
+//   - Decoupled registration via global Doc() function
+//   - Pending queue that buffers docs until plugin initializes
 //   - Thread-safe spec updates
 //   - Scalar UI integration for interactive documentation
 //   - Multiple security scheme support
 //   - Schema validation from Go struct tags
+//   - Automatic operationId derivation
 type Plugin struct {
 	// spec holds the OpenAPI 3.0 specification
 	spec *Spec
 	// config holds plugin configuration
 	config *Config
-	// mu protects spec for thread-safe updates during spec regeneration
+	// mu protects spec for thread-safe updates
 	mu sync.RWMutex
 }
 
@@ -65,14 +82,15 @@ type Plugin struct {
 // Example:
 //
 //	cfg := &openapi.Config{
-//	  Title:          "Aegis Authentication API",
-//	  Version:        "1.0.0",
-//	  Description:    "Complete authentication API",
-//	  EnableScalarUI: true,
-//	  BasePath:       "/auth",
-//	  Servers: []openapi.Server{
-//	    {URL: "https://api.example.com", Description: "Production"},
-//	  },
+//	    Title:      "My App API",
+//	    Version:    "1.0.0",
+//	    Description: "Authentication and application API",
+//	    EnableDocs: true,
+//	    DocsPath:   "/docs",
+//	    SpecPath:   "/openapi.json",
+//	    Servers: []openapi.Server{
+//	        {URL: "https://api.example.com", Description: "Production"},
+//	    },
 //	}
 type Config struct {
 	// Title for the API documentation
@@ -87,10 +105,15 @@ type Config struct {
 	Contact *Contact
 	// License information for the API
 	License *License
-	// EnableScalarUI enables the Scalar documentation UI at /docs
-	EnableScalarUI bool
-	// BasePath for the API (e.g., "/auth", "/api/v1")
-	BasePath string
+	// EnableDocs enables the Scalar documentation UI
+	EnableDocs bool
+	// DocsPath is the path for the documentation UI (e.g., "/docs").
+	// The plugin no longer inserts its own name into the path.
+	// If empty, defaults to "/docs".
+	DocsPath string
+	// SpecPath is the path for the OpenAPI spec JSON (e.g., "/openapi.json").
+	// If empty, defaults to "/openapi.json".
+	SpecPath string
 }
 
 // DefaultConfig returns default OpenAPI configuration.
@@ -98,20 +121,22 @@ type Config struct {
 // Default Settings:
 //   - Title: "Aegis Authentication API"
 //   - Version: "1.0.0"
-//   - ScalarUI: Enabled
-//   - BasePath: "/auth"
+//   - EnableDocs: true
 //   - Server: http://localhost:8080 (development)
 //   - License: MIT
+//   - DocsPath: "/docs"
+//   - SpecPath: "/openapi.json"
 //
 // Returns:
 //   - *Config: Default configuration ready for customization
 func DefaultConfig() *Config {
 	return &Config{
-		Title:          "Aegis Authentication API",
-		Version:        "1.0.0",
-		Description:    "API documentation for Aegis authentication framework",
-		EnableScalarUI: true,
-		BasePath:       "/auth",
+		Title:       "Aegis Authentication API",
+		Version:     "1.0.0",
+		Description: "API documentation for Aegis authentication framework",
+		EnableDocs:  true,
+		DocsPath:    "/docs",
+		SpecPath:    "/openapi.json",
 		Servers: []Server{
 			{
 				URL:         "http://localhost:8080",
@@ -131,8 +156,7 @@ func DefaultConfig() *Config {
 //  1. Create base OpenAPI 3.0.3 spec
 //  2. Configure servers, contact, license
 //  3. Add security schemes (cookie, bearer)
-//  4. Add default tags (default, Session)
-//  5. Add common schemas (Error, Success)
+//  4. Add common schemas (Error, Success)
 //
 // Parameters:
 //   - cfg: Plugin configuration (uses defaults if nil)
@@ -143,12 +167,23 @@ func DefaultConfig() *Config {
 // Example:
 //
 //	plugin := openapi.New(&openapi.Config{
-//	  Title:   "My API",
-//	  Version: "2.0.0",
+//	    Title:      "My API",
+//	    Version:    "2.0.0",
+//	    EnableDocs: true,
+//	    DocsPath:   "/docs",
+//	    SpecPath:   "/openapi.json",
 //	})
 func New(cfg *Config) *Plugin {
 	if cfg == nil {
 		cfg = DefaultConfig()
+	}
+
+	// Apply defaults for paths
+	if cfg.DocsPath == "" {
+		cfg.DocsPath = "/docs"
+	}
+	if cfg.SpecPath == "" {
+		cfg.SpecPath = "/openapi.json"
 	}
 
 	// Create base spec
@@ -177,10 +212,6 @@ func New(cfg *Config) *Plugin {
 		Description:  "Bearer token authentication (JWT or session token)",
 	})
 
-	// Add default tags
-	spec.AddTag(Tag{Name: "Default", Description: "Core authentication endpoints"})
-	spec.AddTag(Tag{Name: "Session", Description: "Session management endpoints"})
-
 	// Add common schemas
 	addCommonSchemas(spec)
 
@@ -197,7 +228,7 @@ func (p *Plugin) Name() string {
 
 // Version returns the plugin version.
 func (p *Plugin) Version() string {
-	return "1.0.0"
+	return "2.0.0"
 }
 
 // Description returns a human-readable description.
@@ -205,16 +236,15 @@ func (p *Plugin) Description() string {
 	return "OpenAPI 3.0 documentation generation with Scalar UI"
 }
 
-// Init initializes the OpenAPI plugin.
+// Init initializes the OpenAPI plugin and drains all pending route
+// registrations from the global queue.
+//
+// By the time this is called, all other plugins and user code have
+// already called Doc() to register their routes.
 func (p *Plugin) Init(_ context.Context, _ plugins.Aegis) error {
-	// Auto-register core model schemas from actual Go types
-	p.RegisterSchemaFromType(core.SchemaUser, auth.User{})
-	p.RegisterSchemaFromType(core.SchemaEnrichedUser, core.EnrichedUser{})
-	p.RegisterSchemaFromType(core.SchemaSession, auth.Session{})
-	p.RegisterSchemaFromType(core.SchemaSessionWithUser, core.SessionWithUser{})
-	p.RegisterSchemaFromType(core.SchemaLoginRequest, core.LoginRequest{})
-	p.RegisterSchemaFromType(core.SchemaRegisterRequest, core.RegisterRequest{})
-
+	// Drain pending queue — this sets us as the active plugin
+	// and processes all buffered Doc() calls
+	drainPending(p)
 	return nil
 }
 
@@ -225,136 +255,149 @@ func (p *Plugin) GetMigrations() []plugins.Migration {
 }
 
 // MountRoutes registers HTTP routes for the plugin.
-func (p *Plugin) MountRoutes(router router.Router, prefix string) {
-	handler := NewHandler(p, router)
+func (p *Plugin) MountRoutes(r router.Router, prefix string) {
+	handler := NewHandler(p)
 
-	// Serve OpenAPI spec as JSON
-	router.GET(prefix+"/openapi.json", handler.ServeSpec)
-	router.RegisterRouteMetadata(core.RouteMetadata{
-		Method:      "GET",
-		Path:        prefix + "/openapi.json",
-		Summary:     "OpenAPI spec",
-		Description: "Get the OpenAPI specification JSON",
-		Tags:        []string{"OpenAPI"},
-		Protected:   false,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "OpenAPI JSON"},
-		},
-	})
+	// Serve OpenAPI spec at the configured SpecPath
+	specPath := prefix + p.config.SpecPath
+	r.GET(specPath, handler.ServeSpec)
 
-	// Serve Scalar UI if enabled
-	if p.config.EnableScalarUI {
-		router.GET(prefix+"/docs", handler.ServeScalarUI)
-		router.RegisterRouteMetadata(core.RouteMetadata{
-			Method:      "GET",
-			Path:        prefix + "/docs",
-			Summary:     "API docs UI",
-			Description: "Interactive API documentation UI",
-			Tags:        []string{"OpenAPI"},
-			Protected:   false,
-			Responses: map[string]*core.ResponseMeta{
-				"200": {Description: "HTML docs UI"},
-			},
-		})
+	// Serve Scalar UI at the configured DocsPath if enabled
+	if p.config.EnableDocs {
+		docsPath := prefix + p.config.DocsPath
+		r.GET(docsPath, handler.ServeScalarUI)
 	}
 }
 
-// UpdateSpec updates the OpenAPI spec with route metadata.
-func (p *Plugin) UpdateSpec(metadata []core.RouteMetadata) {
+// register converts a Route into OpenAPI spec entries.
+// This is called either immediately (if plugin is active) or
+// during drainPending.
+func (p *Plugin) register(r Route) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	for _, meta := range metadata {
-		// Skip OpenAPI's own routes if they are tagged as "OpenAPI"
-		skip := false
-		for _, tag := range meta.Tags {
-			if tag == "OpenAPI" {
-				skip = true
+	// Normalize path parameters from :param to {param} style
+	r.Path = normalizePathParams(r.Path)
+
+	// Derive operationId if not set
+	operationID := r.OperationID
+	if operationID == "" {
+		operationID = deriveOperationID(r.Method, r.Path)
+	}
+
+	// Build operation
+	op := &Operation{
+		OperationID: operationID,
+		Summary:     r.Summary,
+		Description: r.Description,
+		Tags:        r.Tags,
+		Deprecated:  r.Deprecated,
+		Responses:   make(map[string]*Response),
+	}
+
+	// Security
+	if r.Auth {
+		op.Security = []SecurityRequirement{
+			{"cookieAuth": []string{}},
+			{"bearerAuth": []string{}},
+		}
+	}
+
+	// Parameters
+	for _, param := range r.Params {
+		// Force required: true for path parameters (OpenAPI 3.0 spec requirement)
+		required := param.Required
+		if param.In == "path" {
+			required = true
+		}
+
+		schema := &Schema{Type: param.Type, Format: param.Format}
+		if len(param.Enum) > 0 {
+			enumVals := make([]any, len(param.Enum))
+			for i, v := range param.Enum {
+				enumVals[i] = v
+			}
+			schema.Enum = enumVals
+		}
+
+		op.Parameters = append(op.Parameters, Parameter{
+			Name:        param.Name,
+			In:          param.In,
+			Description: param.Description,
+			Required:    required,
+			Schema:      schema,
+		})
+	}
+
+	// Request Body
+	if r.Body != nil && r.Body.schema != nil {
+		bodySchema := r.Body.schema
+		// Register the schema in components and use a $ref
+		if r.Body.name != "" {
+			// If bodySchema is already a $ref, don't add it as a new component.
+			// Otherwise we'll create self-referencing components like:
+			//   components.schemas.RefreshTokenRequest.$ref -> RefreshTokenRequest
+			// which breaks codegen.
+			if bodySchema.Ref == "" {
+				p.spec.AddSchema(r.Body.name, bodySchema)
+			}
+			bodySchema = RefSchema(r.Body.name)
+		}
+		op.RequestBody = &RequestBody{
+			Required: true,
+			Content: map[string]MediaType{
+				"application/json": {
+					Schema: bodySchema,
+				},
+			},
+		}
+	}
+
+	// Responses
+	for status, respDef := range r.Responses {
+		statusStr := fmt.Sprintf("%d", status)
+		resp := &Response{
+			Description: respDef.Description,
+		}
+
+		if respDef.schema != nil {
+			schema := respDef.schema
+			// Register the schema in components and use a $ref if it has a name
+			if respDef.name != "" && respDef.schema.Ref == "" {
+				p.spec.AddSchema(respDef.name, schema)
+				schema = RefSchema(respDef.name)
+			}
+			resp.Content = map[string]MediaType{
+				"application/json": {
+					Schema: schema,
+				},
+			}
+		}
+
+		op.Responses[statusStr] = resp
+	}
+
+	// Ensure at least a default response exists
+	if len(op.Responses) == 0 {
+		op.Responses["200"] = &Response{Description: "Successful operation"}
+	}
+
+	// Add path to spec
+	p.addPathOperation(r.Path, r.Method, op)
+
+	// Auto-add tags to spec if not present
+	for _, tagName := range r.Tags {
+		found := false
+		for _, existing := range p.spec.Tags {
+			if existing.Name == tagName {
+				found = true
 				break
 			}
 		}
-		if skip {
-			continue
-		}
-
-		// Create operation
-		op := &Operation{
-			Summary:     meta.Summary,
-			Description: meta.Description,
-			Tags:        meta.Tags,
-			Responses:   make(map[string]*Response),
-		}
-
-		if meta.Protected {
-			op.Security = []SecurityRequirement{
-				{"cookieAuth": []string{}},
-				{"bearerAuth": []string{}},
-			}
-		}
-
-		// Handle Request Body
-		if meta.RequestBody != nil {
-			schema := p.resolveSchema(meta.RequestBody.Schema)
-			op.RequestBody = &RequestBody{
-				Description: meta.RequestBody.Description,
-				Required:    meta.RequestBody.Required,
-				Content: map[string]MediaType{
-					"application/json": {
-						Schema: schema,
-					},
-				},
-			}
-		}
-
-		// Handle Responses
-		for status, respMeta := range meta.Responses {
-			schema := p.resolveSchema(respMeta.Schema)
-			op.Responses[status] = &Response{
-				Description: respMeta.Description,
-				Content: map[string]MediaType{
-					"application/json": {
-						Schema: schema,
-					},
-				},
-			}
-		}
-
-		// Add path to spec
-		p.addPathOperation(meta.Path, meta.Method, op)
-	}
-}
-
-// resolveSchema resolves a schema reference or definition.
-// If v is a string, it returns a reference to that schema name.
-// If v is a struct/type, it generates the schema, registers it, and returns a reference.
-func (p *Plugin) resolveSchema(v any) *Schema {
-	if v == nil {
-		return nil
-	}
-
-	// If string, assume it's a reference name
-	if name, ok := v.(string); ok {
-		return RefSchema(name)
-	}
-
-	// If it's a struct/type, generate schema using reflection
-	schema := GenerateSchema(v)
-
-	// Get type name for registration
-	t := reflect.TypeOf(v)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-
-	if t.Kind() == reflect.Struct {
-		name := t.Name()
-		if name != "" {
-			p.spec.AddSchema(name, schema)
-			return RefSchema(name)
+		if !found {
+			p.spec.AddTag(Tag{Name: tagName})
 		}
 	}
-
-	return schema
 }
 
 func (p *Plugin) addPathOperation(path, method string, op *Operation) {
@@ -394,69 +437,15 @@ func (p *Plugin) ProvidesAuthMethods() []string {
 	return []string{}
 }
 
-// GetSchemas returns all schemas for all supported dialects
+// GetSchemas returns all schemas for all supported dialects.
 func (p *Plugin) GetSchemas() []plugins.Schema {
-	// OpenAPI plugin doesn't have its own schema
+	// OpenAPI plugin doesn't have its own database schema
 	return []plugins.Schema{}
 }
 
 // Dependencies returns plugin dependencies.
 func (p *Plugin) Dependencies() []plugins.Dependency {
 	return []plugins.Dependency{}
-}
-
-// RegisterEndpoint adds a custom endpoint to the OpenAPI spec.
-// This allows other plugins and user code to extend the documentation.
-func (p *Plugin) RegisterEndpoint(method, path string, operation *Operation) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	pathItem := p.spec.Paths[path]
-	if pathItem == nil {
-		pathItem = &PathItem{}
-		p.spec.Paths[path] = pathItem
-	}
-
-	switch method {
-	case "GET":
-		pathItem.Get = operation
-	case "POST":
-		pathItem.Post = operation
-	case "PUT":
-		pathItem.Put = operation
-	case "DELETE":
-		pathItem.Delete = operation
-	case "PATCH":
-		pathItem.Patch = operation
-	case "OPTIONS":
-		pathItem.Options = operation
-	case "HEAD":
-		pathItem.Head = operation
-	}
-}
-
-// RegisterSchema adds a reusable schema component.
-func (p *Plugin) RegisterSchema(name string, schema *Schema) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.spec.AddSchema(name, schema)
-}
-
-// RegisterSecurityScheme adds a custom security scheme.
-func (p *Plugin) RegisterSecurityScheme(name string, scheme *SecurityScheme) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.spec.AddSecurityScheme(name, scheme)
-}
-
-// RegisterTag adds a tag for grouping operations.
-func (p *Plugin) RegisterTag(tag Tag) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.spec.AddTag(tag)
 }
 
 // GetSpec returns a copy of the current OpenAPI spec.
@@ -467,82 +456,16 @@ func (p *Plugin) GetSpec() *Spec {
 	return p.spec
 }
 
-// RegisterSchemaFromType automatically generates and registers an OpenAPI schema from a Go type.
-// This eliminates the need for manual schema definitions and ensures schemas stay in sync with Go structs.
-//
-// Example usage:
-//
-//	p.RegisterSchemaFromType("User", core.User{})
-//	p.RegisterSchemaFromType("CreateOrganizationRequest", organizations.CreateOrganizationRequest{})
+// RegisterSchemaFromType automatically generates and registers an OpenAPI schema
+// from a Go type. This can be used by plugins or user code to register schemas
+// that are referenced in routes.
 func (p *Plugin) RegisterSchemaFromType(name string, example any) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	schema := GenerateSchema(example)
 	p.spec.AddSchema(name, schema)
 }
 
-// RegisterRouteMetadata adds a route to the OpenAPI spec from RouteMetadata.
-// This provides a simpler interface for registering user-defined routes
-// that aren't part of the Aegis authentication system.
-//
-// Example:
-//
-//	openapiPlugin.RegisterRouteMetadata(core.RouteMetadata{
-//	  Method:      "GET",
-//	  Path:        "/api/subscriptions",
-//	  Summary:     "List subscriptions",
-//	  Description: "Get all user subscriptions",
-//	  Tags:        []string{"Subscriptions"},
-//	  Protected:   true,
-//	})
-func (p *Plugin) RegisterRouteMetadata(meta core.RouteMetadata) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// Create operation from metadata
-	op := &Operation{
-		Summary:     meta.Summary,
-		Description: meta.Description,
-		Tags:        meta.Tags,
-		Responses:   make(map[string]*Response),
-	}
-
-	// Add security requirement if protected
-	if meta.Protected {
-		op.Security = []SecurityRequirement{
-			{"cookieAuth": []string{}},
-			{"bearerAuth": []string{}},
-		}
-	}
-
-	// Handle Request Body
-	if meta.RequestBody != nil {
-		schema := p.resolveSchema(meta.RequestBody.Schema)
-		op.RequestBody = &RequestBody{
-			Description: meta.RequestBody.Description,
-			Required:    meta.RequestBody.Required,
-			Content: map[string]MediaType{
-				"application/json": {
-					Schema: schema,
-				},
-			},
-		}
-	}
-
-	// Handle Responses
-	for status, respMeta := range meta.Responses {
-		schema := p.resolveSchema(respMeta.Schema)
-		op.Responses[status] = &Response{
-			Description: respMeta.Description,
-			Content: map[string]MediaType{
-				"application/json": {
-					Schema: schema,
-				},
-			},
-		}
-	}
-
-	// Add path to spec
-	p.addPathOperation(meta.Path, meta.Method, op)
-}
-
-// Ensure Plugin implements Plugin
+// Ensure Plugin implements plugins.Plugin
 var _ plugins.Plugin = (*Plugin)(nil)

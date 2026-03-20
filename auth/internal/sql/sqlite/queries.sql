@@ -72,7 +72,10 @@ SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, us
 SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent FROM session WHERE refresh_token = ? AND expires_at > ?;
 
 -- name: GetSessionsByUserID :many
-SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent FROM session WHERE user_id = ? AND expires_at > ?;
+SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, user_agent FROM session WHERE user_id = ? AND expires_at > ? LIMIT ? OFFSET ?;
+
+-- name: CountSessionsByUserID :one
+SELECT COUNT(*) FROM session WHERE user_id = ? AND expires_at > ?;
 
 -- name: UpdateSession :exec
 UPDATE session SET refresh_token = ?, expires_at = ? WHERE id = ?;

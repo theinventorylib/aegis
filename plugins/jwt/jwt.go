@@ -105,6 +105,7 @@ import (
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/plugins/openapi"
 	"github.com/theinventorylib/aegis/router"
 )
 
@@ -398,120 +399,98 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 }
 
 // MountRoutes registers HTTP routes for JWT endpoints with appropriate middleware.
-func (p *Plugin) MountRoutes(router router.Router, basePath string) {
-	// Register schemas with OpenAPI if available
-	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
-		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example any)
-		}); ok {
-			// Register request schemas
-			oapi.RegisterSchemaFromType(SchemaRefreshTokenRequest, map[string]string{"refresh_token": ""})
-
-			// Register response schemas
-			oapi.RegisterSchemaFromType(SchemaTokenPair, TokenPair{})
-			oapi.RegisterSchemaFromType(SchemaAccessToken, AccessToken{})
-			oapi.RegisterSchemaFromType(SchemaJWKS, JWKS{})
-		}
-	}
-
+func (p *Plugin) MountRoutes(r router.Router, basePath string) {
 	// Create route group for JWT plugin
-	jwtGroup := router.Group(basePath, "JWT")
+	jwtGroup := r.Group(basePath, "JWT")
 
 	// Create auth middleware for protected routes
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	// Protected endpoints - require active session/cookie authentication
 	jwtGroup.POST("/token", requireAuth(http.HandlerFunc(p.handler.handleGetToken)).ServeHTTP)
-	jwtGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        basePath + "/token",
 		Summary:     "Generate JWT token pair",
 		Description: "Generate access and refresh JWT tokens for the authenticated user",
 		Tags:        []string{"JWT"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Token pair generated successfully", Schema: SchemaTokenPair},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"500": {Description: "Failed to generate tokens", Schema: core.SchemaError},
+		Auth:        true,
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[TokenPair]("Token pair generated successfully"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			500: openapi.RefResponse("Failed to generate tokens", "Error"),
 		},
 	})
 
 	jwtGroup.POST("/getAccessToken", requireAuth(http.HandlerFunc(p.handler.handleGetAccessToken)).ServeHTTP)
-	jwtGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        basePath + "/getAccessToken",
 		Summary:     "Get access token",
 		Description: "Generate a new access token for the authenticated user",
 		Tags:        []string{"JWT"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Access token generated successfully", Schema: SchemaAccessToken},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"500": {Description: "Failed to generate token", Schema: core.SchemaError},
+		Auth:        true,
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[AccessToken]("Access token generated successfully"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			500: openapi.RefResponse("Failed to generate token", "Error"),
 		},
 	})
 
 	jwtGroup.POST("/logout", requireAuth(http.HandlerFunc(p.handler.handleLogout)).ServeHTTP)
-	jwtGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        basePath + "/logout",
 		Summary:     "Logout and blacklist tokens",
 		Description: "Logout the user and blacklist their JWT tokens (requires Redis)",
 		Tags:        []string{"JWT"},
-		Protected:   true,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Successfully logged out and tokens blacklisted", Schema: core.SchemaSuccess},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
+		Auth:        true,
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[LogoutResponse]("Successfully logged out and tokens blacklisted"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
 		},
 	})
 
 	// Public endpoints - no authentication required
 	jwtGroup.POST("/refreshToken", p.handler.handleRefreshToken) // Refresh token is its own auth
-	jwtGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        basePath + "/refreshToken",
 		Summary:     "Refresh JWT tokens",
 		Description: "Use a refresh token to obtain new access and refresh tokens",
 		Tags:        []string{"JWT"},
-		Protected:   false,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Refresh token",
-			Required:    true,
-			Schema:      core.SchemaRefreshTokenRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Tokens refreshed successfully", Schema: SchemaTokenPair},
-			"400": {Description: "Invalid request", Schema: core.SchemaError},
-			"401": {Description: "Invalid or expired refresh token", Schema: core.SchemaError},
+		Body:        openapi.RefBody("RefreshTokenRequest"),
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[TokenPair]("Tokens refreshed successfully"),
+			400: openapi.RefResponse("Invalid request", "Error"),
+			401: openapi.RefResponse("Invalid or expired refresh token", "Error"),
 		},
 	})
 
 	// JWKS endpoint is slightly special (public discovery)
 	jwtGroup.GET("/.well-known/jwks.json", p.handler.handleJWKS)
-	jwtGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        "/.well-known/jwks.json",
 		Summary:     "Get JWKS",
 		Description: "Retrieve the JSON Web Key Set for JWT verification",
 		Tags:        []string{"JWT"},
-		Protected:   false,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "JWKS retrieved successfully", Schema: SchemaJWKS},
-			"500": {Description: "Failed to retrieve JWKS", Schema: core.SchemaError},
+		Responses: openapi.Responses{
+			200: openapi.ResponseOf[JWKS]("JWKS retrieved successfully"),
+			500: openapi.RefResponse("Failed to retrieve JWKS", "Error"),
 		},
 	})
 
 	jwtGroup.GET("/jwks", p.handler.handleJWKS) // Convenience endpoint
-	jwtGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        basePath + "/jwks",
 		Summary:     "Get JWKS (convenience endpoint)",
 		Description: "Retrieve the JSON Web Key Set for JWT verification",
 		Tags:        []string{"JWT"},
-		Protected:   false,
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "JWKS retrieved successfully", Schema: SchemaJWKS},
-			"500": {Description: "Failed to retrieve JWKS", Schema: core.SchemaError},
+		Responses: openapi.Responses{
+			200: openapi.ResponseOf[JWKS]("JWKS retrieved successfully"),
+			500: openapi.RefResponse("Failed to retrieve JWKS", "Error"),
 		},
 	})
 }

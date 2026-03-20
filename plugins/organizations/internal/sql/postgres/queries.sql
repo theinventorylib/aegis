@@ -20,7 +20,13 @@ SELECT o.id, o.name, o.slug, o.created_at, o.updated_at
 FROM organization o
 JOIN members uo ON o.id = uo.organization_id
 WHERE uo.user_id = $1 AND o.disabled = 0
-ORDER BY o.created_at DESC;
+ORDER BY o.created_at DESC LIMIT $2 OFFSET $3;
+
+-- name: CountUserOrganizations :one
+SELECT COUNT(*)
+FROM organization o
+JOIN members uo ON o.id = uo.organization_id
+WHERE uo.user_id = $1 AND o.disabled = 0;
 
 -- User Organizations queries
 
@@ -46,7 +52,10 @@ UPDATE members SET role = $3, updated_at = $4 WHERE user_id = $1 AND organizatio
 DELETE FROM members WHERE user_id = $1 AND organization_id = $2;
 
 -- name: ListOrganizationMembers :many
-SELECT id, user_id, organization_id, role, created_at, updated_at FROM members WHERE organization_id = $1 ORDER BY created_at ASC;
+SELECT id, user_id, organization_id, role, created_at, updated_at FROM members WHERE organization_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3;
+
+-- name: CountOrganizationMembers :one
+SELECT COUNT(*) FROM members WHERE organization_id = $1;
 
 -- Teams queries
 
@@ -57,7 +66,10 @@ INSERT INTO team (id, organization_id, name, description, created_at, updated_at
 SELECT id, organization_id, name, description, created_at, updated_at FROM team WHERE id = $1;
 
 -- name: ListTeams :many
-SELECT id, organization_id, name, description, created_at, updated_at FROM team WHERE organization_id = $1 ORDER BY created_at ASC;
+SELECT id, organization_id, name, description, created_at, updated_at FROM team WHERE organization_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3;
+
+-- name: CountTeams :one
+SELECT COUNT(*) FROM team WHERE organization_id = $1;
 
 -- name: UpdateTeam :exec
 UPDATE team SET name = $2, description = $3, updated_at = $4 WHERE id = $1;
@@ -74,7 +86,10 @@ INSERT INTO team_member (id, team_id, user_id, role, created_at, updated_at) VAL
 SELECT id, team_id, user_id, role, created_at, updated_at FROM team_member WHERE team_id = $1 AND user_id = $2;
 
 -- name: ListTeamMembers :many
-SELECT id, team_id, user_id, role, created_at, updated_at FROM team_member WHERE team_id = $1 ORDER BY created_at ASC;
+SELECT id, team_id, user_id, role, created_at, updated_at FROM team_member WHERE team_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3;
+
+-- name: CountTeamMembers :one
+SELECT COUNT(*) FROM team_member WHERE team_id = $1;
 
 -- name: UpdateTeamMemberRole :exec
 UPDATE team_member SET role = $3, updated_at = $4 WHERE team_id = $1 AND user_id = $2;

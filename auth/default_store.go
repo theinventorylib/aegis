@@ -334,10 +334,24 @@ func (s *defaultSessionStore) GetByRefreshToken(ctx context.Context, refreshToke
 	return sqlcSessionToSession(sess), nil
 }
 
-func (s *defaultSessionStore) GetByUserID(ctx context.Context, userID string) ([]Session, error) {
+func (s *defaultSessionStore) GetByUserID(ctx context.Context, userID string, offset, limit int) ([]Session, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if offset > math.MaxInt32 {
+		offset = math.MaxInt32
+	}
+	if limit > math.MaxInt32 {
+		limit = math.MaxInt32
+	}
 	sessions, err := s.q.GetSessionsByUserID(ctx, sqlc.GetSessionsByUserIDParams{
 		UserID:    userID,
 		ExpiresAt: time.Now().Format(time.RFC3339),
+		Limit:     int32(limit),
+		Offset:    int32(offset),
 	})
 	if err != nil {
 		return nil, err
@@ -347,6 +361,14 @@ func (s *defaultSessionStore) GetByUserID(ctx context.Context, userID string) ([
 		result[i] = sqlcSessionToSession(sess)
 	}
 	return result, nil
+}
+
+func (s *defaultSessionStore) CountByUserID(ctx context.Context, userID string) (int, error) {
+	count, err := s.q.CountSessionsByUserID(ctx, sqlc.CountSessionsByUserIDParams{
+		UserID:    userID,
+		ExpiresAt: time.Now().Format(time.RFC3339),
+	})
+	return int(count), err
 }
 
 func (s *defaultSessionStore) Update(ctx context.Context, session Session) error {

@@ -45,6 +45,7 @@ import (
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/plugins/openapi"
 	"github.com/theinventorylib/aegis/router"
 )
 
@@ -170,112 +171,79 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 		p.store = NewDefaultSMSStore(a.DB())
 	}
 
-	// Schema registration moved to MountRoutes to ensure all plugins are initialized
 	return nil
 }
 
 // MountRoutes registers HTTP routes for the SMS plugin
-func (p *Plugin) MountRoutes(router router.Router, prefix string) {
-	// Register schemas with OpenAPI if available
-	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
-		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example any)
-		}); ok {
-			// Register request schemas
-			oapi.RegisterSchemaFromType(SchemaSendOTPRequest, SendOTPRequest{})
-			oapi.RegisterSchemaFromType(SchemaVerifyOTPRequest, VerifyOTPRequest{})
-			oapi.RegisterSchemaFromType(SchemaLoginWithPhoneRequest, LoginWithPhoneRequest{})
-			oapi.RegisterSchemaFromType(SchemaRegisterWithPhoneRequest, RegisterWithPhoneRequest{})
-		}
-	}
-
+func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	// SMS OTP Routes
 	handlers := NewHandlers(p)
-	smsGroup := router.Group(prefix, "SMS")
+	smsGroup := r.Group(prefix, "SMS")
 
 	// Create auth middleware for protected routes
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	// Protected route - sending OTP requires authentication to prevent spam/abuse
 	smsGroup.POST("/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
-	smsGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/send",
 		Summary:     "Send SMS OTP",
 		Description: "Send a one-time password via SMS to the authenticated user's phone number",
 		Tags:        []string{"SMS"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Phone number to send OTP to",
-			Required:    true,
-			Schema:      SchemaSendOTPRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "OTP sent successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"500": {Description: "Failed to send SMS", Schema: core.SchemaError},
+		Auth:        true,
+		Body:        openapi.BodyOf[SendOTPRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("OTP sent successfully", "Success"),
+			400: openapi.RefResponse("Invalid request", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			500: openapi.RefResponse("Failed to send SMS", "Error"),
 		},
 	})
 
 	// Public routes
 	smsGroup.POST("/verify", handlers.VerifyOTPHandler) // User proving phone ownership
-	smsGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/verify",
 		Summary:     "Verify SMS OTP",
 		Description: "Verify a one-time password sent via SMS",
 		Tags:        []string{"SMS"},
-		Protected:   false,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Phone number and OTP code",
-			Required:    true,
-			Schema:      SchemaVerifyOTPRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "OTP verified successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request or incorrect OTP", Schema: core.SchemaError},
-			"401": {Description: "OTP expired or not found", Schema: core.SchemaError},
+		Body:        openapi.BodyOf[VerifyOTPRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("OTP verified successfully", "Success"),
+			400: openapi.RefResponse("Invalid request or incorrect OTP", "Error"),
+			401: openapi.RefResponse("OTP expired or not found", "Error"),
 		},
 	})
 
 	// Phone+password authentication (if core AuthService configured)
 	smsGroup.POST("/login", handlers.LoginWithPhoneHandler) // Login endpoint
-	smsGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/login",
 		Summary:     "Login with phone and password",
 		Description: "Authenticate using phone number and password",
 		Tags:        []string{"SMS"},
-		Protected:   false,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Phone number and password credentials",
-			Required:    true,
-			Schema:      SchemaLoginWithPhoneRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "Login successful, session created", Schema: core.SchemaSession},
-			"400": {Description: "Invalid request", Schema: core.SchemaError},
-			"401": {Description: "Invalid credentials", Schema: core.SchemaError},
+		Body:        openapi.BodyOf[LoginWithPhoneRequest](),
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[SMSAuthResponse]("Login successful, session created"),
+			400: openapi.RefResponse("Invalid request", "Error"),
+			401: openapi.RefResponse("Invalid credentials", "Error"),
 		},
 	})
 
 	smsGroup.POST("/register", handlers.RegisterWithPhoneHandler)
-	smsGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/register",
 		Summary:     "Register with phone and password",
 		Description: "Create a new account using phone number and password",
 		Tags:        []string{"SMS"},
-		Protected:   false,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Phone number and password credentials",
-			Required:    true,
-			Schema:      SchemaRegisterWithPhoneRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"201": {Description: "Registration successful, session created", Schema: core.SchemaSession},
-			"400": {Description: "Invalid request or phone number already exists", Schema: core.SchemaError},
+		Body:        openapi.BodyOf[RegisterWithPhoneRequest](),
+		Responses: openapi.Responses{
+			201: openapi.DataResponseOf[SMSAuthResponse]("Registration successful, session created"),
+			400: openapi.RefResponse("Invalid request or phone number already exists", "Error"),
 		},
 	})
 }

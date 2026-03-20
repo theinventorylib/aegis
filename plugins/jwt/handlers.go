@@ -86,14 +86,15 @@ func (h *Handler) handleGetAccessToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return only access token info
+	accessToken := &AccessToken{
+		AccessToken:  tokenPair.AccessToken,
+		AccessExpiry: tokenPair.AccessExpiry,
+		TokenType:    "Bearer",
+	}
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Access token generated successfully",
-		Data: map[string]any{
-			"access_token":  tokenPair.AccessToken,
-			"access_expiry": tokenPair.AccessExpiry,
-			"token_type":    "Bearer",
-		},
+		Data:    accessToken,
 	})
 }
 
@@ -172,8 +173,8 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Logged out successfully",
-		Data: map[string]any{
-			"user_id": user.ID,
+		Data: &LogoutResponse{
+			UserID: user.ID,
 		},
 	})
 }

@@ -17,7 +17,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/theinventorylib/aegis/core"
 )
 
 // ChiRouter wraps chi.Mux to implement the Router interface.
@@ -37,7 +36,6 @@ import (
 //	)
 type ChiRouter struct {
 	*chi.Mux
-	metadata []core.RouteMetadata
 }
 
 // NewChiRouter creates a new ChiRouter that wraps the provided chi.Mux.
@@ -53,8 +51,7 @@ type ChiRouter struct {
 //	router := router.NewChiRouter(mux)
 func NewChiRouter(mux *chi.Mux) *ChiRouter {
 	return &ChiRouter{
-		Mux:      mux,
-		metadata: []core.RouteMetadata{},
+		Mux: mux,
 	}
 }
 
@@ -99,27 +96,10 @@ func (r *ChiRouter) Use(middleware func(http.Handler) http.Handler) {
 	r.Mux.Use(middleware)
 }
 
-// RegisterRouteMetadata stores OpenAPI metadata for a route.
-// This metadata is collected and used by the OpenAPI plugin to generate
-// API documentation automatically.
-//
-// Implements Router.RegisterRouteMetadata.
-func (r *ChiRouter) RegisterRouteMetadata(metadata core.RouteMetadata) {
-	r.metadata = append(r.metadata, metadata)
-}
-
-// GetRouteMetadata returns all registered route metadata.
-// Used by the OpenAPI plugin to retrieve route documentation.
-//
-// Implements Router.GetRouteMetadata.
-func (r *ChiRouter) GetRouteMetadata() []core.RouteMetadata {
-	return r.metadata
-}
-
 // Group creates a sub-router with a prefix for grouping related routes.
 //
 // Routes registered on the returned GroupRouter will be prefixed with the
-// given path. The groupName is used for OpenAPI documentation categorization.
+// given path. The groupName is used for organizational purposes.
 //
 // Example:
 //
@@ -144,7 +124,7 @@ func (r *ChiRouter) Group(path string, groupName string) GroupRouter {
 // ChiGroupRouter wraps a ChiRouter to provide route grouping functionality.
 //
 // Routes registered on a ChiGroupRouter are automatically prefixed with
-// the group's path and tagged with the group's name for OpenAPI documentation.
+// the group's path.
 //
 // ChiGroupRouter is created via ChiRouter.Group() and should not be
 // instantiated directly.
@@ -152,7 +132,7 @@ type ChiGroupRouter struct {
 	// prefix is the path prefix for all routes in this group
 	prefix string
 
-	// groupName is used for OpenAPI documentation tags
+	// groupName is used for organizational purposes
 	groupName string
 
 	// parent is the ChiRouter that owns this group
@@ -202,47 +182,12 @@ func (g *ChiGroupRouter) Use(_ func(http.Handler) http.Handler) {
 }
 
 // Group creates a nested group under this group by combining prefixes.
-// The returned GroupRouter uses the same ChiRouter parent so metadata
-// and routes are collected on the same root router.
+// The returned GroupRouter uses the same ChiRouter parent so routes
+// are collected on the same root router.
 func (g *ChiGroupRouter) Group(path string, groupName string) GroupRouter {
 	return &ChiGroupRouter{
 		prefix:    g.prefix + path,
 		groupName: groupName,
 		parent:    g.parent,
 	}
-}
-
-// RegisterRouteMetadata registers OpenAPI metadata for a route within this group.
-//
-// The group's name is automatically added to the Tags field if not already
-// present, ensuring proper categorization in OpenAPI documentation.
-func (g *ChiGroupRouter) RegisterRouteMetadata(metadata core.RouteMetadata) {
-	// Add group name to tags if not already present
-	hasGroupTag := false
-	for _, tag := range metadata.Tags {
-		if tag == g.groupName {
-			hasGroupTag = true
-			break
-		}
-	}
-	if !hasGroupTag && g.groupName != "" {
-		metadata.Tags = append([]string{g.groupName}, metadata.Tags...)
-	}
-
-	// Update path to include group prefix if not already present
-	if len(metadata.Path) > 0 && metadata.Path[0] != '/' {
-		metadata.Path = g.prefix + "/" + metadata.Path
-	} else if !hasPrefix(metadata.Path, g.prefix) {
-		metadata.Path = g.prefix + metadata.Path
-	}
-
-	g.parent.metadata = append(g.parent.metadata, metadata)
-}
-
-// hasPrefix checks if path starts with prefix
-func hasPrefix(path, prefix string) bool {
-	if len(path) < len(prefix) {
-		return false
-	}
-	return path[:len(prefix)] == prefix
 }

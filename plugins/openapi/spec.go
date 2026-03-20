@@ -3,6 +3,8 @@ package openapi
 
 import (
 	"encoding/json"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -290,6 +292,24 @@ func (s *Spec) AddTag(tag Tag) {
 
 // ToJSON converts the spec to JSON bytes.
 func (s *Spec) ToJSON() ([]byte, error) {
+	// Sort tags alphabetically, with "Default" (case-insensitive) always first.
+	sort.Slice(s.Tags, func(i, j int) bool {
+		nameI := s.Tags[i].Name
+		nameJ := s.Tags[j].Name
+		
+		isDefaultI := strings.EqualFold(nameI, "default")
+		isDefaultJ := strings.EqualFold(nameJ, "default")
+		
+		if isDefaultI && !isDefaultJ {
+			return true
+		}
+		if !isDefaultI && isDefaultJ {
+			return false
+		}
+		
+		return strings.Compare(strings.ToLower(nameI), strings.ToLower(nameJ)) < 0
+	})
+
 	return json.MarshalIndent(s, "", "  ")
 }
 

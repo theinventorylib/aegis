@@ -371,7 +371,7 @@ func (m *mockSessionStore) GetByRefreshToken(_ context.Context, token string) (a
 	return auth.Session{}, ErrSessionNotFound
 }
 
-func (m *mockSessionStore) GetByUserID(_ context.Context, userID string) ([]auth.Session, error) {
+func (m *mockSessionStore) GetByUserID(_ context.Context, userID string, offset, limit int) ([]auth.Session, error) {
 	if m.sessions == nil {
 		return nil, nil
 	}
@@ -383,7 +383,23 @@ func (m *mockSessionStore) GetByUserID(_ context.Context, userID string) ([]auth
 			sessions = append(sessions, session)
 		}
 	}
+	// Note: Proper in-memory offset and limit logic skipped here for simplicity in tests
 	return sessions, nil
+}
+
+func (m *mockSessionStore) CountByUserID(_ context.Context, userID string) (int, error) {
+	if m.sessions == nil {
+		return 0, nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	count := 0
+	for _, session := range m.sessions {
+		if session.UserID == userID {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (m *mockSessionStore) Update(_ context.Context, session auth.Session) error {

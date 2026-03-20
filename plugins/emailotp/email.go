@@ -46,6 +46,7 @@ import (
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/plugins/openapi"
 	"github.com/theinventorylib/aegis/router"
 )
 
@@ -192,70 +193,49 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 		p.store = NewDefaultEmailOTPStore(a.DB())
 	}
 
-	// Schema registration moved to MountRoutes to ensure all plugins are initialized
 	return nil
 }
 
 // MountRoutes registers HTTP routes for the Email OTP plugin
-func (p *Plugin) MountRoutes(router router.Router, prefix string) {
-	// Register schemas with OpenAPI if available
-	if plugin, ok := p.aegis.GetPlugin("openapi"); ok {
-		if oapi, ok := plugin.(interface {
-			RegisterSchemaFromType(name string, example any)
-		}); ok {
-			// Request schemas
-			oapi.RegisterSchemaFromType(SchemaSendOTPRequest, SendOTPRequest{})
-			oapi.RegisterSchemaFromType(SchemaVerifyOTPRequest, VerifyOTPRequest{})
-		}
-	}
-
+func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	// Email OTP Routes
 	handlers := NewHandlers(p)
-	emailGroup := router.Group(prefix, "Email OTP")
+	emailGroup := r.Group(prefix, "Email OTP")
 
 	// Create auth middleware for protected routes
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	// Protected route - sending OTP requires authentication to prevent spam/abuse
 	emailGroup.POST("/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
-	emailGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/send",
 		Summary:     "Send Email OTP",
 		Description: "Send a one-time password via email to the authenticated user's email address",
 		Tags:        []string{"Email OTP"},
-		Protected:   true,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Email address to send OTP to",
-			Required:    true,
-			Schema:      SchemaSendOTPRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "OTP sent successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request", Schema: core.SchemaError},
-			"401": {Description: "Not authenticated", Schema: core.SchemaError},
-			"500": {Description: "Failed to send email", Schema: core.SchemaError},
+		Auth:        true,
+		Body:        openapi.BodyOf[SendOTPRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("OTP sent successfully", "Success"),
+			400: openapi.RefResponse("Invalid request", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			500: openapi.RefResponse("Failed to send email", "Error"),
 		},
 	})
 
 	// Public routes
 	emailGroup.POST("/verify", handlers.VerifyOTPHandler) // User proving email ownership
-	emailGroup.RegisterRouteMetadata(core.RouteMetadata{
+	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/verify",
 		Summary:     "Verify Email OTP",
 		Description: "Verify a one-time password sent via email",
 		Tags:        []string{"Email OTP"},
-		Protected:   false,
-		RequestBody: &core.RequestBodyMeta{
-			Description: "Email address and OTP code",
-			Required:    true,
-			Schema:      SchemaVerifyOTPRequest,
-		},
-		Responses: map[string]*core.ResponseMeta{
-			"200": {Description: "OTP verified successfully", Schema: core.SchemaSuccess},
-			"400": {Description: "Invalid request or incorrect OTP", Schema: core.SchemaError},
-			"401": {Description: "OTP expired or not found", Schema: core.SchemaError},
+		Body:        openapi.BodyOf[VerifyOTPRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("OTP verified successfully", "Success"),
+			400: openapi.RefResponse("Invalid request or incorrect OTP", "Error"),
+			401: openapi.RefResponse("OTP expired or not found", "Error"),
 		},
 	})
 }

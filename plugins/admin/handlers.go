@@ -22,14 +22,23 @@ func (a *Plugin) listUsersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.Response{
-		Success: true,
-		Data: map[string]any{
-			"users": users,
-			"page":  pagination.Page,
-			"limit": pagination.Limit,
-		},
+	totalCount, err := a.store.Count(r.Context())
+	if err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+			Success: false,
+			Error:   "Failed to count users",
+		})
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[User]{
+		Items:      users,
+		TotalCount: totalCount,
+		Page:       pagination.Page,
+		Offset:     pagination.Offset,
+		Limit:      pagination.Limit,
 	})
+
 }
 
 // getUserHandler retrieves detailed information for a specific user.
