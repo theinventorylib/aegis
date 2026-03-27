@@ -185,8 +185,6 @@ func (r *testRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	http.NotFound(w, req)
 }
 
-
-
 // Group returns a GroupRouter for route grouping.
 func (r *testRouter) Group(path string, groupName string) router.GroupRouter {
 	return &testGroupRouterImpl{
@@ -226,8 +224,6 @@ func (g *testGroupRouterImpl) DELETE(path string, handler http.HandlerFunc) {
 func (g *testGroupRouterImpl) Use(_ func(http.Handler) http.Handler) {
 	// For testing, we don't need to track middleware
 }
-
-
 
 // Group creates a nested test group by combining prefixes.
 func (g *testGroupRouterImpl) Group(path string, groupName string) router.GroupRouter {

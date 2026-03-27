@@ -366,6 +366,24 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			400: openapi.RefResponse("Invalid request or provider", "Error"),
 		},
 	})
+
+	oauthGroup.POST("/:provider/refresh", requireAuth(http.HandlerFunc(handlers.refreshTokenHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/{provider}/refresh",
+		Summary:     "Refresh OAuth token",
+		Description: "Use the stored refresh token to obtain a fresh access token from the provider",
+		Tags:        []string{"OAuth"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "provider", In: "path", Type: "string", Required: true, Description: "OAuth provider name"},
+		},
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[TokenRefreshResponse]("Token refreshed successfully"),
+			400: openapi.RefResponse("No refresh token, unsupported provider, or refresh failed", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+		},
+	})
 }
 
 // Dependencies returns external package dependencies
@@ -792,6 +810,81 @@ func (p *Plugin) GetUserConnections(ctx context.Context, userID string) ([]*Conn
 //	err := plugin.UnlinkAccount(ctx, user.ID, "google")
 func (p *Plugin) UnlinkAccount(ctx context.Context, userID, provider string) error {
 	return p.store.DeleteConnection(ctx, provider, userID)
+}
+
+// RefreshConnection uses the stored refresh token to obtain a new access token
+// from the OAuth provider and persists the updated tokens to the database.
+//
+// Not all providers issue refresh tokens (e.g., GitHub does not by default).
+// The method returns an error when:
+//   - No connection exists for the given user + provider pair
+//   - The stored refresh token is empty
+//   - The Goth provider does not implement token refresh (goth.TokenRefresher)
+//   - The provider rejects the refresh request
+//
+// Call this proactively when conn.ExpiresAt is approaching to avoid making
+// API calls to the provider with a stale access token.
+//
+// Parameters:
+//   - ctx: Request context
+//   - userID: Aegis user ID
+//   - provider: Provider name ("google", "github", etc.)
+//
+// Returns:
+//   - *Connection: Updated connection with fresh tokens
+//   - error: Refresh failure or unsupported provider
+func (p *Plugin) RefreshConnection(ctx context.Context, userID, provider string) (*Connection, error) {
+	// Locate the connection for this user + provider.
+	conns, err := p.store.GetConnectionsByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get OAuth connections: %w", err)
+	}
+
+	var conn *Connection
+	for i := range conns {
+		if conns[i].Provider == provider {
+			conn = &conns[i]
+			break
+		}
+	}
+	if conn == nil {
+		return nil, fmt.Errorf("no OAuth connection found for provider %s", provider)
+	}
+
+	if conn.RefreshToken == "" {
+		return nil, fmt.Errorf("no refresh token available for provider %s", provider)
+	}
+
+	// Look up the registered Goth provider.
+	gothProvider, err := goth.GetProvider(provider)
+	if err != nil {
+		return nil, fmt.Errorf("goth provider %s not found: %w", provider, err)
+	}
+
+	// RefreshTokenAvailable indicates whether the provider supports refresh.
+	if !gothProvider.RefreshTokenAvailable() {
+		return nil, fmt.Errorf("provider %s does not support token refresh", provider)
+	}
+
+	newToken, err := gothProvider.RefreshToken(conn.RefreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("token refresh failed for provider %s: %w", provider, err)
+	}
+
+	// Update with fresh tokens; keep the old refresh token if the provider
+	// did not issue a new one (some providers rotate, some do not).
+	conn.AccessToken = newToken.AccessToken
+	if newToken.RefreshToken != "" {
+		conn.RefreshToken = newToken.RefreshToken
+	}
+	conn.ExpiresAt = newToken.Expiry
+	conn.UpdatedAt = time.Now()
+
+	if err := p.store.UpdateConnection(ctx, *conn); err != nil {
+		return nil, fmt.Errorf("failed to persist refreshed tokens: %w", err)
+	}
+
+	return conn, nil
 }
 
 // Ensure Plugin implements Plugin

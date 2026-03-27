@@ -7,6 +7,6 @@ const (
 	SchemaUpdateRoleRequest = "UpdateRoleRequest"
 
 	// Response schemas
-	SchemaAdminUser        = "AdminUser"
-	SchemaAdminStats       = "AdminStats"
+	SchemaAdminUser  = "AdminUser"
+	SchemaAdminStats = "AdminStats"
 )

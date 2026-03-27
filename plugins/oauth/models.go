@@ -147,6 +147,12 @@ type LinkAccountRequest struct {
 // OAuthCallbackResponse is the data payload returned by OAuth callback
 // endpoints after successfully creating a session.
 type OAuthCallbackResponse struct {
-	User    *User       `json:"user"`
+	User    *User         `json:"user"`
 	Session *auth.Session `json:"session"`
+}
+
+// TokenRefreshResponse is the data payload returned after a successful token refresh.
+type TokenRefreshResponse struct {
+	Provider  string    `json:"provider"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
