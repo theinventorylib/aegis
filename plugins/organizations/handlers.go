@@ -18,8 +18,6 @@ import (
 //   - Update: Admin or owner
 //   - Delete: Owner only
 
-
-
 // validateOrgAccess validates user authentication and organization membership.
 //
 // This helper method checks if the authenticated user has access to the organization

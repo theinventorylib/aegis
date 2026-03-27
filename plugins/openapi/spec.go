@@ -296,17 +296,17 @@ func (s *Spec) ToJSON() ([]byte, error) {
 	sort.Slice(s.Tags, func(i, j int) bool {
 		nameI := s.Tags[i].Name
 		nameJ := s.Tags[j].Name
-		
+
 		isDefaultI := strings.EqualFold(nameI, "default")
 		isDefaultJ := strings.EqualFold(nameJ, "default")
-		
+
 		if isDefaultI && !isDefaultJ {
 			return true
 		}
 		if !isDefaultI && isDefaultJ {
 			return false
 		}
-		
+
 		return strings.Compare(strings.ToLower(nameI), strings.ToLower(nameJ)) < 0
 	})
 

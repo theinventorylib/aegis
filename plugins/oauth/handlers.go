@@ -91,6 +91,46 @@ func (h *Handlers) logoutHandler(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// refreshTokenHandler refreshes the OAuth access token for the authenticated user.
+func (h *Handlers) refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
+			Success: false,
+			Error:   "Not authenticated",
+		})
+		return
+	}
+
+	provider := core.GetSanitizedPathParam(r, "provider")
+	if provider == "" {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   "Provider required",
+		})
+		return
+	}
+
+	provider = core.SanitizeString(provider, nil)
+
+	conn, err := h.plugin.RefreshConnection(r.Context(), user.ID, provider)
+	if err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: &TokenRefreshResponse{
+			Provider:  conn.Provider,
+			ExpiresAt: conn.ExpiresAt,
+		},
+	})
+}
+
 // linkAccountHandler links an OAuth provider to the current authenticated user.
 func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	// Get current user from context

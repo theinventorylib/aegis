@@ -56,9 +56,9 @@ type Param struct {
 	Name        string
 	In          string // "path", "query", "header", "cookie"
 	Description string
-	Required    bool     // Always forced to true when In == "path"
-	Type        string   // "string", "integer", "boolean", "array"
-	Format      string   // "uuid", "date-time", "email", etc.
+	Required    bool   // Always forced to true when In == "path"
+	Type        string // "string", "integer", "boolean", "array"
+	Format      string // "uuid", "date-time", "email", etc.
 	Enum        []string
 }
 
