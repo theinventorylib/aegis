@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -59,7 +60,7 @@ type KeyManager interface {
 // Note: Unlike Redis, expiry is NOT supported - all entries persist until
 // manually deleted or the server restarts.
 type StaticKeyManager struct {
-	// storage is the in-memory map (not thread-safe, use with care)
+	mu      sync.RWMutex
 	storage map[string][]byte
 }
 
@@ -82,6 +83,8 @@ func NewStaticKeyManager() (*StaticKeyManager, error) {
 //
 // Returns an error if the key doesn't exist.
 func (m *StaticKeyManager) Get(_ context.Context, key string) ([]byte, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	value, exists := m.storage[key]
 	if !exists {
 		return nil, NewAuthError(AuthErrorCodeInternal, fmt.Sprintf("key not found: %s", key))
@@ -96,6 +99,8 @@ func (m *StaticKeyManager) Get(_ context.Context, key string) ([]byte, error) {
 //
 // For automatic expiry support, use RedisKeyManager instead.
 func (m *StaticKeyManager) Set(_ context.Context, key string, value []byte, _ time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.storage[key] = value
 	return nil
 }
@@ -103,6 +108,8 @@ func (m *StaticKeyManager) Set(_ context.Context, key string, value []byte, _ ti
 // Delete removes a value from in-memory storage.
 // Does nothing if the key doesn't exist.
 func (m *StaticKeyManager) Delete(_ context.Context, key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	delete(m.storage, key)
 	return nil
 }

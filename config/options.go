@@ -19,6 +19,18 @@ type Logger interface {
 	Debug(msg string, keysAndValues ...any)
 }
 
+// Dialect is the database engine selector. It is an alias for auth.Dialect.
+type Dialect = auth.Dialect
+
+const (
+	// DialectPostgres selects PostgreSQL.
+	DialectPostgres = auth.DialectPostgres
+	// DialectMySQL selects MySQL / MariaDB.
+	DialectMySQL = auth.DialectMySQL
+	// DialectSQLite selects SQLite.
+	DialectSQLite = auth.DialectSQLite
+)
+
 // Config holds the configuration for Aegis authentication framework.
 //
 // Required fields:
@@ -608,6 +620,13 @@ func (c *Config) WithUserFields(fields []string) *Config {
 //	aegis.New(ctx, cfg, ...)
 func (c *Config) WithDB(db *sql.DB) *Config {
 	c.DB = db
+	return c
+}
+
+// WithDialect sets the database dialect for sqlc-generated query selection.
+// Defaults to DialectPostgres when not set.
+func (c *Config) WithDialect(d Dialect) *Config {
+	c.Auth.Dialect = d
 	return c
 }
 

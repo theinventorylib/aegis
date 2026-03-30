@@ -104,7 +104,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
+	iversion "github.com/theinventorylib/aegis/internal/version"
 	"github.com/theinventorylib/aegis/plugins"
+	jwtdefaultstore "github.com/theinventorylib/aegis/plugins/jwt/default_store"
+	jwttypes "github.com/theinventorylib/aegis/plugins/jwt/types"
 	"github.com/theinventorylib/aegis/plugins/openapi"
 	"github.com/theinventorylib/aegis/router"
 )
@@ -228,7 +231,7 @@ func DefaultConfig() *Config {
 //	  5. Revoke: BlacklistToken() → Add to Redis blacklist
 type Plugin struct {
 	// store provides database operations for JWK key storage
-	store Store
+	store jwttypes.Store
 
 	// handler manages HTTP endpoints for token operations
 	handler *Handler
@@ -261,6 +264,10 @@ type Plugin struct {
 	logger config.Logger
 	// aegis is the main framework instance
 	aegis plugins.Aegis
+
+	// stopRotation signals the key-rotation goroutine to stop.
+	// Closed by Shutdown().
+	stopRotation chan struct{}
 }
 
 // New creates a new JWT authentication plugin.
@@ -286,7 +293,7 @@ type Plugin struct {
 //		KeyRotationInterval: 7 * 24 * time.Hour,
 //	}
 //	jwtPlugin := jwt.New(config, nil, plugins.DialectPostgres)
-func New(config *Config, store Store, dialect ...plugins.Dialect) *Plugin {
+func New(config *Config, store jwttypes.Store, dialect ...plugins.Dialect) *Plugin {
 	if config == nil {
 		config = DefaultConfig()
 	}
@@ -310,7 +317,7 @@ func (p *Plugin) Name() string {
 
 // Version returns the plugin version.
 func (p *Plugin) Version() string {
-	return "1.0.0"
+	return iversion.Version
 }
 
 // Description returns a human-readable description.
@@ -357,13 +364,20 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 
 	// Initialize store if not provided
 	if p.store == nil {
-		p.store = NewDefaultJWTStore(aegis.DB())
+		store, err := jwtdefaultstore.NewDefaultJWTStore(aegis.DB(), p.dialect)
+		if err != nil {
+			return err
+		}
+		p.store = store
 	}
 
 	// Get session service to get Redis client (for token blacklisting only)
 	sessionService := aegis.GetAuthService().Session
 	p.sessionService = sessionService // Store for middleware access
 	p.redisClient = sessionService.GetRedisClient()
+	if p.redisClient == nil && p.logger != nil {
+		p.logger.Info("JWT plugin: Redis is not configured — token blacklisting (logout/revocation) will be unavailable")
+	}
 	p.aegis = aegis
 
 	// Build schema requirements: basic table existence from RequiresTables + detailed checks
@@ -416,7 +430,7 @@ func (p *Plugin) MountRoutes(r router.Router, basePath string) {
 		Tags:        []string{"JWT"},
 		Auth:        true,
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[TokenPair]("Token pair generated successfully"),
+			200: openapi.DataResponseOf[jwttypes.TokenPair]("Token pair generated successfully"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			500: openapi.RefResponse("Failed to generate tokens", "Error"),
 		},
@@ -431,7 +445,7 @@ func (p *Plugin) MountRoutes(r router.Router, basePath string) {
 		Tags:        []string{"JWT"},
 		Auth:        true,
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[AccessToken]("Access token generated successfully"),
+			200: openapi.DataResponseOf[jwttypes.AccessToken]("Access token generated successfully"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			500: openapi.RefResponse("Failed to generate token", "Error"),
 		},
@@ -446,7 +460,7 @@ func (p *Plugin) MountRoutes(r router.Router, basePath string) {
 		Tags:        []string{"JWT"},
 		Auth:        true,
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[LogoutResponse]("Successfully logged out and tokens blacklisted"),
+			200: openapi.DataResponseOf[jwttypes.LogoutResponse]("Successfully logged out and tokens blacklisted"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 		},
 	})
@@ -461,7 +475,7 @@ func (p *Plugin) MountRoutes(r router.Router, basePath string) {
 		Tags:        []string{"JWT"},
 		Body:        openapi.RefBody("RefreshTokenRequest"),
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[TokenPair]("Tokens refreshed successfully"),
+			200: openapi.DataResponseOf[jwttypes.TokenPair]("Tokens refreshed successfully"),
 			400: openapi.RefResponse("Invalid request", "Error"),
 			401: openapi.RefResponse("Invalid or expired refresh token", "Error"),
 		},
@@ -476,7 +490,7 @@ func (p *Plugin) MountRoutes(r router.Router, basePath string) {
 		Description: "Retrieve the JSON Web Key Set for JWT verification",
 		Tags:        []string{"JWT"},
 		Responses: openapi.Responses{
-			200: openapi.ResponseOf[JWKS]("JWKS retrieved successfully"),
+			200: openapi.ResponseOf[jwttypes.JWKS]("JWKS retrieved successfully"),
 			500: openapi.RefResponse("Failed to retrieve JWKS", "Error"),
 		},
 	})
@@ -489,7 +503,7 @@ func (p *Plugin) MountRoutes(r router.Router, basePath string) {
 		Description: "Retrieve the JSON Web Key Set for JWT verification",
 		Tags:        []string{"JWT"},
 		Responses: openapi.Responses{
-			200: openapi.ResponseOf[JWKS]("JWKS retrieved successfully"),
+			200: openapi.ResponseOf[jwttypes.JWKS]("JWKS retrieved successfully"),
 			500: openapi.RefResponse("Failed to retrieve JWKS", "Error"),
 		},
 	})
@@ -523,22 +537,6 @@ func (p *Plugin) GetMigrations() []plugins.Migration {
 		return []plugins.Migration{}
 	}
 	return migs
-}
-
-// GetSchemas returns all schemas for all supported dialects
-func (p *Plugin) GetSchemas() []plugins.Schema {
-	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL}
-	schemas := make([]plugins.Schema, 0, len(dialects))
-
-	for _, dialect := range dialects {
-		schema, err := GetSchema(dialect)
-		if err != nil {
-			continue
-		}
-		schemas = append(schemas, *schema)
-	}
-
-	return schemas
 }
 
 // initializeKeys loads or creates JWT signing keys from the database
@@ -626,7 +624,7 @@ func (p *Plugin) rotateKeyPair(ctx context.Context, keyType string) (jwk.Key, jw
 }
 
 // GenerateTokenPair creates access and refresh tokens for a user
-func (p *Plugin) GenerateTokenPair(userID string) (*TokenPair, error) {
+func (p *Plugin) GenerateTokenPair(userID string) (*jwttypes.TokenPair, error) {
 	// Access Token
 	accessToken, accessExpiry, err := p.generateToken(userID, TokenTypeAccess, p.config.AccessTokenExpiry)
 	if err != nil {
@@ -639,7 +637,7 @@ func (p *Plugin) GenerateTokenPair(userID string) (*TokenPair, error) {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	return &TokenPair{
+	return &jwttypes.TokenPair{
 		AccessToken:   accessToken,
 		AccessExpiry:  accessExpiry,
 		RefreshToken:  refreshToken,
@@ -690,7 +688,7 @@ func (p *Plugin) generateToken(userID, tokenType string, duration time.Duration)
 }
 
 // ValidateToken checks the validity of a token.
-func (p *Plugin) ValidateToken(tokenStr string) (*Claims, error) {
+func (p *Plugin) ValidateToken(tokenStr string) (*jwttypes.Claims, error) {
 	ctx := context.Background()
 
 	// Check if specific token is blacklisted (if Redis is available)
@@ -750,7 +748,7 @@ func (p *Plugin) ValidateToken(tokenStr string) (*Claims, error) {
 		return nil, errors.New("missing token type")
 	}
 
-	claims := &Claims{
+	claims := &jwttypes.Claims{
 		UserID:    tokenSubject,
 		TokenType: claimTokenType,
 	}
@@ -764,7 +762,7 @@ func (p *Plugin) ValidateToken(tokenStr string) (*Claims, error) {
 }
 
 // RefreshTokens handles token refresh mechanism.
-func (p *Plugin) RefreshTokens(refreshToken string) (*TokenPair, error) {
+func (p *Plugin) RefreshTokens(refreshToken string) (*jwttypes.TokenPair, error) {
 	ctx := context.Background()
 
 	// Validate the refresh token first
@@ -867,8 +865,10 @@ func (p *Plugin) StartKeyRotation(ctx context.Context) {
 		return
 	}
 
+	p.stopRotation = make(chan struct{})
 	ticker := time.NewTicker(p.config.KeyRotationInterval)
 	go func() {
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
@@ -879,12 +879,23 @@ func (p *Plugin) StartKeyRotation(ctx context.Context) {
 						p.logger.Error("JWT key rotation failed", "error", err)
 					}
 				}
+			case <-p.stopRotation:
+				return
 			case <-ctx.Done():
-				ticker.Stop()
 				return
 			}
 		}
 	}()
+}
+
+// Shutdown stops the key-rotation goroutine and releases resources.
+// Implements plugins.PluginShutdown.
+func (p *Plugin) Shutdown(_ context.Context) error {
+	if p.stopRotation != nil {
+		close(p.stopRotation)
+		p.stopRotation = nil
+	}
+	return nil
 }
 
 // RotateKeys rotates both access and refresh keys
@@ -915,5 +926,8 @@ func (p *Plugin) CleanupExpiredKeys(ctx context.Context) error {
 	return p.store.DeleteExpiredJWKS(ctx)
 }
 
-// Ensure Plugin implements Plugin
+// Ensure Plugin implements the Plugin interface.
 var _ plugins.Plugin = (*Plugin)(nil)
+
+// Ensure Plugin implements PluginShutdown.
+var _ plugins.PluginShutdown = (*Plugin)(nil)

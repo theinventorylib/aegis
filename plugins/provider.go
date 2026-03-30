@@ -4,6 +4,9 @@ package plugins
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
@@ -40,31 +43,17 @@ type Migration struct {
 	Down        string // SQL for reverting migration
 }
 
-// SchemaInfo contains metadata about a schema
-type SchemaInfo struct {
-	Package     string
-	Version     int
-	Description string
-}
-
-// Schema represents the complete schema for a dialect
-type Schema struct {
-	Dialect Dialect
-	SQL     string
-	Info    SchemaInfo
-}
-
-// Dialect represents a database dialect
-type Dialect string
+// Dialect is an alias for config.Dialect.
+type Dialect = config.Dialect
 
 // Database dialect constants
 const (
 	// DialectPostgres represents PostgreSQL database
-	DialectPostgres Dialect = "postgres"
+	DialectPostgres = config.DialectPostgres
 	// DialectMySQL represents MySQL database
-	DialectMySQL Dialect = "mysql"
+	DialectMySQL = config.DialectMySQL
 	// DialectSQLite represents SQLite database
-	DialectSQLite Dialect = "sqlite"
+	DialectSQLite = config.DialectSQLite
 )
 
 // Dependency represents an external package dependency.
@@ -85,15 +74,14 @@ type Plugin interface {
 	// Lifecycle
 	Init(ctx context.Context, a Aegis) error // Initialize plugin with Aegis instance
 	GetMigrations() []Migration              // Return plugin-specific migrations
-	GetSchemas() []Schema                    // Return plugin-specific schemas for all dialects
 
 	// Routing
 	MountRoutes(router router.Router, prefix string) // Register HTTP routes
 
 	// Metadata
-	Dependencies() []Dependency    // Informational only
-	RequiresTables() []string      // Informational only
-	ProvidesAuthMethods() []string // Informational only
+	Dependencies() []Dependency    // External Go package dependencies (library-level, not inter-plugin)
+	RequiresTables() []string      // Core tables this plugin reads from (used for schema validation in Init)
+	ProvidesAuthMethods() []string // Auth method identifiers this plugin enables (e.g. "oauth_google", "jwt")
 }
 
 // UserEnricher is an optional interface that plugins can implement to add
@@ -127,4 +115,132 @@ func IsUserEnricher(p Plugin) bool {
 func GetUserEnricher(p Plugin) (UserEnricher, bool) {
 	ue, ok := p.(UserEnricher)
 	return ue, ok
+}
+
+// PluginShutdown is an optional interface for plugins that hold resources requiring
+// cleanup (goroutines, connections, timers). Aegis calls Shutdown on all plugins
+// that implement this interface when Aegis.Shutdown is invoked, in reverse
+// priority order (highest priority number first).
+//
+// Example implementation (JWT key-rotation goroutine):
+//
+//	func (p *Plugin) Shutdown(ctx context.Context) error {
+//	    p.stopKeyRotation()
+//	    return nil
+//	}
+type PluginShutdown interface {
+	Shutdown(ctx context.Context) error
+}
+
+// PluginRequires is an optional interface for plugins that depend on other
+// plugins being registered first. When a plugin implementing this interface is
+// registered via Aegis.Use / Aegis.UseWithPriority, Aegis validates that every
+// name returned by Requires is already registered.
+//
+// Example:
+//
+//	func (a *Plugin) Requires() []string {
+//	    return []string{"organizations"}
+//	}
+type PluginRequires interface {
+	Requires() []string
+}
+
+// HealthChecker is an optional interface for plugins that can report their own
+// health. Aegis itself does not poll this automatically; it is intended for use
+// by readiness / liveness handlers or monitoring integrations.
+//
+// Example:
+//
+//	func (p *Plugin) Health(ctx context.Context) error {
+//	    return p.store.Ping(ctx)
+//	}
+type HealthChecker interface {
+	Health(ctx context.Context) error
+}
+
+// VersionedRequirement specifies a plugin dependency with a minimum version constraint.
+// Used by PluginVersionRequires to declare version-aware inter-plugin dependencies.
+type VersionedRequirement struct {
+	Plugin     string // Name of the required plugin (matches Plugin.Name())
+	MinVersion string // Minimum acceptable semver, e.g. "2.0.0"
+}
+
+// PluginVersionRequires is an optional interface for plugins that need a specific
+// minimum version of another plugin. Aegis checks this at Use/UseWithPriority time:
+// the required plugin must already be registered AND its Version() must satisfy
+// the declared MinVersion.
+//
+// Use this instead of (or alongside) PluginRequires when the API contract of the
+// required plugin changed between versions and you need to enforce compatibility.
+//
+// Example:
+//
+//	func (p *Plugin) VersionedRequires() []plugins.VersionedRequirement {
+//	    return []plugins.VersionedRequirement{
+//	        {Plugin: "oauth", MinVersion: "2.0.0"},
+//	    }
+//	}
+type PluginVersionRequires interface {
+	VersionedRequires() []VersionedRequirement
+}
+
+// PluginMinAegisVersion is an optional interface for plugins that require a
+// minimum version of the Aegis framework itself. Aegis checks this at
+// Use/UseWithPriority time and returns an error if the running aegis.Version
+// is below the declared minimum.
+//
+// Example:
+//
+//	func (p *Plugin) MinAegisVersion() string { return "1.1.0" }
+type PluginMinAegisVersion interface {
+	MinAegisVersion() string
+}
+
+// MeetsMinVersion reports whether `have` satisfies the semver lower-bound `need`.
+// Both strings must be "major.minor.patch" (e.g. "2.1.0"). Returns true when
+// have >= need by comparing each numeric component left-to-right.
+// Malformed version strings are treated as "0.0.0" (never satisfies a non-zero need).
+func MeetsMinVersion(have, need string) bool {
+	parseSemver := func(v string) [3]int {
+		parts := strings.SplitN(v, ".", 3)
+		var parsed [3]int
+		for i := 0; i < 3 && i < len(parts); i++ {
+			n, err := strconv.Atoi(parts[i])
+			if err != nil {
+				return [3]int{}
+			}
+			parsed[i] = n
+		}
+		return parsed
+	}
+	h := parseSemver(have)
+	n := parseSemver(need)
+	for i := range h {
+		if h[i] > n[i] {
+			return true
+		}
+		if h[i] < n[i] {
+			return false
+		}
+	}
+	return true // equal
+}
+
+// CheckVersionedRequirements validates versioned plugin dependencies against a
+// lookup function. Returns a descriptive error if any requirement is unmet.
+// Called by Aegis internals; exposed so tests and custom hosts can reuse it.
+func CheckVersionedRequirements(pluginName string, reqs []VersionedRequirement, lookup func(string) (Plugin, bool)) error {
+	for _, req := range reqs {
+		dep, found := lookup(req.Plugin)
+		if !found {
+			return fmt.Errorf("plugin %q requires plugin %q (>= %s) to be registered first",
+				pluginName, req.Plugin, req.MinVersion)
+		}
+		if !MeetsMinVersion(dep.Version(), req.MinVersion) {
+			return fmt.Errorf("plugin %q requires plugin %q version >= %s, but found %s",
+				pluginName, req.Plugin, req.MinVersion, dep.Version())
+		}
+	}
+	return nil
 }

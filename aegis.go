@@ -86,10 +86,16 @@ import (
 	"github.com/theinventorylib/aegis/auth"
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
+	iversion "github.com/theinventorylib/aegis/internal/version"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/router"
 	"github.com/theinventorylib/aegis/router/defaults"
 )
+
+// Version is the running Aegis framework version.
+// Injected by GoReleaser at build time; falls back to runtime build info or "dev".
+// Plugins can check this against their MinAegisVersion() requirement.
+var Version = iversion.Version
 
 // Aegis is the main entry point for the Aegis authentication framework.
 //
@@ -242,7 +248,10 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 
 	// Initialize core services
 	cfg.Auth.DB = cfg.DB
-	authConn := auth.New(cfg.Auth)
+	authConn, err := auth.New(cfg.Auth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize auth: %w", err)
+	}
 
 	hashConfig := &core.PasswordHasherConfig{
 		Argon2Time:      cfg.Argon2Time,
@@ -472,6 +481,40 @@ func (a *Aegis) UseWithPriority(ctx context.Context, plugin plugins.Plugin, prio
 			"priority", priority)
 	}
 
+	// Guard against name collisions.
+	a.mu.RLock()
+	if _, exists := a.plugins[plugin.Name()]; exists {
+		a.mu.RUnlock()
+		return fmt.Errorf("plugin %q is already registered", plugin.Name())
+	}
+	a.mu.RUnlock()
+
+	// Validate inter-plugin dependencies declared via PluginRequires.
+	if req, ok := plugin.(plugins.PluginRequires); ok {
+		for _, dep := range req.Requires() {
+			if _, found := a.GetPlugin(dep); !found {
+				return fmt.Errorf("plugin %q requires plugin %q to be registered first", plugin.Name(), dep)
+			}
+		}
+	}
+
+	// Validate versioned inter-plugin dependencies declared via PluginVersionRequires.
+	if vreq, ok := plugin.(plugins.PluginVersionRequires); ok {
+		if err := plugins.CheckVersionedRequirements(plugin.Name(), vreq.VersionedRequires(), func(name string) (plugins.Plugin, bool) {
+			return a.GetPlugin(name)
+		}); err != nil {
+			return err
+		}
+	}
+
+	// Validate minimum Aegis framework version declared via PluginMinAegisVersion.
+	if mav, ok := plugin.(plugins.PluginMinAegisVersion); ok {
+		min := mav.MinAegisVersion()
+		if !plugins.MeetsMinVersion(Version, min) {
+			return fmt.Errorf("plugin %q requires aegis >= %s, running %s", plugin.Name(), min, Version)
+		}
+	}
+
 	// Instantiate the multi-generic Aegis interface for the plugin
 	// This allow the plugin to use any models while we use defaults internally
 	pAegis := &pluginAegisWrapper{Aegis: a}
@@ -589,9 +632,13 @@ func (a *Aegis) runUserEnrichers(ctx context.Context, user *core.EnrichedUser) {
 
 	for _, reg := range a.plugins {
 		if enricher, ok := reg.plugin.(plugins.UserEnricher); ok {
-			// Errors from individual enrichers shouldn't fail the request
-			err := enricher.EnrichUser(ctx, user)
-			_ = err
+			if err := enricher.EnrichUser(ctx, user); err != nil {
+				if a.config != nil && a.config.Logger != nil {
+					a.config.Logger.Error("UserEnricher failed",
+						"plugin", reg.plugin.Name(),
+						"error", err)
+				}
+			}
 		}
 	}
 }
@@ -833,4 +880,48 @@ func (w *pluginAegisWrapper) DB() *sql.DB {
 
 func (w *pluginAegisWrapper) GetPlugin(name string) (plugins.Plugin, bool) {
 	return w.Aegis.GetPlugin(name)
+}
+
+// Shutdown gracefully stops all plugins that implement PluginShutdown, in
+// reverse priority order (application plugins first, system plugins last).
+// Call this when your application receives a shutdown signal.
+//
+// Example:
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+//	defer cancel()
+//	if err := a.Shutdown(ctx); err != nil {
+//		log.Error("shutdown error", "err", err)
+//	}
+func (a *Aegis) Shutdown(ctx context.Context) error {
+	a.mu.RLock()
+	regs := make([]pluginRegistration, 0, len(a.plugins))
+	for _, reg := range a.plugins {
+		regs = append(regs, reg)
+	}
+	a.mu.RUnlock()
+
+	// Reverse priority order: higher priority numbers (application plugins) first.
+	sort.Slice(regs, func(i, j int) bool {
+		return regs[i].priority > regs[j].priority
+	})
+
+	var errs []error
+	for _, reg := range regs {
+		if sd, ok := reg.plugin.(plugins.PluginShutdown); ok {
+			if err := sd.Shutdown(ctx); err != nil {
+				if a.config != nil && a.config.Logger != nil {
+					a.config.Logger.Error("plugin shutdown failed",
+						"plugin", reg.plugin.Name(),
+						"error", err)
+				}
+				errs = append(errs, err)
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("%d plugin(s) failed to shut down cleanly", len(errs))
+	}
+	return nil
 }

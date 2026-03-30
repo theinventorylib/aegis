@@ -1,0 +1,100 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build all packages
+    cmds:
+      - go build ./...
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  test:race:
+    desc: Run all tests with race detector
+    cmds:
+      - go test -race ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  sec:
+    desc: Run gosec security scanner
+    cmds:
+      # Exclude sqlc-generated query files: they contain SQL constants with "token"
+      # in the name (e.g. getSessionByToken) that gosec misidentifies as G101
+      # hardcoded credentials.  These files are auto-generated and not edited by hand.
+      - gosec -exclude-dir=internal/gen ./...
+
+  bench:
+    desc: Run benchmarks
+    cmds:
+      - go test -bench=. -benchmem ./...
+  
+  vet:
+    desc: Run go vet on all packages
+    cmds:
+      - go vet ./...
+
+  check:full:
+    desc: Run all checks (lint, security, vet)
+    deps:
+      - lint
+      - sec
+      - vet
+
+  generate:
+    desc: Run sqlc generate for all packages
+    deps:
+      - sqlc:auth
+      - sqlc:admin
+      - sqlc:emailotp
+      - sqlc:sms
+      - sqlc:oauth
+      - sqlc:jwt
+      - sqlc:organizations
+
+  sqlc:auth:
+    desc: Generate sqlc for auth package
+    dir: auth
+    cmds:
+      - sqlc generate
+
+  sqlc:admin:
+    desc: Generate sqlc for admin plugin
+    dir: plugins/admin
+    cmds:
+      - sqlc generate
+
+  sqlc:emailotp:
+    desc: Generate sqlc for emailotp plugin
+    dir: plugins/emailotp
+    cmds:
+      - sqlc generate
+
+  sqlc:sms:
+    desc: Generate sqlc for sms plugin
+    dir: plugins/sms
+    cmds:
+      - sqlc generate
+
+  sqlc:oauth:
+    desc: Generate sqlc for oauth plugin
+    dir: plugins/oauth
+    cmds:
+      - sqlc generate
+
+  sqlc:jwt:
+    desc: Generate sqlc for jwt plugin
+    dir: plugins/jwt
+    cmds:
+      - sqlc generate
+
+  sqlc:organizations:
+    desc: Generate sqlc for organizations plugin
+    dir: plugins/organizations
+    cmds:
+      - sqlc generate

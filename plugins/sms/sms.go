@@ -44,8 +44,11 @@ import (
 	"github.com/theinventorylib/aegis/auth"
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
+	iversion "github.com/theinventorylib/aegis/internal/version"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/plugins/openapi"
+	smsdefaultstore "github.com/theinventorylib/aegis/plugins/sms/default_store"
+	smstypes "github.com/theinventorylib/aegis/plugins/sms/types"
 	"github.com/theinventorylib/aegis/router"
 )
 
@@ -68,7 +71,7 @@ type Plugin struct {
 	// otpLength specifies OTP code length (default: 6 digits)
 	otpLength int
 	// store handles phone-specific database operations
-	store Store
+	store smstypes.Store
 	// logger for SMS sending events (nil-safe)
 	logger config.Logger
 	// accountService manages password authentication
@@ -115,7 +118,7 @@ type Config struct {
 //	  OTPExpiry: 15 * time.Minute,
 //	  OTPLength: 8,
 //	}, nil, plugins.DialectPostgres)
-func New(cfg *Config, store Store, dialect ...plugins.Dialect) *Plugin {
+func New(cfg *Config, store smstypes.Store, dialect ...plugins.Dialect) *Plugin {
 	if cfg == nil {
 		cfg = &Config{} // Initialize cfg to avoid nil pointer dereference
 	}
@@ -148,7 +151,7 @@ func (p *Plugin) Name() string {
 
 // Version returns the plugin version for compatibility tracking.
 func (p *Plugin) Version() string {
-	return "1.0.0"
+	return iversion.Version
 }
 
 // Description returns a human-readable description for logging.
@@ -168,7 +171,11 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 
 	// Initialize store if not provided
 	if p.store == nil {
-		p.store = NewDefaultSMSStore(a.DB())
+		s, err := smsdefaultstore.NewDefaultSMSStore(a.DB(), p.dialect)
+		if err != nil {
+			return fmt.Errorf("sms: failed to initialize store: %w", err)
+		}
+		p.store = s
 	}
 
 	return nil
@@ -192,7 +199,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Description: "Send a one-time password via SMS to the authenticated user's phone number",
 		Tags:        []string{"SMS"},
 		Auth:        true,
-		Body:        openapi.BodyOf[SendOTPRequest](),
+		Body:        openapi.BodyOf[smstypes.SendOTPRequest](),
 		Responses: openapi.Responses{
 			200: openapi.RefResponse("OTP sent successfully", "Success"),
 			400: openapi.RefResponse("Invalid request", "Error"),
@@ -209,7 +216,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Summary:     "Verify SMS OTP",
 		Description: "Verify a one-time password sent via SMS",
 		Tags:        []string{"SMS"},
-		Body:        openapi.BodyOf[VerifyOTPRequest](),
+		Body:        openapi.BodyOf[smstypes.VerifyOTPRequest](),
 		Responses: openapi.Responses{
 			200: openapi.RefResponse("OTP verified successfully", "Success"),
 			400: openapi.RefResponse("Invalid request or incorrect OTP", "Error"),
@@ -225,9 +232,9 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Summary:     "Login with phone and password",
 		Description: "Authenticate using phone number and password",
 		Tags:        []string{"SMS"},
-		Body:        openapi.BodyOf[LoginWithPhoneRequest](),
+		Body:        openapi.BodyOf[smstypes.LoginWithPhoneRequest](),
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[SMSAuthResponse]("Login successful, session created"),
+			200: openapi.DataResponseOf[smstypes.AuthResponse]("Login successful, session created"),
 			400: openapi.RefResponse("Invalid request", "Error"),
 			401: openapi.RefResponse("Invalid credentials", "Error"),
 		},
@@ -240,9 +247,9 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Summary:     "Register with phone and password",
 		Description: "Create a new account using phone number and password",
 		Tags:        []string{"SMS"},
-		Body:        openapi.BodyOf[RegisterWithPhoneRequest](),
+		Body:        openapi.BodyOf[smstypes.RegisterWithPhoneRequest](),
 		Responses: openapi.Responses{
-			201: openapi.DataResponseOf[SMSAuthResponse]("Registration successful, session created"),
+			201: openapi.DataResponseOf[smstypes.AuthResponse]("Registration successful, session created"),
 			400: openapi.RefResponse("Invalid request or phone number already exists", "Error"),
 		},
 	})
@@ -253,9 +260,9 @@ func (p *Plugin) Dependencies() []plugins.Dependency {
 	return []plugins.Dependency{}
 }
 
-// RequiresTables returns core tables this plugin depends on
+// RequiresTables returns the core tables this plugin reads from.
 func (p *Plugin) RequiresTables() []string {
-	return []string{"auth.user"}
+	return []string{"user"}
 }
 
 // ProvidesAuthMethods returns authentication methods provided
@@ -267,25 +274,9 @@ func (p *Plugin) ProvidesAuthMethods() []string {
 func (p *Plugin) GetMigrations() []plugins.Migration {
 	migs, err := GetMigrations(p.dialect)
 	if err != nil {
-		return nil
+		return []plugins.Migration{}
 	}
 	return migs
-}
-
-// GetSchemas returns all schemas for all supported dialects
-func (p *Plugin) GetSchemas() []plugins.Schema {
-	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL}
-	schemas := make([]plugins.Schema, 0, len(dialects))
-
-	for _, dialect := range dialects {
-		schema, err := GetSchema(dialect)
-		if err != nil {
-			continue
-		}
-		schemas = append(schemas, *schema)
-	}
-
-	return schemas
 }
 
 // EnrichUser implements plugins.UserEnricher to add phone verification status.
@@ -414,7 +405,7 @@ func (p *Plugin) GetUserByPhone(ctx context.Context, phone string) (*auth.User, 
 }
 
 // CreateUserWithPhoneAndPassword creates a new user with name, password account, and phone number.
-func (p *Plugin) CreateUserWithPhoneAndPassword(ctx context.Context, name, phone, password string) (*User, error) {
+func (p *Plugin) CreateUserWithPhoneAndPassword(ctx context.Context, name, phone, password string) (*smstypes.User, error) {
 	if p.store == nil {
 		return nil, fmt.Errorf("core auth service not configured")
 	}
@@ -423,7 +414,7 @@ func (p *Plugin) CreateUserWithPhoneAndPassword(ctx context.Context, name, phone
 	name = core.SanitizeString(name, nil)
 	phone = core.SanitizePhoneNumber(phone)
 
-	user := User{
+	user := smstypes.User{
 		User: auth.User{
 			ID:   core.GenerateID(),
 			Name: name,

@@ -1,18 +1,6 @@
 package oauth
 
-// ProviderOption is a functional option for customizing provider configuration.
-//
-// This pattern allows flexible provider configuration with sensible defaults.
-// Options can be chained to customize scopes, PKCE, sign-up behavior, etc.
-//
-// Example:
-//
-//	cfg := oauth.Google(clientID, clientSecret,
-//	    oauth.WithScopes("email", "profile", "calendar"),
-//	    oauth.WithPKCE(),
-//	    oauth.WithDisableImplicitSignUp(),
-//	)
-type ProviderOption func(*ProviderConfig)
+import oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
 
 // WithScopes sets custom OAuth scopes for the provider.
 //
@@ -24,8 +12,8 @@ type ProviderOption func(*ProviderConfig)
 //	oauth.Google(clientID, clientSecret,
 //	    oauth.WithScopes("email", "profile", "calendar.readonly"),
 //	)
-func WithScopes(scopes ...string) ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithScopes(scopes ...string) oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.Scopes = scopes
 	}
 }
@@ -46,8 +34,8 @@ func WithScopes(scopes ...string) ProviderOption {
 //	lineTW := oauth.LINE(clientID_TW, clientSecret_TW,
 //	    oauth.WithProviderID("line-tw"),
 //	)
-func WithProviderID(id string) ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithProviderID(id string) oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.ProviderID = id
 	}
 }
@@ -61,8 +49,8 @@ func WithProviderID(id string) ProviderOption {
 //   - Mobile apps (iOS, Android)
 //   - Single-page applications (SPAs)
 //   - Any public OAuth client
-func WithPKCE() ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithPKCE() oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.PKCE = true
 	}
 }
@@ -77,8 +65,8 @@ func WithPKCE() ProviderOption {
 //	oauth.Generic("custom", clientID, clientSecret,
 //	    oauth.WithDiscoveryURL("https://auth.example.com/.well-known/openid-configuration"),
 //	)
-func WithDiscoveryURL(url string) ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithDiscoveryURL(url string) oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.DiscoveryURL = url
 	}
 }
@@ -96,8 +84,8 @@ func WithDiscoveryURL(url string) ProviderOption {
 //	oauth.Google(clientID, clientSecret,
 //	    oauth.WithPrompt("select_account"), // Always show account picker
 //	)
-func WithPrompt(prompt string) ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithPrompt(prompt string) oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.Prompt = prompt
 	}
 }
@@ -115,8 +103,8 @@ func WithPrompt(prompt string) ProviderOption {
 //	    oauth.WithAccessType("offline"), // Request refresh token
 //	    oauth.WithPrompt("consent"),     // Force consent to get refresh token
 //	)
-func WithAccessType(accessType string) ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithAccessType(accessType string) oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.AccessType = accessType
 	}
 }
@@ -136,8 +124,8 @@ func WithAccessType(accessType string) ProviderOption {
 //	oauth.Google(clientID, clientSecret,
 //	    oauth.WithDisableImplicitSignUp(), // Require pre-existing accounts
 //	)
-func WithDisableImplicitSignUp() ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithDisableImplicitSignUp() oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.DisableImplicitSignUp = true
 	}
 }
@@ -153,8 +141,8 @@ func WithDisableImplicitSignUp() ProviderOption {
 //   - New user: Sign-up blocked
 //
 // Use Case: Read-only OAuth for authentication of pre-provisioned users only.
-func WithDisableSignUp() ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithDisableSignUp() oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.DisableSignUp = true
 	}
 }
@@ -173,8 +161,8 @@ func WithDisableSignUp() ProviderOption {
 // Caution:
 //   - May overwrite user-edited profile data
 //   - Consider allowing users to opt out of sync
-func WithOverrideUserInfo() ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithOverrideUserInfo() oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.OverrideUserInfo = true
 	}
 }
@@ -198,8 +186,8 @@ func WithOverrideUserInfo() ProviderOption {
 //	oauth.Generic("custom", clientID, clientSecret,
 //	    oauth.WithUserInfoFetcher(fetchUser),
 //	)
-func WithUserInfoFetcher(fn func(*Tokens) (*User, error)) ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithUserInfoFetcher(fn func(*oauthtypes.Tokens) (*oauthtypes.User, error)) oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.GetUserInfo = fn
 	}
 }
@@ -226,8 +214,8 @@ func WithUserInfoFetcher(fn func(*Tokens) (*User, error)) ProviderOption {
 //	oauth.Generic("custom", clientID, clientSecret,
 //	    oauth.WithProfileMapper(mapProfile),
 //	)
-func WithProfileMapper(fn func(map[string]any) (*User, error)) ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithProfileMapper(fn func(map[string]any) (*oauthtypes.User, error)) oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.MapProfile = fn
 	}
 }
@@ -246,8 +234,8 @@ func WithProfileMapper(fn func(map[string]any) (*User, error)) ProviderOption {
 //	oauth.Google(clientID, clientSecret,
 //	    oauth.WithRedirectURI("https://example.com/custom/google/callback"),
 //	)
-func WithRedirectURI(uri string) ProviderOption {
-	return func(cfg *ProviderConfig) {
+func WithRedirectURI(uri string) oauthtypes.ProviderOption {
+	return func(cfg *oauthtypes.ProviderConfig) {
 		cfg.RedirectURI = uri
 	}
 }

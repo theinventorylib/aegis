@@ -6,6 +6,7 @@ import (
 	"github.com/markbates/goth"
 	"github.com/theinventorylib/aegis/auth"
 	core "github.com/theinventorylib/aegis/core"
+	oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
 )
 
 // GothAdapter adapts goth.Provider to Aegis's Provider interface.
@@ -86,7 +87,7 @@ func (g *GothAdapter) GetAuthURL(state string) (string, error) {
 //
 // This method is currently not used - instead, the plugin uses Goth's
 // session-based flow directly for more flexibility.
-func (g *GothAdapter) Exchange(_ string) (*User, error) {
+func (g *GothAdapter) Exchange(_ string) (*oauthtypes.User, error) {
 	// Note: This is a simplified version. In practice, you'd need to handle
 	// the full OAuth flow with sessions. For now, we'll use the CompleteAuth approach
 	// which requires gothic to be properly configured.
@@ -113,8 +114,8 @@ func (g *GothAdapter) Exchange(_ string) (*User, error) {
 //
 // Returns:
 //   - *User: Aegis user model
-func GothUserToUser(gothUser goth.User) *User {
-	return &User{
+func GothUserToUser(gothUser goth.User) *oauthtypes.User {
+	return &oauthtypes.User{
 		User: auth.User{
 			ID:     core.SanitizeString(gothUser.UserID, nil),
 			Email:  core.SanitizeEmail(gothUser.Email),
@@ -139,7 +140,7 @@ func GothUserToUser(gothUser goth.User) *User {
 //
 // Returns:
 //   - goth.User: Goth user model
-func UserToGothUser(oauthUser *User, provider string) goth.User {
+func UserToGothUser(oauthUser *oauthtypes.User, provider string) goth.User {
 	expiresAt := oauthUser.ExpiresAt
 
 	return goth.User{

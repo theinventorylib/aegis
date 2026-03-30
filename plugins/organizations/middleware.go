@@ -18,20 +18,20 @@ func (p *Plugin) requireOrganizationRole(checker orgRoleChecker) func(http.Handl
 			// Get user from context (populated by AuthMiddleware)
 			user, err := core.GetUser(r.Context())
 			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 				return
 			}
 
 			orgID := core.GetSanitizedPathParam(r, "id")
 			if orgID == "" {
-				http.Error(w, "Organization ID required", http.StatusBadRequest)
+				core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
 				return
 			}
 
 			// Check role using the provided checker function
 			hasRole, err := checker(r.Context(), user.ID, orgID)
 			if err != nil || !hasRole {
-				http.Error(w, "Forbidden", http.StatusForbidden)
+				core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 				return
 			}
 

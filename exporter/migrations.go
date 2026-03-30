@@ -93,21 +93,8 @@ func (e *Exporter) Export() error {
 }
 
 func (e *Exporter) getAuthMigrations() ([]Migration, error) {
-	// Map plugins.Dialect to auth.Dialect
-	var authDialect auth.Dialect
-	switch e.dialect {
-	case plugins.DialectPostgres:
-		authDialect = auth.DialectPostgres
-	case plugins.DialectMySQL:
-		authDialect = auth.DialectMySQL
-	case plugins.DialectSQLite:
-		authDialect = auth.DialectSQLite
-	default:
-		return nil, fmt.Errorf("unsupported dialect: %s", e.dialect)
-	}
-
-	// Get migrations from auth package
-	allMigrations, err := auth.GetMigrations(authDialect)
+	// auth.Dialect and plugins.Dialect are both aliases of database.Dialect, so no conversion needed.
+	allMigrations, err := auth.GetMigrations(e.dialect)
 	if err != nil {
 		return nil, fmt.Errorf("get auth migrations: %w", err)
 	}

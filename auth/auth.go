@@ -27,6 +27,8 @@ package auth
 
 import (
 	"database/sql"
+
+	defaultstore "github.com/theinventorylib/aegis/auth/default_store"
 )
 
 // Config holds the configuration for the auth system.
@@ -39,6 +41,10 @@ type Config struct {
 	// DB is the SQL database connection used for default store implementations.
 	// Required if any store field is left nil.
 	DB *sql.DB
+
+	// Dialect selects which sqlc-generated code is used for the default stores.
+	// Defaults to DialectPostgres when not set.
+	Dialect Dialect
 
 	// UserStore handles user identity storage operations.
 	// If nil, uses default SQL implementation.
@@ -74,10 +80,13 @@ type Auth struct {
 // For any store that is nil in the Config, a default SQL-based implementation
 // is automatically created using the provided database connection.
 //
-// Panics if DB is nil and any store is also nil, since default stores cannot
-// be created without a database connection.
-func New(cfg Config) *Auth {
-	defaultStore := NewDefaultStore(cfg.DB)
+// Returns an error if DB is nil and any store is also nil, since default stores
+// cannot be created without a database connection.
+func New(cfg Config) (*Auth, error) {
+	defaultStore, err := defaultstore.NewDefaultStore(cfg.DB, cfg.Dialect)
+	if err != nil {
+		return nil, err
+	}
 
 	userStore := cfg.UserStore
 	if any(userStore) == nil {
@@ -106,7 +115,7 @@ func New(cfg Config) *Auth {
 		accountStore:      accountStore,
 		verificationStore: verificationStore,
 		sessionStore:      sessionStore,
-	}
+	}, nil
 }
 
 // UserStore returns the configured user store implementation.

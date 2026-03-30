@@ -1,3 +1,4 @@
+// Package router defines the HTTP routing abstraction used by Aegis.
 package router
 
 import (

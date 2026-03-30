@@ -82,14 +82,14 @@ func (a *Plugin) EnrichUserMiddleware() func(http.Handler) http.Handler {
 func (a *Plugin) checkUserRole(ctx *http.Request, w http.ResponseWriter, requiredRole string) bool {
 	user, err := core.GetUser(ctx.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return false
 	}
 
 	// First check if role is already in enriched user (avoid DB call)
 	if role := plugins.GetUserExtensionString(ctx.Context(), ExtKeyRole); role != "" {
 		if role != requiredRole {
-			http.Error(w, "Forbidden", http.StatusForbidden)
+			core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 			return false
 		}
 		return true
@@ -98,7 +98,7 @@ func (a *Plugin) checkUserRole(ctx *http.Request, w http.ResponseWriter, require
 	// Fallback: fetch from DB and enrich for future use
 	role, err := a.store.GetRole(ctx.Context(), user.ID)
 	if err != nil || role != requiredRole {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 		return false
 	}
 

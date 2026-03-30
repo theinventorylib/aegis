@@ -43,7 +43,10 @@ import (
 func DeriveSecret(masterSecret []byte, purpose string, length int) []byte {
 	// Use HKDF to derive a purpose-specific key
 	// Info contains the purpose to ensure different purposes yield different keys
-	hkdfReader := hkdf.New(sha256.New, masterSecret, nil, []byte(purpose))
+	// Derive a non-nil salt from the master secret so different master secrets
+	// produce different outputs even with the same purpose string.
+	salt := sha256.Sum256(masterSecret)
+	hkdfReader := hkdf.New(sha256.New, masterSecret, salt[:], []byte(purpose))
 
 	derived := make([]byte, length)
 	// HKDF.Read always succeeds for reasonable output lengths

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/theinventorylib/aegis/core"
+	emailotptypes "github.com/theinventorylib/aegis/plugins/emailotp/types"
 )
 
 // ========== EMAIL OTP HANDLERS ==========
@@ -54,7 +55,7 @@ func NewHandlers(plugin *Plugin) *Handlers {
 //	  "message": "OTP sent successfully"
 //	}
 func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
-	var req SendOTPRequest
+	var req emailotptypes.SendOTPRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -122,7 +123,7 @@ func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
 //	  "error": "Invalid or expired OTP"
 //	}
 func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
-	var req VerifyOTPRequest
+	var req emailotptypes.VerifyOTPRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,

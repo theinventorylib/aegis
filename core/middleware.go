@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/theinventorylib/aegis/auth"
 )
@@ -189,7 +190,7 @@ func RequireAuthMiddleware(_ *SessionService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !Authenticated(r.Context()) {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -202,9 +203,11 @@ func RequireAuthMiddleware(_ *SessionService) func(http.Handler) http.Handler {
 func GetClientIP(r *http.Request) string {
 	// Check X-Forwarded-For header first (may contain multiple IPs)
 	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		// X-Forwarded-For can contain multiple IPs; the first is the original client
-		// We return as-is; consumers can parse if needed
-		return ip
+		// X-Forwarded-For can be "client, proxy1, proxy2" — take the leftmost (original client)
+		if idx := strings.Index(ip, ","); idx != -1 {
+			ip = ip[:idx]
+		}
+		return strings.TrimSpace(ip)
 	}
 
 	// Check X-Real-IP header

@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/theinventorylib/aegis/core"
@@ -12,11 +13,16 @@ var (
 	mu       sync.RWMutex
 )
 
-// Register adds a plugin to the global registry
-func Register(p Plugin) {
+// Register adds a plugin to the global registry.
+// Returns an error if a plugin with the same name is already registered.
+func Register(p Plugin) error {
 	mu.Lock()
 	defer mu.Unlock()
+	if _, exists := registry[p.Name()]; exists {
+		return fmt.Errorf("plugin %q is already registered", p.Name())
+	}
 	registry[p.Name()] = p
+	return nil
 }
 
 // Get retrieves a plugin by name

@@ -7,6 +7,7 @@ import (
 
 	"github.com/markbates/goth"
 	"github.com/theinventorylib/aegis/core"
+	oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
 )
 
 // Handlers provides HTTP endpoint handlers for OAuth authentication.
@@ -124,7 +125,7 @@ func (h *Handlers) refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
-		Data: &TokenRefreshResponse{
+		Data: &oauthtypes.TokenRefreshResponse{
 			Provider:  conn.Provider,
 			ExpiresAt: conn.ExpiresAt,
 		},
@@ -143,7 +144,7 @@ func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req LinkAccountRequest
+	var req oauthtypes.LinkAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,

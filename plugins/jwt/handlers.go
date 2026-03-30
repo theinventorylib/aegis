@@ -7,6 +7,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/theinventorylib/aegis/core"
+	jwttypes "github.com/theinventorylib/aegis/plugins/jwt/types"
 )
 
 // Handler manages HTTP handlers for the JWT plugin.
@@ -86,7 +87,7 @@ func (h *Handler) handleGetAccessToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return only access token info
-	accessToken := &AccessToken{
+	accessToken := &jwttypes.AccessToken{
 		AccessToken:  tokenPair.AccessToken,
 		AccessExpiry: tokenPair.AccessExpiry,
 		TokenType:    "Bearer",
@@ -173,7 +174,7 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Logged out successfully",
-		Data: &LogoutResponse{
+		Data: &jwttypes.LogoutResponse{
 			UserID: user.ID,
 		},
 	})

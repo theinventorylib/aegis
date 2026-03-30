@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/theinventorylib/aegis/core"
+	smstypes "github.com/theinventorylib/aegis/plugins/sms/types"
 )
 
 // ========== SMS HANDLERS ==========
@@ -68,7 +69,7 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var req LoginWithPhoneRequest
+	var req smstypes.LoginWithPhoneRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -174,7 +175,7 @@ func (h *Handlers) RegisterWithPhoneHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var req RegisterWithPhoneRequest
+	var req smstypes.RegisterWithPhoneRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -269,7 +270,7 @@ func (h *Handlers) RegisterWithPhoneHandler(w http.ResponseWriter, r *http.Reque
 //	  "message": "OTP sent successfully"
 //	}
 func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
-	var req SendOTPRequest
+	var req smstypes.SendOTPRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -337,7 +338,7 @@ func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
 //	  "error": "Invalid or expired OTP"
 //	}
 func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
-	var req VerifyOTPRequest
+	var req smstypes.VerifyOTPRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
