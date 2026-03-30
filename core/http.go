@@ -89,20 +89,24 @@ func SetHTTPLogger(l HTTPLogger) {
 //	params := core.ParsePagination(r) // ?page=2&limit=50
 //	users, _ := userStore.List(ctx, params.Offset, params.Limit)
 func ParsePagination(r *http.Request) PaginationParams {
-	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	pageRaw, err := strconv.ParseInt(r.URL.Query().Get("page"), 10, 32)
+	page := int32(pageRaw)
 	if err != nil || page < 1 {
 		page = 1
 	}
-	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+
+	limitRaw, err := strconv.ParseInt(r.URL.Query().Get("limit"), 10, 32)
+	limit := int32(limitRaw)
 	if err != nil || limit < 1 || limit > 100 {
 		limit = 20
 	}
+
 	offset := (page - 1) * limit
 
 	return PaginationParams{
-		Page:   page,
-		Limit:  limit,
-		Offset: offset,
+		Page:   int(page),
+		Limit:  int(limit),
+		Offset: int(offset),
 	}
 }
 
