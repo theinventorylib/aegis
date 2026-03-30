@@ -9,6 +9,8 @@ package auth
 import (
 	_ "embed"
 	"fmt"
+
+	authtypes "github.com/theinventorylib/aegis/auth/types"
 )
 
 // Embedded schema SQL for each supported database dialect.
@@ -23,18 +25,18 @@ var mysqlSchema string
 //go:embed migrations/sqlite/001_initial.up.sql
 var sqliteSchema string
 
-// Dialect represents a database dialect/driver.
-type Dialect string
+// Dialect represents a supported database engine.
+type Dialect = authtypes.Dialect
 
 const (
 	// DialectPostgres is for PostgreSQL databases (>=9.6 recommended)
-	DialectPostgres Dialect = "postgres"
+	DialectPostgres = authtypes.DialectPostgres
 
 	// DialectMySQL is for MySQL databases (>=5.7 or MariaDB >=10.2)
-	DialectMySQL Dialect = "mysql"
+	DialectMySQL = authtypes.DialectMySQL
 
-	// DialectSQLite is for SQLite databases (currently not implemented)
-	DialectSQLite Dialect = "sqlite"
+	// DialectSQLite is for SQLite databases
+	DialectSQLite = authtypes.DialectSQLite
 )
 
 // SchemaInfo contains metadata about a schema package.

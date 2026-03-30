@@ -64,8 +64,11 @@ import (
 	"time"
 
 	"github.com/theinventorylib/aegis/core"
+	iversion "github.com/theinventorylib/aegis/internal/version"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/plugins/openapi"
+	orgdefaultstore "github.com/theinventorylib/aegis/plugins/organizations/default_store"
+	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
 	"github.com/theinventorylib/aegis/router"
 )
 
@@ -87,7 +90,7 @@ import (
 //	Team Members: POST, GET, PATCH, DELETE /teams/:teamId/members
 type Plugin struct {
 	sessionService *core.SessionService
-	store          OrganizationStore
+	store          orgtypes.OrganizationStore
 	dialect        plugins.Dialect
 	aegis          plugins.Aegis
 }
@@ -104,7 +107,7 @@ type Plugin struct {
 // Example:
 //
 //	plugin := organizations.New(nil, plugins.DialectPostgres)
-func New(store OrganizationStore, dialect ...plugins.Dialect) *Plugin {
+func New(store orgtypes.OrganizationStore, dialect ...plugins.Dialect) *Plugin {
 	d := plugins.DialectPostgres
 	if len(dialect) > 0 {
 		d = dialect[0]
@@ -122,7 +125,7 @@ func (p *Plugin) Name() string {
 
 // Version returns the plugin version
 func (p *Plugin) Version() string {
-	return "1.0.0"
+	return iversion.Version
 }
 
 // Description returns the plugin description
@@ -156,7 +159,11 @@ func (p *Plugin) Description() string {
 func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	// Initialize store if not provided
 	if p.store == nil {
-		p.store = NewDefaultOrganizationStore(aegis.DB())
+		store, err := orgdefaultstore.NewDefaultOrganizationStore(aegis.DB(), p.dialect)
+		if err != nil {
+			return err
+		}
+		p.store = store
 	}
 
 	// Build schema requirements
@@ -207,7 +214,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Auth:        true,
 		Body:        openapi.BodyOf[CreateOrganizationRequest](),
 		Responses: openapi.Responses{
-			201: openapi.DataResponseOf[Organization]("Organization created successfully"),
+			201: openapi.DataResponseOf[orgtypes.Organization]("Organization created successfully"),
 			400: openapi.RefResponse("Invalid request or validation error", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 		},
@@ -223,7 +230,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Tags:        []string{"Organizations"},
 		Auth:        true,
 		Responses: openapi.Responses{
-			200: openapi.PaginatedResponseOf[core.PaginatedResponse[Organization]]("List of organizations"),
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[orgtypes.Organization]]("List of organizations"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			500: openapi.RefResponse("Internal server error", "Error"),
 		},
@@ -242,7 +249,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			{Name: "id", In: "path", Type: "string", Required: true},
 		},
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[Organization]("Organization details"),
+			200: openapi.DataResponseOf[orgtypes.Organization]("Organization details"),
 			400: openapi.RefResponse("Invalid organization ID", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			403: openapi.RefResponse("Not a member of this organization", "Error"),
@@ -325,7 +332,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			{Name: "id", In: "path", Type: "string", Required: true},
 		},
 		Responses: openapi.Responses{
-			200: openapi.PaginatedResponseOf[core.PaginatedResponse[Member]]("List of organization members"),
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[orgtypes.Member]]("List of organization members"),
 			400: openapi.RefResponse("Invalid organization ID", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			403: openapi.RefResponse("Not a member of this organization", "Error"),
@@ -390,7 +397,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 		Body: openapi.BodyOf[CreateTeamRequest](),
 		Responses: openapi.Responses{
-			201: openapi.DataResponseOf[Team]("Team created successfully"),
+			201: openapi.DataResponseOf[orgtypes.Team]("Team created successfully"),
 			400: openapi.RefResponse("Invalid request or validation error", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			403: openapi.RefResponse("Insufficient permissions", "Error"),
@@ -409,7 +416,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			{Name: "id", In: "path", Type: "string", Required: true},
 		},
 		Responses: openapi.Responses{
-			200: openapi.PaginatedResponseOf[core.PaginatedResponse[Team]]("List of teams"),
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[orgtypes.Team]]("List of teams"),
 			400: openapi.RefResponse("Invalid organization ID", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			403: openapi.RefResponse("Not a member of this organization", "Error"),
@@ -432,7 +439,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			{Name: "teamId", In: "path", Type: "string", Required: true},
 		},
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[Team]("Team details"),
+			200: openapi.DataResponseOf[orgtypes.Team]("Team details"),
 			400: openapi.RefResponse("Invalid team ID", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			403: openapi.RefResponse("Not a member of this organization", "Error"),
@@ -516,7 +523,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			{Name: "teamId", In: "path", Type: "string", Required: true},
 		},
 		Responses: openapi.Responses{
-			200: openapi.PaginatedResponseOf[core.PaginatedResponse[TeamMember]]("List of team members"),
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[orgtypes.TeamMember]]("List of team members"),
 			400: openapi.RefResponse("Invalid team ID", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			403: openapi.RefResponse("Not a member of this organization", "Error"),
@@ -639,7 +646,7 @@ func (p *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error 
 // Returns:
 //   - *Organization: Created organization with metadata
 //   - error: Database error or duplicate slug error
-func (p *Plugin) CreateOrganization(ctx context.Context, name, slug, ownerID string) (*Organization, error) {
+func (p *Plugin) CreateOrganization(ctx context.Context, name, slug, ownerID string) (*orgtypes.Organization, error) {
 	// Sanitize inputs
 	name = core.SanitizeString(name, nil)
 	slug = core.SanitizeUsername(slug, 50) // Slugs follow username-like rules
@@ -658,7 +665,7 @@ func (p *Plugin) CreateOrganization(ctx context.Context, name, slug, ownerID str
 		return nil, err
 	}
 
-	return &Organization{
+	return &orgtypes.Organization{
 		ID:        id,
 		Name:      name,
 		Slug:      slug,
@@ -668,7 +675,7 @@ func (p *Plugin) CreateOrganization(ctx context.Context, name, slug, ownerID str
 }
 
 // GetOrganization retrieves an organization by ID.
-func (p *Plugin) GetOrganization(ctx context.Context, id string) (Organization, error) {
+func (p *Plugin) GetOrganization(ctx context.Context, id string) (orgtypes.Organization, error) {
 	return p.store.GetOrganization(ctx, id)
 }
 
@@ -687,7 +694,7 @@ func (p *Plugin) DeleteOrganization(ctx context.Context, id string) error {
 }
 
 // GetUserOrganizations retrieves all organizations for a user.
-func (p *Plugin) GetUserOrganizations(ctx context.Context, userID string, offset, limit int) ([]*Organization, int, error) {
+func (p *Plugin) GetUserOrganizations(ctx context.Context, userID string, offset, limit int) ([]*orgtypes.Organization, int, error) {
 	orgs, err := p.store.ListUserOrganizations(ctx, userID, offset, limit)
 	if err != nil {
 		return nil, 0, err
@@ -698,7 +705,7 @@ func (p *Plugin) GetUserOrganizations(ctx context.Context, userID string, offset
 		return nil, 0, err
 	}
 
-	result := make([]*Organization, len(orgs))
+	result := make([]*orgtypes.Organization, len(orgs))
 	for i := range orgs {
 		result[i] = &orgs[i]
 	}
@@ -796,7 +803,7 @@ func (p *Plugin) RemoveOrganizationMember(ctx context.Context, userID, orgID str
 }
 
 // ListOrganizationMembers lists all members of an organization.
-func (p *Plugin) ListOrganizationMembers(ctx context.Context, orgID string, offset, limit int) ([]*Member, int, error) {
+func (p *Plugin) ListOrganizationMembers(ctx context.Context, orgID string, offset, limit int) ([]*orgtypes.Member, int, error) {
 	members, err := p.store.ListOrganizationMembers(ctx, orgID, offset, limit)
 	if err != nil {
 		return nil, 0, err
@@ -807,7 +814,7 @@ func (p *Plugin) ListOrganizationMembers(ctx context.Context, orgID string, offs
 		return nil, 0, err
 	}
 
-	result := make([]*Member, len(members))
+	result := make([]*orgtypes.Member, len(members))
 	for i := range members {
 		result[i] = &members[i]
 	}
@@ -817,7 +824,7 @@ func (p *Plugin) ListOrganizationMembers(ctx context.Context, orgID string, offs
 // Team operations
 
 // CreateTeam creates a new team within an organization.
-func (p *Plugin) CreateTeam(ctx context.Context, orgID, name, description string) (*Team, error) {
+func (p *Plugin) CreateTeam(ctx context.Context, orgID, name, description string) (*orgtypes.Team, error) {
 	// Sanitize inputs
 	name = core.SanitizeString(name, nil)
 	description = core.SanitizeMultiline(description, 500)
@@ -830,7 +837,7 @@ func (p *Plugin) CreateTeam(ctx context.Context, orgID, name, description string
 		return nil, err
 	}
 
-	return &Team{
+	return &orgtypes.Team{
 		ID:             id,
 		OrganizationID: orgID,
 		Name:           name,
@@ -841,13 +848,13 @@ func (p *Plugin) CreateTeam(ctx context.Context, orgID, name, description string
 }
 
 // GetTeam retrieves a team by ID.
-func (p *Plugin) GetTeam(ctx context.Context, id string) (*Team, error) {
+func (p *Plugin) GetTeam(ctx context.Context, id string) (*orgtypes.Team, error) {
 	team, err := p.store.GetTeam(ctx, id)
 	return &team, err
 }
 
 // ListTeams lists all teams in an organization.
-func (p *Plugin) ListTeams(ctx context.Context, orgID string, offset, limit int) ([]*Team, int, error) {
+func (p *Plugin) ListTeams(ctx context.Context, orgID string, offset, limit int) ([]*orgtypes.Team, int, error) {
 	teams, err := p.store.ListTeams(ctx, orgID, offset, limit)
 	if err != nil {
 		return nil, 0, err
@@ -858,7 +865,7 @@ func (p *Plugin) ListTeams(ctx context.Context, orgID string, offset, limit int)
 		return nil, 0, err
 	}
 
-	result := make([]*Team, len(teams))
+	result := make([]*orgtypes.Team, len(teams))
 	for i := range teams {
 		result[i] = &teams[i]
 	}
@@ -898,7 +905,7 @@ func (p *Plugin) RemoveTeamMember(ctx context.Context, teamID, userID string) er
 }
 
 // ListTeamMembers lists all members of a team.
-func (p *Plugin) ListTeamMembers(ctx context.Context, teamID string, offset, limit int) ([]*TeamMember, int, error) {
+func (p *Plugin) ListTeamMembers(ctx context.Context, teamID string, offset, limit int) ([]*orgtypes.TeamMember, int, error) {
 	members, err := p.store.ListTeamMembers(ctx, teamID, offset, limit)
 	if err != nil {
 		return nil, 0, err
@@ -909,7 +916,7 @@ func (p *Plugin) ListTeamMembers(ctx context.Context, teamID string, offset, lim
 		return nil, 0, err
 	}
 
-	result := make([]*TeamMember, len(members))
+	result := make([]*orgtypes.TeamMember, len(members))
 	for i := range members {
 		result[i] = &members[i]
 	}
@@ -929,22 +936,6 @@ func (p *Plugin) RequiresTables() []string {
 // ProvidesAuthMethods returns the provided auth methods
 func (p *Plugin) ProvidesAuthMethods() []string {
 	return []string{}
-}
-
-// GetSchemas returns all schemas for all supported dialects
-func (p *Plugin) GetSchemas() []plugins.Schema {
-	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL}
-	schemas := make([]plugins.Schema, 0, len(dialects))
-
-	for _, dialect := range dialects {
-		schema, err := GetSchema(dialect)
-		if err != nil {
-			continue
-		}
-		schemas = append(schemas, *schema)
-	}
-
-	return schemas
 }
 
 // Ensure Plugin implements UserEnricher

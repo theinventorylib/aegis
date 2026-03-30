@@ -41,7 +41,10 @@ import (
 	"time"
 
 	"github.com/theinventorylib/aegis/core"
+	iversion "github.com/theinventorylib/aegis/internal/version"
 	"github.com/theinventorylib/aegis/plugins"
+	admindefaultstore "github.com/theinventorylib/aegis/plugins/admin/default_store"
+	admintypes "github.com/theinventorylib/aegis/plugins/admin/types"
 	"github.com/theinventorylib/aegis/plugins/openapi"
 	"github.com/theinventorylib/aegis/router"
 )
@@ -58,7 +61,7 @@ import (
 // to authenticated users, making it available in API responses.
 type Plugin struct {
 	// store handles admin-specific database operations
-	store Store
+	store admintypes.Store
 	// dialect specifies the database dialect (postgres, mysql)
 	dialect plugins.Dialect
 	// sessionService provides authentication verification
@@ -80,7 +83,7 @@ type Plugin struct {
 //
 //	admin := admin.New(nil, plugins.DialectPostgres)
 //	aegis.RegisterPlugin(admin)
-func New(store Store, dialect ...plugins.Dialect) *Plugin {
+func New(store admintypes.Store, dialect ...plugins.Dialect) *Plugin {
 	d := plugins.DialectPostgres
 	if len(dialect) > 0 {
 		d = dialect[0]
@@ -98,7 +101,7 @@ func (a *Plugin) Name() string {
 
 // Version returns the plugin version for compatibility tracking.
 func (a *Plugin) Version() string {
-	return "1.0.0"
+	return iversion.Version
 }
 
 // Description returns a human-readable description for logging and diagnostics.
@@ -128,7 +131,11 @@ func (a *Plugin) Description() string {
 func (a *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	// Initialize store if not provided
 	if a.store == nil {
-		a.store = NewDefaultAdminStore(aegis.DB())
+		store, err := admindefaultstore.NewDefaultAdminStore(aegis.DB(), a.dialect)
+		if err != nil {
+			return err
+		}
+		a.store = store
 	}
 
 	// Store session service for auth middleware
@@ -179,7 +186,7 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		Auth:        true,
 		Params:      openapi.PaginationQueryParams(),
 		Responses: openapi.Responses{
-			200: openapi.PaginatedResponseOf[core.PaginatedResponse[User]]("List of users"),
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[admintypes.User]]("List of users"),
 			401: openapi.RefResponse("Not authorized", "Error"),
 		},
 	})
@@ -196,7 +203,7 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 			{Name: "id", In: "path", Type: "string", Required: true},
 		},
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[User]("User details"),
+			200: openapi.DataResponseOf[admintypes.User]("User details"),
 			401: openapi.RefResponse("Not authorized", "Error"),
 			404: openapi.RefResponse("User not found", "Error"),
 		},
@@ -266,7 +273,7 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		Params: []openapi.Param{
 			{Name: "id", In: "path", Type: "string", Required: true},
 		},
-		Body: openapi.BodyOf[BanUserRequest](),
+		Body: openapi.BodyOf[admintypes.BanUserRequest](),
 		Responses: openapi.Responses{
 			200: openapi.RefResponse("User banned", "Success"),
 			401: openapi.RefResponse("Not authorized", "Error"),
@@ -302,7 +309,7 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		Params: []openapi.Param{
 			{Name: "id", In: "path", Type: "string", Required: true},
 		},
-		Body: openapi.BodyOf[UpdateRoleRequest](),
+		Body: openapi.BodyOf[admintypes.UpdateRoleRequest](),
 		Responses: openapi.Responses{
 			200: openapi.RefResponse("Role updated", "Success"),
 			400: openapi.RefResponse("Invalid request", "Error"),
@@ -321,7 +328,7 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		Tags:        []string{"Admin"},
 		Auth:        true,
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[StatsResponse]("Statistics"),
+			200: openapi.DataResponseOf[admintypes.StatsResponse]("Statistics"),
 			401: openapi.RefResponse("Not authorized", "Error"),
 		},
 	})
@@ -332,7 +339,7 @@ func (a *Plugin) Dependencies() []plugins.Dependency {
 	return []plugins.Dependency{}
 }
 
-// RequiresTables returns the required tables
+// RequiresTables returns the core tables this plugin reads from.
 func (a *Plugin) RequiresTables() []string {
 	return []string{"user"}
 }
@@ -340,22 +347,6 @@ func (a *Plugin) RequiresTables() []string {
 // ProvidesAuthMethods returns the provided auth methods
 func (a *Plugin) ProvidesAuthMethods() []string {
 	return []string{}
-}
-
-// GetSchemas returns all schemas for all supported dialects
-func (a *Plugin) GetSchemas() []plugins.Schema {
-	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL}
-	schemas := make([]plugins.Schema, 0, len(dialects))
-
-	for _, dialect := range dialects {
-		schema, err := GetSchema(dialect)
-		if err != nil {
-			continue
-		}
-		schemas = append(schemas, *schema)
-	}
-
-	return schemas
 }
 
 // EnrichUser implements plugins.UserEnricher to add admin-specific fields to user responses.
@@ -393,7 +384,16 @@ func (a *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error 
 	if adminUser.Role != "" {
 		user.Set(ExtKeyRole, adminUser.Role)
 	}
-	// TODO: enrich with the other fields
+	user.Set("banned", adminUser.Banned)
+	if adminUser.BanReason != "" {
+		user.Set("banReason", adminUser.BanReason)
+	}
+	if adminUser.BanExpiry != nil {
+		user.Set("banExpiry", adminUser.BanExpiry)
+	}
+	if adminUser.BanCounter > 0 {
+		user.Set("banCounter", adminUser.BanCounter)
+	}
 
 	return nil
 }
@@ -401,7 +401,7 @@ func (a *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error 
 // ========== PROGRAMMATIC FUNCTIONS ==========
 
 // ListUsers lists all users programmatically.
-func (a *Plugin) ListUsers(ctx context.Context, offset, limit int) ([]User, error) {
+func (a *Plugin) ListUsers(ctx context.Context, offset, limit int) ([]admintypes.User, error) {
 	return a.store.List(ctx, offset, limit)
 }
 
@@ -411,7 +411,7 @@ func (a *Plugin) ListUsersRaw(ctx context.Context, offset, limit int) ([]map[str
 }
 
 // GetUser retrieves detailed information for a specific user programmatically.
-func (a *Plugin) GetUser(ctx context.Context, userID string) (User, error) {
+func (a *Plugin) GetUser(ctx context.Context, userID string) (admintypes.User, error) {
 	return a.store.GetByID(ctx, userID)
 }
 
@@ -459,7 +459,7 @@ func (a *Plugin) UnbanUser(ctx context.Context, userID string) error {
 }
 
 // GetStats returns platform statistics programmatically.
-func (a *Plugin) GetStats(ctx context.Context) (StatsResponse, error) {
+func (a *Plugin) GetStats(ctx context.Context) (admintypes.StatsResponse, error) {
 	return a.store.GetStats(ctx)
 }
 
@@ -479,7 +479,7 @@ func (a *Plugin) RemoveRole(ctx context.Context, userID string, role string) err
 }
 
 // GetAdminUser retrieves a user with admin-specific information.
-func (a *Plugin) GetAdminUser(ctx context.Context, userID string) (User, error) {
+func (a *Plugin) GetAdminUser(ctx context.Context, userID string) (admintypes.User, error) {
 	return a.store.GetByID(ctx, userID)
 }
 

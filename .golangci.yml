@@ -97,10 +97,16 @@ linters:
         text: 'auditLogger\.LogAuthEvent'
       
       # Exclude duplication in route metadata registration
-      - path: 'plugins/organizations/organizations\.go'
+      # - path: 'plugins/organizations/organizations\.go'
+      #   linters:
+      #     - dupl
+      #   text: 'RegisterRouteMetadata'
+
+      # Exclude duplication between intentional dialect-specific adapters
+      # (mysql/postgres/sqlite files implement the same interface by design)
+      - path: '.*/default_store/(mysql|postgres|sqlite)\.go'
         linters:
           - dupl
-        text: 'RegisterRouteMetadata'
 
 issues:
   # Maximum issues count per one linter

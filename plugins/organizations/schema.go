@@ -1,63 +1,8 @@
 package organizations
 
 import (
-	_ "embed"
-	"fmt"
-
 	"github.com/theinventorylib/aegis/plugins"
 )
-
-//go:embed internal/sql/postgres/schema.sql
-var postgresSchema string
-
-//go:embed internal/sql/mysql/schema.sql
-var mysqlSchema string
-
-//go:embed internal/sql/sqlite/schema.sql
-var sqliteSchema string
-
-// GetSchema returns the database schema for the organizations plugin.
-//
-// The schema defines tables for multi-tenant organization management:
-//   - organization: Organization metadata (id, name, slug, disabled)
-//   - members: Organization membership with roles (owner, admin, member)
-//   - team: Team metadata within organizations
-//   - team_member: Team membership with roles (lead, member)
-//
-// All tables include created_at and updated_at timestamps.
-//
-// Parameters:
-//   - dialect: Database dialect (postgres, mysql)
-//
-// Returns:
-//   - *plugins.Schema: Schema definition with SQL DDL
-//   - error: If dialect is not supported
-func GetSchema(dialect plugins.Dialect) (*plugins.Schema, error) {
-	var sql string
-
-	switch dialect {
-	case plugins.DialectPostgres:
-		sql = postgresSchema
-	case plugins.DialectMySQL:
-		sql = mysqlSchema
-	case plugins.DialectSQLite:
-		sql = sqliteSchema
-	default:
-		return nil, fmt.Errorf("unsupported dialect: %s", dialect)
-	}
-
-	info := plugins.SchemaInfo{
-		Package:     "github.com/theinventorylib/aegis/plugins/organizations",
-		Version:     1,
-		Description: "Organizations plugin schema",
-	}
-
-	return &plugins.Schema{
-		Dialect: dialect,
-		SQL:     sql,
-		Info:    info,
-	}, nil
-}
 
 // GetSchemaRequirements returns schema validation requirements for the organizations plugin.
 //

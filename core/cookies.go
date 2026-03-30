@@ -117,7 +117,7 @@ func (cm *CookieManager) GetConfig() *SessionConfig {
 //
 //	cm.SetCookie(w, "custom_data", "value", 24*time.Hour)
 func (cm *CookieManager) SetCookie(w http.ResponseWriter, name, value string, maxAge time.Duration) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure, HttpOnly, and SameSite are sourced from caller-supplied config
 		Name:     name,
 		Value:    value,
 		Path:     DefaultCookiePath,
@@ -173,7 +173,7 @@ func (cm *CookieManager) SetSessionCookie(w http.ResponseWriter, token string) {
 //	sessionService.DeleteSession(ctx, sessionID) // Server-side cleanup
 //	cookieManager.ClearSessionCookie(w) // Client-side cleanup
 func (cm *CookieManager) ClearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure, HttpOnly, and SameSite are sourced from caller-supplied config
 		Name:     cm.GetSessionCookieName(),
 		Value:    "",
 		Path:     DefaultCookiePath,
@@ -222,7 +222,7 @@ func (cm *CookieManager) SetCustomCookie(w http.ResponseWriter, opts CookieOptio
 		domain = cm.config.CookieSettings.Domain
 	}
 
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure, HttpOnly, and SameSite are controlled by the caller via CookieOptions
 		Name:     opts.Name,
 		Value:    opts.Value,
 		Path:     opts.Path,

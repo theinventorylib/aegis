@@ -63,7 +63,10 @@ import (
 	"github.com/theinventorylib/aegis/auth"
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
+	iversion "github.com/theinventorylib/aegis/internal/version"
 	"github.com/theinventorylib/aegis/plugins"
+	oauthdefaultstore "github.com/theinventorylib/aegis/plugins/oauth/default_store"
+	oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
 	"github.com/theinventorylib/aegis/plugins/openapi"
 	"github.com/theinventorylib/aegis/router"
 )
@@ -84,17 +87,20 @@ import (
 // Thread Safety:
 // Plugin is safe for concurrent use after initialization (Init called).
 type Plugin struct {
-	providerConfigs map[string]ProviderConfig // providerID -> config
-	gothProviders   map[string]goth.Provider  // providerID -> goth.Provider
-	baseCallbackURL string                    // Base URL for OAuth callbacks
-	stateStore      *StateStore               // OAuth state management
-	store           Store
+	providerConfigs map[string]oauthtypes.ProviderConfig // providerID -> config
+	gothProviders   map[string]goth.Provider             // providerID -> goth.Provider
+	baseCallbackURL string                               // Base URL for OAuth callbacks
+	stateStore      *StateStore                          // OAuth state management
+	store           oauthtypes.Store
 	logger          config.Logger
 	accountService  *core.AccountService
 	userService     *core.UserService
 	sessionService  *core.SessionService
 	dialect         plugins.Dialect
 	aegis           plugins.Aegis
+	// initWarnings buffers provider-creation warnings from New() so they can be
+	// emitted via the structured logger once Init() wires it in.
+	initWarnings []string
 }
 
 // Config holds OAuth plugin configuration.
@@ -119,7 +125,7 @@ type Plugin struct {
 type Config struct {
 	// Providers configures which OAuth providers to enable.
 	// Each provider needs a client ID, client secret from the provider's developer console.
-	Providers []ProviderConfig
+	Providers []oauthtypes.ProviderConfig
 
 	// CallbackURL is the base URL for OAuth callbacks (e.g., "https://example.com/auth").
 	// The plugin appends "/oauth/:provider/callback" to this base.
@@ -162,7 +168,7 @@ type Config struct {
 //	    },
 //	}
 //	plugin := oauth.New(cfg, nil, plugins.DialectPostgres)
-func New(cfg *Config, store Store, dialect ...plugins.Dialect) *Plugin {
+func New(cfg *Config, store oauthtypes.Store, dialect ...plugins.Dialect) *Plugin {
 	if cfg == nil {
 		cfg = &Config{}
 	}
@@ -174,7 +180,7 @@ func New(cfg *Config, store Store, dialect ...plugins.Dialect) *Plugin {
 
 	plugin := &Plugin{
 		store:           store,
-		providerConfigs: make(map[string]ProviderConfig),
+		providerConfigs: make(map[string]oauthtypes.ProviderConfig),
 		gothProviders:   make(map[string]goth.Provider),
 		baseCallbackURL: cfg.CallbackURL,
 		stateStore:      nil, // Will be initialized in Init
@@ -193,8 +199,9 @@ func New(cfg *Config, store Store, dialect ...plugins.Dialect) *Plugin {
 		// Create Goth provider from config
 		gothProvider, err := CreateGothProvider(providerCfg, callbackURL)
 		if err != nil {
-			// Log error but continue with other providers
-			fmt.Printf("Warning: failed to create provider %s: %v\n", providerCfg.ProviderID, err)
+			// Buffer the warning; logger isn't available until Init().
+			plugin.initWarnings = append(plugin.initWarnings,
+				fmt.Sprintf("failed to create OAuth provider %q: %v", providerCfg.ProviderID, err))
 			continue
 		}
 
@@ -227,7 +234,7 @@ func (p *Plugin) Name() string {
 
 // Version returns the plugin version
 func (p *Plugin) Version() string {
-	return "2.0.0" // Version 2.0 with generic provider support
+	return iversion.Version
 }
 
 // Description returns a human-readable description
@@ -272,9 +279,21 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 	p.logger = a.GetLogger()
 	p.aegis = a
 
+	// Emit any provider-creation warnings that were buffered in New().
+	if p.logger != nil {
+		for _, w := range p.initWarnings {
+			p.logger.Info(w)
+		}
+	}
+	p.initWarnings = nil
+
 	// Initialize store if not provided
 	if p.store == nil {
-		p.store = NewDefaultOAuthStore(a.DB())
+		store, err := oauthdefaultstore.NewDefaultOAuthStore(a.DB(), p.dialect)
+		if err != nil {
+			return err
+		}
+		p.store = store
 	}
 
 	// Initialize OAuth state store with Aegis settings if not already done
@@ -330,7 +349,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			{Name: "state", In: "query", Type: "string", Description: "CSRF state token"},
 		},
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[OAuthCallbackResponse]("Authentication successful, session created"),
+			200: openapi.DataResponseOf[oauthtypes.CallbackResponse]("Authentication successful, session created"),
 			302: openapi.TextResponse("Redirect after successful authentication"),
 			400: openapi.RefResponse("Invalid callback or authorization failed", "Error"),
 		},
@@ -359,7 +378,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Description: "Link an OAuth provider to the currently authenticated user",
 		Tags:        []string{"OAuth"},
 		Auth:        true,
-		Body:        openapi.BodyOf[LinkAccountRequest](),
+		Body:        openapi.BodyOf[oauthtypes.LinkAccountRequest](),
 		Responses: openapi.Responses{
 			200: openapi.RefResponse("Account linked successfully", "Success"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
@@ -379,7 +398,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			{Name: "provider", In: "path", Type: "string", Required: true, Description: "OAuth provider name"},
 		},
 		Responses: openapi.Responses{
-			200: openapi.DataResponseOf[TokenRefreshResponse]("Token refreshed successfully"),
+			200: openapi.DataResponseOf[oauthtypes.TokenRefreshResponse]("Token refreshed successfully"),
 			400: openapi.RefResponse("No refresh token, unsupported provider, or refresh failed", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 		},
@@ -398,8 +417,9 @@ func (p *Plugin) Dependencies() []plugins.Dependency {
 }
 
 // RequiresTables returns core tables this plugin depends on
+// RequiresTables returns the core tables this plugin reads from.
 func (p *Plugin) RequiresTables() []string {
-	return []string{"auth.user", "auth.session"}
+	return []string{"user", "session"}
 }
 
 // ProvidesAuthMethods returns authentication methods provided
@@ -414,22 +434,6 @@ func (p *Plugin) GetMigrations() []plugins.Migration {
 		return []plugins.Migration{}
 	}
 	return migs
-}
-
-// GetSchemas returns all schemas for all supported dialects
-func (p *Plugin) GetSchemas() []plugins.Schema {
-	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL, plugins.DialectSQLite}
-	schemas := make([]plugins.Schema, 0, len(dialects))
-
-	for _, dialect := range dialects {
-		schema, err := GetSchema(dialect)
-		if err != nil {
-			continue
-		}
-		schemas = append(schemas, *schema)
-	}
-
-	return schemas
 }
 
 // BeginAuth starts the OAuth authentication flow with CSRF protection.
@@ -542,7 +546,7 @@ func (p *Plugin) BeginAuth(w http.ResponseWriter, r *http.Request, providerName 
 //   - State validation prevents CSRF attacks
 //   - State cookie is cleared after validation (one-time use)
 //   - Access tokens stored in database (not cookies)
-func (p *Plugin) CompleteAuth(ctx context.Context, w http.ResponseWriter, r *http.Request) (*User, *auth.Session, error) {
+func (p *Plugin) CompleteAuth(ctx context.Context, w http.ResponseWriter, r *http.Request) (*oauthtypes.User, *auth.Session, error) {
 	// Get provider name from query or path
 	providerName := r.URL.Query().Get("provider")
 	if providerName == "" {
@@ -649,14 +653,14 @@ func (p *Plugin) GetStateStore() *StateStore {
 // Returns:
 //   - *User: Aegis user (existing or newly created)
 //   - error: Database query or insert error
-func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser *User) (*User, error) {
+func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser *oauthtypes.User) (*oauthtypes.User, error) {
 	// Check if OAuth connection already exists
 	connection, err := p.store.GetConnectionByProviderUserID(ctx, provider, oauthUser.ID)
 	if err == nil && connection != nil {
 		// Connection exists, retrieve the actual user from database
 		user, err := p.userService.GetUserByID(ctx, connection.UserID)
 		if err == nil {
-			return &User{User: user}, nil
+			return &oauthtypes.User{User: user}, nil
 		}
 		// If user not found, fall through to create new user
 	}
@@ -683,7 +687,7 @@ func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser
 	}
 
 	// Save OAuth connection linked to user
-	conn := Connection{
+	conn := oauthtypes.Connection{
 		ID:             core.GenerateID(),
 		UserID:         user.GetID(),
 		Provider:       provider,
@@ -704,7 +708,7 @@ func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser
 		return nil, fmt.Errorf("failed to save OAuth connection: %w", err)
 	}
 
-	return &User{User: user}, nil
+	return &oauthtypes.User{User: user}, nil
 }
 
 // LinkAccount links an OAuth provider to an existing authenticated user account.
@@ -732,8 +736,8 @@ func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser
 //	// User already authenticated via session
 //	user, _ := core.GetUser(r.Context())
 //	err := plugin.LinkAccount(ctx, user.ID, oauthUser, "google")
-func (p *Plugin) LinkAccount(ctx context.Context, userID string, oauthUser *User, provider string) error {
-	conn := Connection{
+func (p *Plugin) LinkAccount(ctx context.Context, userID string, oauthUser *oauthtypes.User, provider string) error {
+	conn := oauthtypes.Connection{
 		ID:             core.GenerateID(),
 		UserID:         userID,
 		Provider:       provider,
@@ -773,12 +777,12 @@ func (p *Plugin) LinkAccount(ctx context.Context, userID string, oauthUser *User
 //	for _, conn := range connections {
 //	    fmt.Printf("Linked: %s (%s)\n", conn.Provider, conn.Email)
 //	}
-func (p *Plugin) GetUserConnections(ctx context.Context, userID string) ([]*Connection, error) {
+func (p *Plugin) GetUserConnections(ctx context.Context, userID string) ([]*oauthtypes.Connection, error) {
 	conns, err := p.store.GetConnectionsByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*Connection, len(conns))
+	result := make([]*oauthtypes.Connection, len(conns))
 	for i, conn := range conns {
 		result[i] = &conn
 	}
@@ -812,8 +816,7 @@ func (p *Plugin) UnlinkAccount(ctx context.Context, userID, provider string) err
 	return p.store.DeleteConnection(ctx, provider, userID)
 }
 
-// RefreshConnection uses the stored refresh token to obtain a new access token
-// from the OAuth provider and persists the updated tokens to the database.
+// RefreshConnection uses the stored refresh token
 //
 // Not all providers issue refresh tokens (e.g., GitHub does not by default).
 // The method returns an error when:
@@ -833,14 +836,14 @@ func (p *Plugin) UnlinkAccount(ctx context.Context, userID, provider string) err
 // Returns:
 //   - *Connection: Updated connection with fresh tokens
 //   - error: Refresh failure or unsupported provider
-func (p *Plugin) RefreshConnection(ctx context.Context, userID, provider string) (*Connection, error) {
+func (p *Plugin) RefreshConnection(ctx context.Context, userID, provider string) (*oauthtypes.Connection, error) {
 	// Locate the connection for this user + provider.
 	conns, err := p.store.GetConnectionsByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get OAuth connections: %w", err)
 	}
 
-	var conn *Connection
+	var conn *oauthtypes.Connection
 	for i := range conns {
 		if conns[i].Provider == provider {
 			conn = &conns[i]

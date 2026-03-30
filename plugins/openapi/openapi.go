@@ -50,6 +50,7 @@ import (
 	"fmt"
 	"sync"
 
+	iversion "github.com/theinventorylib/aegis/internal/version"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/router"
 )
@@ -228,7 +229,7 @@ func (p *Plugin) Name() string {
 
 // Version returns the plugin version.
 func (p *Plugin) Version() string {
-	return "2.0.0"
+	return iversion.Version
 }
 
 // Description returns a human-readable description.
@@ -435,12 +436,6 @@ func (p *Plugin) RequiresTables() []string {
 func (p *Plugin) ProvidesAuthMethods() []string {
 	// Doesn't provide auth methods, only documentation
 	return []string{}
-}
-
-// GetSchemas returns all schemas for all supported dialects.
-func (p *Plugin) GetSchemas() []plugins.Schema {
-	// OpenAPI plugin doesn't have its own database schema
-	return []plugins.Schema{}
 }
 
 // Dependencies returns plugin dependencies.

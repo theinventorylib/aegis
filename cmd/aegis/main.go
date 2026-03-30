@@ -36,6 +36,7 @@ import (
 	"strings"
 
 	"github.com/theinventorylib/aegis/exporter"
+	iversion "github.com/theinventorylib/aegis/internal/version"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/plugins/admin"
 	"github.com/theinventorylib/aegis/plugins/emailotp"
@@ -46,8 +47,8 @@ import (
 	"github.com/theinventorylib/aegis/plugins/sms"
 )
 
-// version is the CLI tool version (semver)
-const version = "1.0.0"
+// version is injected by goreleaser at build time via -X internal/version.Version; falls back to build info or "dev".
+var version = iversion.Version
 
 // commit and date are set by GoReleaser during build for release tracking
 var (

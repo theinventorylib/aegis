@@ -1,6 +1,7 @@
 -- ==============================================
--- Core Table 1: user
+-- Core auth schema snapshot for sqlc (PostgreSQL)
 -- ==============================================
+
 CREATE TABLE IF NOT EXISTS "user" (
     id TEXT PRIMARY KEY,
     avatar TEXT,

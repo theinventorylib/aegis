@@ -45,7 +45,10 @@ import (
 	"github.com/theinventorylib/aegis/auth"
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
+	iversion "github.com/theinventorylib/aegis/internal/version"
 	"github.com/theinventorylib/aegis/plugins"
+	emailotpdefaultstore "github.com/theinventorylib/aegis/plugins/emailotp/default_store"
+	emailotptypes "github.com/theinventorylib/aegis/plugins/emailotp/types"
 	"github.com/theinventorylib/aegis/plugins/openapi"
 	"github.com/theinventorylib/aegis/router"
 )
@@ -90,7 +93,7 @@ type Plugin struct {
 	// otpLength specifies OTP code length (default: 6 digits)
 	otpLength int
 	// store handles email-specific database operations
-	store Store
+	store emailotptypes.Store
 	// logger for OTP sending events (nil-safe)
 	logger config.Logger
 	// accountService manages password authentication
@@ -137,7 +140,7 @@ type Config struct {
 //	  OTPExpiry: 15 * time.Minute,
 //	  OTPLength: 8,
 //	}, nil, plugins.DialectPostgres)
-func New(cfg *Config, store Store, dialect ...plugins.Dialect) *Plugin {
+func New(cfg *Config, store emailotptypes.Store, dialect ...plugins.Dialect) *Plugin {
 	if cfg == nil {
 		cfg = &Config{} // Initialize cfg to avoid nil pointer dereference
 	}
@@ -170,7 +173,7 @@ func (p *Plugin) Name() string {
 
 // Version returns the plugin version for compatibility tracking.
 func (p *Plugin) Version() string {
-	return "1.0.0"
+	return iversion.Version
 }
 
 // Description returns a human-readable description for logging.
@@ -190,7 +193,11 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 
 	// Initialize store if not provided
 	if p.store == nil {
-		p.store = NewDefaultEmailOTPStore(a.DB())
+		store, err := emailotpdefaultstore.NewDefaultEmailOTPStore(a.DB(), p.dialect)
+		if err != nil {
+			return err
+		}
+		p.store = store
 	}
 
 	return nil
@@ -214,7 +221,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Description: "Send a one-time password via email to the authenticated user's email address",
 		Tags:        []string{"Email OTP"},
 		Auth:        true,
-		Body:        openapi.BodyOf[SendOTPRequest](),
+		Body:        openapi.BodyOf[emailotptypes.SendOTPRequest](),
 		Responses: openapi.Responses{
 			200: openapi.RefResponse("OTP sent successfully", "Success"),
 			400: openapi.RefResponse("Invalid request", "Error"),
@@ -231,7 +238,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Summary:     "Verify Email OTP",
 		Description: "Verify a one-time password sent via email",
 		Tags:        []string{"Email OTP"},
-		Body:        openapi.BodyOf[VerifyOTPRequest](),
+		Body:        openapi.BodyOf[emailotptypes.VerifyOTPRequest](),
 		Responses: openapi.Responses{
 			200: openapi.RefResponse("OTP verified successfully", "Success"),
 			400: openapi.RefResponse("Invalid request or incorrect OTP", "Error"),
@@ -245,9 +252,9 @@ func (p *Plugin) Dependencies() []plugins.Dependency {
 	return []plugins.Dependency{}
 }
 
-// RequiresTables returns core tables this plugin depends on
+// RequiresTables returns the core tables this plugin reads from.
 func (p *Plugin) RequiresTables() []string {
-	return []string{"auth.user"}
+	return []string{"user"}
 }
 
 // ProvidesAuthMethods returns authentication methods provided
@@ -259,25 +266,9 @@ func (p *Plugin) ProvidesAuthMethods() []string {
 func (p *Plugin) GetMigrations() []plugins.Migration {
 	migs, err := GetMigrations(p.dialect)
 	if err != nil {
-		return nil
+		return []plugins.Migration{}
 	}
 	return migs
-}
-
-// GetSchemas returns all schemas for all supported dialects
-func (p *Plugin) GetSchemas() []plugins.Schema {
-	dialects := []plugins.Dialect{plugins.DialectPostgres, plugins.DialectMySQL}
-	schemas := make([]plugins.Schema, 0, len(dialects))
-
-	for _, dialect := range dialects {
-		schema, err := GetSchema(dialect)
-		if err != nil {
-			continue
-		}
-		schemas = append(schemas, *schema)
-	}
-
-	return schemas
 }
 
 // EnrichUser implements plugins.UserEnricher to add email verification status.
@@ -436,16 +427,12 @@ func (p *Plugin) GetUserByEmail(ctx context.Context, email string) (*auth.User, 
 	if err != nil {
 		return nil, err
 	}
-	// Convert from our User type to auth.User
-	userEmail := ""
-	if user.Email != nil {
-		userEmail = *user.Email
-	}
+
 	return &auth.User{
 		ID:        user.ID,
 		Avatar:    user.Avatar,
 		Name:      user.Name,
-		Email:     userEmail,
+		Email:     user.Email,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Disabled:  user.Disabled,
@@ -473,7 +460,7 @@ func (p *Plugin) GetUserByEmail(ctx context.Context, email string) (*auth.User, 
 // Example:
 //
 //	user, err := plugin.CreateUserWithEmailAndPassword(ctx, "John Doe", "john@example.com", "SecurePass123!")
-func (p *Plugin) CreateUserWithEmailAndPassword(ctx context.Context, name, email, password string) (*User, error) {
+func (p *Plugin) CreateUserWithEmailAndPassword(ctx context.Context, name, email, password string) (*emailotptypes.User, error) {
 	if p.store == nil {
 		return nil, fmt.Errorf("core auth service not configured")
 	}
@@ -482,12 +469,12 @@ func (p *Plugin) CreateUserWithEmailAndPassword(ctx context.Context, name, email
 	name = core.SanitizeString(name, nil)
 	email = core.SanitizeEmail(email)
 
-	user := User{
+	user := emailotptypes.User{
 		User: auth.User{
-			ID:   core.GenerateID(),
-			Name: name,
+			ID:    core.GenerateID(),
+			Name:  name,
+			Email: email,
 		},
-		Email:         &email,
 		EmailVerified: false,
 	}
 

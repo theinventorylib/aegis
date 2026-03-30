@@ -1,14 +1,38 @@
 version: "2"
 sql:
   - engine: "postgresql"
-    schema: 
+    schema:
       - "migrations/postgres"
-    queries: 
+    queries:
       - "internal/sql/postgres"
     gen:
       go:
         emit_json_tags: true
         emit_prepared_queries: false
         emit_interface: false
-        package: "sqlc"
-        out: "internal/gen/sqlc"
+        package: "sqlcpostgres"
+        out: "internal/gen/postgres"
+  - engine: "mysql"
+    schema:
+      - "migrations/mysql"
+    queries:
+      - "internal/sql/mysql"
+    gen:
+      go:
+        emit_json_tags: true
+        emit_prepared_queries: false
+        emit_interface: false
+        package: "sqlcmysql"
+        out: "internal/gen/mysql"
+  - engine: "sqlite"
+    schema:
+      - "migrations/sqlite"
+    queries:
+      - "internal/sql/sqlite"
+    gen:
+      go:
+        emit_json_tags: true
+        emit_prepared_queries: false
+        emit_interface: false
+        package: "sqlcsqlite"
+        out: "internal/gen/sqlite"

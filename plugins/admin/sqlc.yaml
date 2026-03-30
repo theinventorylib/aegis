@@ -3,7 +3,7 @@ sql:
   - engine: "postgresql"
     schema:
       - "internal/sql/postgres/auth_schema.sql"
-      - "internal/sql/postgres/schema.sql"
+      - "migrations/postgres"
     queries:
       - "internal/sql/postgres/queries.sql"
     gen:
@@ -11,5 +11,31 @@ sql:
         emit_json_tags: true
         emit_prepared_queries: false
         emit_interface: false
-        package: "sqlc"
-        out: "internal/gen/sqlc"
+        package: "sqlcpostgres"
+        out: "internal/gen/postgres"
+  - engine: "mysql"
+    schema:
+      - "internal/sql/mysql/auth_schema.sql"
+      - "migrations/mysql"
+    queries:
+      - "internal/sql/mysql/queries.sql"
+    gen:
+      go:
+        emit_json_tags: true
+        emit_prepared_queries: false
+        emit_interface: false
+        package: "sqlcmysql"
+        out: "internal/gen/mysql"
+  - engine: "sqlite"
+    schema:
+      - "internal/sql/sqlite/auth_schema.sql"
+      - "migrations/sqlite"
+    queries:
+      - "internal/sql/sqlite/queries.sql"
+    gen:
+      go:
+        emit_json_tags: true
+        emit_prepared_queries: false
+        emit_interface: false
+        package: "sqlcsqlite"
+        out: "internal/gen/sqlite"

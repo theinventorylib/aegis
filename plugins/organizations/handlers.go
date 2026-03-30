@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/theinventorylib/aegis/core"
+	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
 )
 
 // ========== ORGANIZATION HANDLERS ==========
@@ -33,18 +34,18 @@ import (
 func (p *Plugin) validateOrgAccess(w http.ResponseWriter, r *http.Request) (orgID string, ok bool) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return "", false
 	}
 
 	orgID = core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
 		return "", false
 	}
 
 	if !p.IsOrganizationMember(r.Context(), user.ID, orgID) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 		return "", false
 	}
 
@@ -87,14 +88,14 @@ func (p *Plugin) validateOrgAccess(w http.ResponseWriter, r *http.Request) (orgI
 func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	var req CreateOrganizationRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -109,7 +110,7 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 
 	org, err := p.CreateOrganization(r.Context(), req.Name, req.Slug, user.ID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -141,7 +142,7 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
@@ -149,11 +150,11 @@ func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request
 
 	orgs, totalCount, err := p.GetUserOrganizations(r.Context(), user.ID, pagination.Offset, pagination.Limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		core.WriteJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*Organization]{
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*orgtypes.Organization]{
 		Items:      orgs,
 		TotalCount: totalCount,
 		Page:       pagination.Page,
@@ -194,7 +195,7 @@ func (p *Plugin) GetOrganizationHandler(w http.ResponseWriter, r *http.Request) 
 
 	org, err := p.GetOrganization(r.Context(), orgID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		core.WriteJSONError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -208,25 +209,25 @@ func (p *Plugin) GetOrganizationHandler(w http.ResponseWriter, r *http.Request) 
 func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
 		return
 	}
 
 	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
-		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req UpdateOrganizationRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -240,7 +241,7 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := p.UpdateOrganization(r.Context(), orgID, req.Name, req.Slug); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -254,23 +255,23 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
 		return
 	}
 
 	if !p.IsOwner(r.Context(), user.ID, orgID) {
-		http.Error(w, "Forbidden - Owner role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Owner role required")
 		return
 	}
 
 	if err := p.DeleteOrganization(r.Context(), orgID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		core.WriteJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
@@ -286,25 +287,25 @@ func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
 		return
 	}
 
 	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
-		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req AddOrganizationMemberRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -318,12 +319,12 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	if req.Role == "owner" {
-		http.Error(w, "Cannot assign owner role", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Cannot assign owner role")
 		return
 	}
 
 	if err := p.AddOrganizationMember(r.Context(), orgID, req.UserID, req.Role); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -344,11 +345,11 @@ func (p *Plugin) ListOrganizationMembersHandler(w http.ResponseWriter, r *http.R
 
 	members, totalCount, err := p.ListOrganizationMembers(r.Context(), orgID, pagination.Offset, pagination.Limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		core.WriteJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*Member]{
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*orgtypes.Member]{
 		Items:      members,
 		TotalCount: totalCount,
 		Page:       pagination.Page,
@@ -361,7 +362,7 @@ func (p *Plugin) ListOrganizationMembersHandler(w http.ResponseWriter, r *http.R
 func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
@@ -369,19 +370,19 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 	userID := core.GetSanitizedPathParam(r, "userId")
 
 	if orgID == "" || userID == "" {
-		http.Error(w, "Organization ID and User ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID and User ID required")
 		return
 	}
 
 	if !p.IsOwner(r.Context(), user.ID, orgID) {
-		http.Error(w, "Forbidden - Owner role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Owner role required")
 		return
 	}
 
 	var req UpdateMemberRoleRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -394,12 +395,12 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	if req.Role == "owner" {
-		http.Error(w, "Cannot assign owner role", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Cannot assign owner role")
 		return
 	}
 
 	if err := p.UpdateMemberRole(r.Context(), orgID, userID, req.Role); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -413,7 +414,7 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 func (p *Plugin) RemoveOrganizationMemberHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
@@ -421,22 +422,22 @@ func (p *Plugin) RemoveOrganizationMemberHandler(w http.ResponseWriter, r *http.
 	userID := core.GetSanitizedPathParam(r, "userId")
 
 	if orgID == "" || userID == "" {
-		http.Error(w, "Organization ID and User ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID and User ID required")
 		return
 	}
 
 	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
-		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	if p.IsOwner(r.Context(), userID, orgID) {
-		http.Error(w, "Cannot remove owner", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Cannot remove owner")
 		return
 	}
 
 	if err := p.RemoveOrganizationMember(r.Context(), orgID, userID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -452,25 +453,25 @@ func (p *Plugin) RemoveOrganizationMemberHandler(w http.ResponseWriter, r *http.
 func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	orgID := core.GetSanitizedPathParam(r, "id")
 	if orgID == "" {
-		http.Error(w, "Organization ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
 		return
 	}
 
 	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
-		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req CreateTeamRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -485,7 +486,7 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 
 	team, err := p.CreateTeam(r.Context(), orgID, req.Name, req.Description)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -506,11 +507,11 @@ func (p *Plugin) ListTeamsHandler(w http.ResponseWriter, r *http.Request) {
 
 	teams, totalCount, err := p.ListTeams(r.Context(), orgID, pagination.Offset, pagination.Limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		core.WriteJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*Team]{
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*orgtypes.Team]{
 		Items:      teams,
 		TotalCount: totalCount,
 		Page:       pagination.Page,
@@ -523,24 +524,24 @@ func (p *Plugin) ListTeamsHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Plugin) GetTeamHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	teamID := core.GetSanitizedPathParam(r, "teamId")
 	if teamID == "" {
-		http.Error(w, "Team ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Team ID required")
 		return
 	}
 
 	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
-		http.Error(w, "Team not found", http.StatusNotFound)
+		core.WriteJSONError(w, http.StatusNotFound, "Team not found")
 		return
 	}
 
 	if !p.IsOrganizationMember(r.Context(), user.ID, team.OrganizationID) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 		return
 	}
 
@@ -554,31 +555,31 @@ func (p *Plugin) GetTeamHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	teamID := core.GetSanitizedPathParam(r, "teamId")
 	if teamID == "" {
-		http.Error(w, "Team ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Team ID required")
 		return
 	}
 
 	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
-		http.Error(w, "Team not found", http.StatusNotFound)
+		core.WriteJSONError(w, http.StatusNotFound, "Team not found")
 		return
 	}
 
 	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
-		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req UpdateTeamRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -592,7 +593,7 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := p.UpdateTeam(r.Context(), teamID, req.Name, req.Description); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -606,29 +607,29 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Plugin) DeleteTeamHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	teamID := core.GetSanitizedPathParam(r, "teamId")
 	if teamID == "" {
-		http.Error(w, "Team ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Team ID required")
 		return
 	}
 
 	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
-		http.Error(w, "Team not found", http.StatusNotFound)
+		core.WriteJSONError(w, http.StatusNotFound, "Team not found")
 		return
 	}
 
 	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
-		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	if err := p.DeleteTeam(r.Context(), teamID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		core.WriteJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
@@ -644,31 +645,31 @@ func (p *Plugin) DeleteTeamHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	teamID := core.GetSanitizedPathParam(r, "teamId")
 	if teamID == "" {
-		http.Error(w, "Team ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Team ID required")
 		return
 	}
 
 	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
-		http.Error(w, "Team not found", http.StatusNotFound)
+		core.WriteJSONError(w, http.StatusNotFound, "Team not found")
 		return
 	}
 
 	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
-		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req AddTeamMemberRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -683,12 +684,12 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 
 	// User must be organization member before joining team
 	if !p.IsOrganizationMember(r.Context(), req.UserID, team.OrganizationID) {
-		http.Error(w, "User must be organization member first", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "User must be organization member first")
 		return
 	}
 
 	if err := p.AddTeamMember(r.Context(), teamID, req.UserID, req.Role); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -702,24 +703,24 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Plugin) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	teamID := core.GetSanitizedPathParam(r, "teamId")
 	if teamID == "" {
-		http.Error(w, "Team ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Team ID required")
 		return
 	}
 
 	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
-		http.Error(w, "Team not found", http.StatusNotFound)
+		core.WriteJSONError(w, http.StatusNotFound, "Team not found")
 		return
 	}
 
 	if !p.IsOrganizationMember(r.Context(), user.ID, team.OrganizationID) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 		return
 	}
 
@@ -727,11 +728,11 @@ func (p *Plugin) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) 
 
 	members, totalCount, err := p.ListTeamMembers(r.Context(), teamID, pagination.Offset, pagination.Limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		core.WriteJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*TeamMember]{
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*orgtypes.TeamMember]{
 		Items:      members,
 		TotalCount: totalCount,
 		Page:       pagination.Page,
@@ -744,7 +745,7 @@ func (p *Plugin) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) 
 func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
@@ -752,25 +753,25 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 	userID := core.GetSanitizedPathParam(r, "userId")
 
 	if teamID == "" || userID == "" {
-		http.Error(w, "Team ID and User ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Team ID and User ID required")
 		return
 	}
 
 	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
-		http.Error(w, "Team not found", http.StatusNotFound)
+		core.WriteJSONError(w, http.StatusNotFound, "Team not found")
 		return
 	}
 
 	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
-		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req UpdateTeamMemberRoleRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -783,7 +784,7 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := p.UpdateTeamMemberRole(r.Context(), teamID, userID, req.Role); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -797,7 +798,7 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 func (p *Plugin) RemoveTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
@@ -805,23 +806,23 @@ func (p *Plugin) RemoveTeamMemberHandler(w http.ResponseWriter, r *http.Request)
 	userID := core.GetSanitizedPathParam(r, "userId")
 
 	if teamID == "" || userID == "" {
-		http.Error(w, "Team ID and User ID required", http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, "Team ID and User ID required")
 		return
 	}
 
 	team, err := p.GetTeam(r.Context(), teamID)
 	if err != nil {
-		http.Error(w, "Team not found", http.StatusNotFound)
+		core.WriteJSONError(w, http.StatusNotFound, "Team not found")
 		return
 	}
 
 	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
-		http.Error(w, "Forbidden - Admin role required", http.StatusForbidden)
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	if err := p.RemoveTeamMember(r.Context(), teamID, userID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Member removed from team"})

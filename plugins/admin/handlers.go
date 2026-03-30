@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/theinventorylib/aegis/core"
+	admintypes "github.com/theinventorylib/aegis/plugins/admin/types"
 )
 
 // ========== USER MANAGEMENT HANDLERS ==========
@@ -31,7 +32,7 @@ func (a *Plugin) listUsersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[User]{
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[admintypes.User]{
 		Items:      users,
 		TotalCount: totalCount,
 		Page:       pagination.Page,
@@ -147,7 +148,7 @@ func (a *Plugin) updateRoleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req UpdateRoleRequest
+	var req admintypes.UpdateRoleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -203,7 +204,7 @@ func (a *Plugin) banUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req BanUserRequest
+	var req admintypes.BanUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,

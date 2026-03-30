@@ -18,6 +18,7 @@ import (
 	"github.com/markbates/goth/providers/spotify"
 	"github.com/markbates/goth/providers/twitch"
 	"github.com/markbates/goth/providers/twitter"
+	oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
 )
 
 // CreateGothProvider creates a goth.Provider from ProviderConfig.
@@ -49,7 +50,7 @@ import (
 //	    Scopes:       []string{"email", "profile"},
 //	}
 //	provider, _ := oauth.CreateGothProvider(cfg, "https://example.com/auth/oauth/google/callback")
-func CreateGothProvider(cfg ProviderConfig, callbackURL string) (goth.Provider, error) {
+func CreateGothProvider(cfg oauthtypes.ProviderConfig, callbackURL string) (goth.Provider, error) {
 	scopes := cfg.Scopes
 	if len(scopes) == 0 {
 		scopes = getDefaultScopes(cfg.ProviderType)
@@ -211,8 +212,8 @@ func getDefaultScopes(providerType string) []string {
 //	    oauth.WithAccessType("offline"), // Request refresh token
 //	    oauth.WithPrompt("consent"),      // Force consent to get refresh token
 //	)
-func Google(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func Google(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "google",
 		ProviderType: "google",
 		ClientID:     clientID,
@@ -238,8 +239,8 @@ func Google(clientID, clientSecret string, opts ...ProviderOption) ProviderConfi
 //
 // Returns:
 //   - ProviderConfig: GitHub provider configuration
-func GitHub(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func GitHub(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "github",
 		ProviderType: "github",
 		ClientID:     clientID,
@@ -277,8 +278,8 @@ func GitHub(clientID, clientSecret string, opts ...ProviderOption) ProviderConfi
 //
 // Returns:
 //   - ProviderConfig: LINE provider configuration
-func LINE(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func LINE(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "line",
 		ProviderType: "line",
 		ClientID:     clientID,
@@ -305,8 +306,8 @@ func LINE(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig 
 //
 // Returns:
 //   - ProviderConfig: Microsoft provider configuration
-func Microsoft(clientID, clientSecret, tenantID string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func Microsoft(clientID, clientSecret, tenantID string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "microsoft",
 		ProviderType: "microsoft",
 		ClientID:     clientID,
@@ -340,8 +341,8 @@ func Microsoft(clientID, clientSecret, tenantID string, opts ...ProviderOption) 
 //
 // Returns:
 //   - ProviderConfig: Apple provider configuration
-func Apple(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func Apple(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "apple",
 		ProviderType: "apple",
 		ClientID:     clientID,
@@ -363,8 +364,8 @@ func Apple(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig
 //   - clientID: Discord Application client ID
 //   - clientSecret: Discord Application client secret
 //   - opts: Optional customization
-func Discord(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func Discord(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "discord",
 		ProviderType: "discord",
 		ClientID:     clientID,
@@ -381,8 +382,8 @@ func Discord(clientID, clientSecret string, opts ...ProviderOption) ProviderConf
 //
 // Default Scopes: ["openid", "profile", "email"]
 // Discovery: https://slack.com/.well-known/openid-configuration
-func Slack(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func Slack(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "slack",
 		ProviderType: "slack",
 		ClientID:     clientID,
@@ -401,8 +402,8 @@ func Slack(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig
 // Default Scopes: ["read_user", "openid", "profile", "email"]
 //
 // Supports both GitLab.com and self-hosted instances.
-func GitLab(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func GitLab(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "gitlab",
 		ProviderType: "gitlab",
 		ClientID:     clientID,
@@ -418,8 +419,8 @@ func GitLab(clientID, clientSecret string, opts ...ProviderOption) ProviderConfi
 // Bitbucket creates a Bitbucket OAuth provider configuration.
 //
 // Default Scopes: ["account", "email"]
-func Bitbucket(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func Bitbucket(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "bitbucket",
 		ProviderType: "bitbucket",
 		ClientID:     clientID,
@@ -437,8 +438,8 @@ func Bitbucket(clientID, clientSecret string, opts ...ProviderOption) ProviderCo
 // Default Scopes: ["tweet.read", "users.read"]
 //
 // Note: Twitter's OAuth implementation has changed over time. This uses OAuth 2.0.
-func Twitter(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func Twitter(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "twitter",
 		ProviderType: "twitter",
 		ClientID:     clientID,
@@ -456,8 +457,8 @@ func Twitter(clientID, clientSecret string, opts ...ProviderOption) ProviderConf
 // Default Scopes: ["r_liteprofile", "r_emailaddress"]
 //
 // Note: LinkedIn's API and scopes change frequently. Verify current scopes in LinkedIn's docs.
-func LinkedIn(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func LinkedIn(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "linkedin",
 		ProviderType: "linkedin",
 		ClientID:     clientID,
@@ -473,8 +474,8 @@ func LinkedIn(clientID, clientSecret string, opts ...ProviderOption) ProviderCon
 // Spotify creates a Spotify OAuth provider configuration.
 //
 // Default Scopes: ["user-read-email", "user-read-private"]
-func Spotify(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func Spotify(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "spotify",
 		ProviderType: "spotify",
 		ClientID:     clientID,
@@ -491,8 +492,8 @@ func Spotify(clientID, clientSecret string, opts ...ProviderOption) ProviderConf
 //
 // Default Scopes: ["user:read:email"]
 // Discovery: https://id.twitch.tv/oauth2/.well-known/openid-configuration
-func Twitch(clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func Twitch(clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   "twitch",
 		ProviderType: "twitch",
 		ClientID:     clientID,
@@ -537,8 +538,8 @@ func Twitch(clientID, clientSecret string, opts ...ProviderOption) ProviderConfi
 //	custom.AuthURL = "https://provider.com/oauth/authorize"
 //	custom.TokenURL = "https://provider.com/oauth/token"
 //	custom.UserInfoURL = "https://provider.com/oauth/userinfo"
-func Generic(providerID, clientID, clientSecret string, opts ...ProviderOption) ProviderConfig {
-	cfg := ProviderConfig{
+func Generic(providerID, clientID, clientSecret string, opts ...oauthtypes.ProviderOption) oauthtypes.ProviderConfig {
+	cfg := oauthtypes.ProviderConfig{
 		ProviderID:   providerID,
 		ProviderType: "generic",
 		ClientID:     clientID,

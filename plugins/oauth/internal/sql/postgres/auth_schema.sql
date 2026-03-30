@@ -1,6 +1,7 @@
 -- ==============================================
--- Core Table 1: user
+-- Core auth schema snapshot for sqlc (PostgreSQL)
 -- ==============================================
+
 CREATE TABLE IF NOT EXISTS "user" (
     id TEXT PRIMARY KEY,
     avatar TEXT,
@@ -13,3 +14,4 @@ CREATE TABLE IF NOT EXISTS "user" (
 
 CREATE INDEX IF NOT EXISTS idx_user_disabled ON "user"(disabled);
 CREATE INDEX IF NOT EXISTS idx_user_email ON "user"(email);
+

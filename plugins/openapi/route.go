@@ -203,9 +203,6 @@ type schemaTransform func(inner *Schema) *Schema
 // asDirectSchema returns the schema as-is with no transformation.
 func asDirectSchema(s *Schema) *Schema { return s }
 
-// asArraySchema wraps the schema in an array schema.
-func asArraySchema(s *Schema) *Schema { return ArraySchema("", s) }
-
 // buildEnvelopedResponse is the shared base for DataResponseOf and
 // PaginatedResponseOf. It resolves the schema for T, applies the given
 // transform, then delegates to buildEnvelopedResponseFromSchema.
