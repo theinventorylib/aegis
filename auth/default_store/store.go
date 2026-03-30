@@ -266,7 +266,7 @@ func (s *defaultSessionStore) GetByUserID(ctx context.Context, userID string, of
 	if limit > math.MaxInt32 {
 		limit = math.MaxInt32
 	}
-	rows, err := s.q.getSessionsByUserID(ctx, userID, time.Now().Format(time.RFC3339), int32(offset), int32(limit)) // #nosec G115 – bounds checked above
+	rows, err := s.q.getSessionsByUserID(ctx, userID, time.Now().Format(time.RFC3339), int32(offset), int32(limit))
 	if err != nil {
 		return nil, err
 	}
