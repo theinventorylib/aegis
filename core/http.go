@@ -127,11 +127,12 @@ func WriteJSON(w http.ResponseWriter, statusCode int, data any) {
 // WriteJSONError writes a JSON error response with the given status code and message.
 //
 // This is a convenience wrapper around WriteJSON for error responses.
+// The response envelope matches the core.Response structure and the OpenAPI Error schema.
 //
 // Example:
 //
 //	core.WriteJSONError(w, 400, "Invalid request")
-//	// Output: {"error": "Invalid request"}
+//	// Output: {"success": false, "error": "Invalid request"}
 func WriteJSONError(w http.ResponseWriter, statusCode int, message string) {
-	WriteJSON(w, statusCode, map[string]string{"error": message})
+	WriteJSON(w, statusCode, &Response{Success: false, Error: message})
 }
