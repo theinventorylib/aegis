@@ -9,16 +9,16 @@
   "dependencies": {
     "@nuxt/eslint": "1.13.0",
     "@nuxt/icon": "2.2.1",
-    "@nuxt/ui": "^4.4.0",
-    "@tailwindcss/vite": "^4.2.0",
-    "better-sqlite3": "^12.6.2",
+    "@nuxt/ui": "^4.6.0",
+    "@tailwindcss/vite": "^4.2.2",
+    "better-sqlite3": "^12.8.0",
     "docus": "latest",
-    "mermaid": "^11.12.3",
-    "nuxt": "^4.3.1",
-    "tailwindcss": "^4.2.0"
+    "mermaid": "^11.13.0",
+    "nuxt": "^4.4.2",
+    "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
-    "@nuxtjs/robots": "^5.7.0",
+    "@nuxtjs/robots": "^5.7.1",
     "@nuxtjs/sitemap": "^7.6.0",
     "nuxt-og-image": "^5.1.13"
   }
