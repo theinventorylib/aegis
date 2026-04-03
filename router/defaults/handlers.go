@@ -231,9 +231,7 @@ func (h *Handlers) refreshSessionHandler(w http.ResponseWriter, r *http.Request)
 func (h *Handlers) getCurrentSessionHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get session from context
-	session := core.GetSession(ctx)
-	if session == nil {
+	if !core.Authenticated(ctx) {
 		core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
 			Success: false,
 			Error:   "Not authenticated",
@@ -241,10 +239,10 @@ func (h *Handlers) getCurrentSessionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Get enriched user
+	// Get enriched user — always present when authenticated.
 	enriched := core.GetEnrichedUser(ctx)
 	if enriched == nil {
-		// Fallback to basic user
+		// Fallback to basic user (should not happen in normal flow).
 		user, err := core.GetUser(ctx)
 		if err != nil {
 			core.WriteJSON(w, http.StatusUnauthorized, &core.Response{
@@ -257,17 +255,18 @@ func (h *Handlers) getCurrentSessionHandler(w http.ResponseWriter, r *http.Reque
 			Success: true,
 			Message: "Session valid",
 			Data: map[string]any{
-				"session": session,
+				"session": core.GetSession(ctx),
 				"user":    user,
 			},
 		})
 		return
 	}
 
-	// Return session with enriched user
+	// GetSession returns nil for stateless token schemes (e.g. JWT).
+	// SessionWithUser handles a nil Session gracefully.
 	config := h.auth.GetUserFieldsConfig()
 	swu := &core.SessionWithUser{
-		Session: session,
+		Session: core.GetSession(ctx),
 		User:    enriched,
 	}
 	core.WriteJSON(w, http.StatusOK, &core.Response{

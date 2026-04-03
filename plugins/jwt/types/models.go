@@ -150,6 +150,15 @@ type Claims struct {
 	// Access tokens can be used for API requests
 	// Refresh tokens can only be used to get new access tokens
 	TokenType string `json:"token_type"`
+
+	// JTI is the unique JWT ID (jti claim), used for revocation tracking
+	JTI string `json:"jti,omitempty"`
+
+	// ExpiresAt is when the token expires (derived from the exp claim)
+	ExpiresAt time.Time `json:"exp,omitempty"`
+
+	// IssuedAt is when the token was issued (derived from the iat claim)
+	IssuedAt time.Time `json:"iat,omitempty"`
 }
 
 // AccessToken represents a single access token response.

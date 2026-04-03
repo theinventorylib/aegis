@@ -283,13 +283,23 @@ func sessionToMap(session *auth.Session) map[string]any {
 		return nil
 	}
 
-	return map[string]any{
+	m := map[string]any{
 		"id":        session.ID,
+		"userId":    session.UserID,
+		"token":     session.Token,
 		"expiresAt": session.ExpiresAt,
 		"createdAt": session.CreatedAt,
-		"ipAddress": session.IPAddress,
-		"userAgent": session.UserAgent,
 	}
+	if session.RefreshToken != "" {
+		m["refreshToken"] = session.RefreshToken
+	}
+	if session.IPAddress != "" {
+		m["ipAddress"] = session.IPAddress
+	}
+	if session.UserAgent != "" {
+		m["userAgent"] = session.UserAgent
+	}
+	return m
 }
 
 // =============================================================================

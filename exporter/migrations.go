@@ -24,30 +24,6 @@ const (
 	FormatGolangMigrate ExportFormat = "golang-migrate"
 )
 
-// knownPluginOffsets maps normalized plugin names (hyphens → underscores) to
-// their reserved migration base offset. These are stable and will never change.
-//
-// Block layout (each plugin owns up to 99 migrations in its block):
-//
-//	auth:          1   – 99   (offset 0, always written as-is)
-//	admin:         101 – 199  (offset 100)
-//	email_otp:     201 – 299  (offset 200)
-//	jwt:           301 – 399  (offset 300)
-//	oauth:         401 – 499  (offset 400)
-//	organizations: 501 – 599  (offset 500)
-//	sms:           601 – 699  (offset 600)
-//
-// External plugins must implement plugins.MigrationOffsetProvider and choose an
-// offset starting at 1000 or higher that does not overlap with this table.
-var knownPluginOffsets = map[string]int{
-	"admin":         100,
-	"email_otp":     200,
-	"jwt":           300,
-	"oauth":         400,
-	"organizations": 500,
-	"sms":           600,
-}
-
 // Migration represents a single migration.
 type Migration struct {
 	Number      int
@@ -86,75 +62,74 @@ func NewExporter(config Config) *Exporter {
 	}
 }
 
-// resolveOffset returns the stable base offset for a known aegis plugin.
-// Returns an error for any plugin not registered in knownPluginOffsets.
-func resolveOffset(plugin plugins.Plugin) (int, error) {
-	name := strings.ReplaceAll(plugin.Name(), "-", "_")
-	if offset, ok := knownPluginOffsets[name]; ok {
-		return offset, nil
-	}
-	return 0, fmt.Errorf("plugin %q is not a known aegis plugin and cannot be exported via CLI", plugin.Name())
+// numberedMigration pairs a globally-assigned sequence number with a migration
+// and the name of the source that produced it (e.g. "auth", "jwt").
+type numberedMigration struct {
+	GlobalNum int
+	Source    string
+	Migration
 }
 
-// validateOffsets checks that no two plugin sources will produce overlapping
-// file numbers. It resolves every plugin's offset, computes each migration's
-// actual file number (offset + version), and errors before any file is written
-// if a collision is found.
+// collectAllMigrations assembles every migration that should be written and
+// assigns each a globally sequential number.
 //
-// Auth migrations always occupy numbers 1–99 and are checked against plugins too.
-func (e *Exporter) validateOffsets() error {
-	// file number → plugin name that claims it
-	claimed := make(map[int]string)
+// Ordering:
+//  1. Auth migrations, sorted by their internal version number.
+//  2. Plugin migrations, plugins sorted alphabetically by name, each plugin's
+//     migrations sorted by their internal version number.
+//
+// Because the output directory is always cleaned before writing, there is no
+// need to reserve numeric blocks or check for offset collisions — numbers are
+// simply assigned 1, 2, 3 … in order.
+func (e *Exporter) collectAllMigrations() ([]numberedMigration, error) {
+	var result []numberedMigration
+	counter := 1
 
-	// Reserve auth numbers
 	authMigrations, err := e.getAuthMigrations()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, m := range authMigrations {
-		claimed[m.Number] = "auth"
+		result = append(result, numberedMigration{GlobalNum: counter, Source: "auth", Migration: m})
+		counter++
 	}
 
-	if e.authOnly {
-		return nil
-	}
-
-	for _, plugin := range e.plugins {
-		offset, err := resolveOffset(plugin)
-		if err != nil {
-			return err
-		}
-		for _, m := range e.getPluginMigrations(plugin) {
-			num := offset + m.Number
-			if owner, collision := claimed[num]; collision {
-				return fmt.Errorf(
-					"migration number conflict: plugin %q and %q both produce file number %d "+
-						"(offset %d + version %d) — change one plugin's MigrationBaseOffset",
-					plugin.Name(), owner, num, offset, m.Number,
-				)
+	if !e.authOnly {
+		// Sort plugins alphabetically so the output order is deterministic
+		// regardless of the order they were passed to the exporter.
+		pluginList := make([]plugins.Plugin, len(e.plugins))
+		copy(pluginList, e.plugins)
+		sort.Slice(pluginList, func(i, j int) bool {
+			return pluginList[i].Name() < pluginList[j].Name()
+		})
+		for _, p := range pluginList {
+			for _, m := range e.getPluginMigrations(p) {
+				result = append(result, numberedMigration{GlobalNum: counter, Source: p.Name(), Migration: m})
+				counter++
 			}
-			claimed[num] = plugin.Name()
 		}
 	}
 
-	return nil
+	return result, nil
 }
 
 // Export writes migrations to disk in the specified format.
 //
-// All files are placed directly in OutputDir (flat layout) using a stable
-// numeric prefix: base_offset + local_migration_version. This ensures that
-// adding new migrations to auth or any plugin never renumbers another plugin's
-// files, and that external plugins can coexist without central registration.
+// Files are placed directly in OutputDir with sequentially-assigned numeric
+// prefixes: auth migrations first, then plugin migrations in alphabetical
+// plugin-name order.
 //
-// Export validates for offset collisions before writing any files.
+// Any file whose name contains "_aegis_" that already exists in OutputDir is
+// removed before new files are written. This keeps the folder in sync with the
+// current Aegis version without disturbing files the developer created
+// themselves (which must not use "_aegis_" in their own filenames).
 func (e *Exporter) Export() error {
-	if err := e.validateOffsets(); err != nil {
-		return fmt.Errorf("offset validation: %w", err)
-	}
-
 	if err := os.MkdirAll(e.outputDir, 0750); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	if err := e.cleanAegisFiles(); err != nil {
+		return fmt.Errorf("failed to clean existing aegis files: %w", err)
 	}
 
 	var exportErr error
@@ -175,6 +150,34 @@ func (e *Exporter) Export() error {
 	}
 
 	return exportErr
+}
+
+// cleanAegisFiles removes every file in OutputDir whose name contains "_aegis_".
+// This naming pattern is reserved for Aegis-generated migration files, so the
+// developer's own files (which must not use that substring) are left untouched.
+// Running this before writing ensures that renamed or removed aegis migrations
+// do not linger inside the user's migrations folder.
+func (e *Exporter) cleanAegisFiles() error {
+	entries, err := os.ReadDir(e.outputDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // directory not created yet — nothing to clean
+		}
+		return fmt.Errorf("reading output directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if strings.Contains(entry.Name(), "_aegis_") {
+			path := filepath.Join(e.outputDir, entry.Name())
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("removing stale aegis file %q: %w", entry.Name(), err)
+			}
+		}
+	}
+	return nil
 }
 
 func (e *Exporter) getAuthMigrations() ([]Migration, error) {
@@ -219,84 +222,38 @@ func (e *Exporter) getPluginMigrations(plugin plugins.Plugin) []Migration {
 
 // exportSQL exports migrations as plain SQL files into a flat directory.
 func (e *Exporter) exportSQL() error {
-	authMigrations, err := e.getAuthMigrations()
+	all, err := e.collectAllMigrations()
 	if err != nil {
 		return err
 	}
-
-	for _, m := range authMigrations {
-		name := fmt.Sprintf("%05d_aegis_auth_%s.sql", m.Number, m.Version)
-		content := fmt.Sprintf("-- Aegis Auth\n-- Version: %s\n-- Description: %s\n\n%s",
-			m.Version, m.Description, m.Up)
+	for _, nm := range all {
+		sourceName := strings.ReplaceAll(nm.Source, "-", "_")
+		name := fmt.Sprintf("%05d_aegis_%s_%s.sql", nm.GlobalNum, sourceName, nm.Version)
+		content := fmt.Sprintf("-- Aegis: %s\n-- Version: %s\n-- Description: %s\n\n%s",
+			nm.Source, nm.Version, nm.Description, nm.Up)
 		if err := os.WriteFile(filepath.Join(e.outputDir, name), []byte(content), 0600); err != nil {
-			return fmt.Errorf("failed to write auth migration: %w", err)
+			return fmt.Errorf("failed to write %s migration: %w", nm.Source, err)
 		}
 	}
-
-	if e.authOnly {
-		return nil
-	}
-
-	for _, plugin := range e.plugins {
-		offset, err := resolveOffset(plugin)
-		if err != nil {
-			return err
-		}
-		pluginName := strings.ReplaceAll(plugin.Name(), "-", "_")
-		for _, m := range e.getPluginMigrations(plugin) {
-			num := offset + m.Number
-			name := fmt.Sprintf("%05d_aegis_%s_%s.sql", num, pluginName, m.Version)
-			content := fmt.Sprintf("-- Aegis Plugin: %s\n-- Version: %s\n-- Description: %s\n\n%s",
-				plugin.Name(), m.Version, m.Description, m.Up)
-			if err := os.WriteFile(filepath.Join(e.outputDir, name), []byte(content), 0600); err != nil {
-				return fmt.Errorf("failed to write %s migration: %w", plugin.Name(), err)
-			}
-		}
-	}
-
 	return nil
 }
 
 // exportGoose exports migrations in Goose format into a flat directory.
-// Goose uses 5-digit numeric prefixes.
 func (e *Exporter) exportGoose() error {
-	authMigrations, err := e.getAuthMigrations()
+	all, err := e.collectAllMigrations()
 	if err != nil {
 		return err
 	}
-
-	for _, m := range authMigrations {
-		name := fmt.Sprintf("%05d_aegis_auth_%s.sql", m.Number, m.Version)
+	for _, nm := range all {
+		sourceName := strings.ReplaceAll(nm.Source, "-", "_")
+		name := fmt.Sprintf("%05d_aegis_%s_%s.sql", nm.GlobalNum, sourceName, nm.Version)
 		content := fmt.Sprintf(
 			"-- +goose Up\n-- +goose StatementBegin\n%s\n-- +goose StatementEnd\n\n-- +goose Down\n-- +goose StatementBegin\n%s\n-- +goose StatementEnd\n",
-			m.Up, m.Down)
+			nm.Up, nm.Down)
 		if err := os.WriteFile(filepath.Join(e.outputDir, name), []byte(content), 0600); err != nil {
-			return fmt.Errorf("failed to write auth migration: %w", err)
+			return fmt.Errorf("failed to write %s migration: %w", nm.Source, err)
 		}
 	}
-
-	if e.authOnly {
-		return nil
-	}
-
-	for _, plugin := range e.plugins {
-		offset, err := resolveOffset(plugin)
-		if err != nil {
-			return err
-		}
-		pluginName := strings.ReplaceAll(plugin.Name(), "-", "_")
-		for _, m := range e.getPluginMigrations(plugin) {
-			num := offset + m.Number
-			name := fmt.Sprintf("%05d_aegis_%s_%s.sql", num, pluginName, m.Version)
-			content := fmt.Sprintf(
-				"-- +goose Up\n-- +goose StatementBegin\n%s\n-- +goose StatementEnd\n\n-- +goose Down\n-- +goose StatementBegin\n%s\n-- +goose StatementEnd\n",
-				m.Up, m.Down)
-			if err := os.WriteFile(filepath.Join(e.outputDir, name), []byte(content), 0600); err != nil {
-				return fmt.Errorf("failed to write %s migration: %w", plugin.Name(), err)
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -304,43 +261,20 @@ func (e *Exporter) exportGoose() error {
 // directory. golang-migrate uses 6-digit numeric prefixes and paired
 // .up.sql / .down.sql files.
 func (e *Exporter) exportGolangMigrate() error {
-	authMigrations, err := e.getAuthMigrations()
+	all, err := e.collectAllMigrations()
 	if err != nil {
 		return err
 	}
-
-	for _, m := range authMigrations {
-		base := filepath.Join(e.outputDir, fmt.Sprintf("%06d_aegis_auth_%s", m.Number, m.Version))
-		if err := os.WriteFile(base+".up.sql", []byte(m.Up), 0600); err != nil {
-			return fmt.Errorf("failed to write auth up migration: %w", err)
+	for _, nm := range all {
+		sourceName := strings.ReplaceAll(nm.Source, "-", "_")
+		base := filepath.Join(e.outputDir, fmt.Sprintf("%06d_aegis_%s_%s", nm.GlobalNum, sourceName, nm.Version))
+		if err := os.WriteFile(base+".up.sql", []byte(nm.Up), 0600); err != nil {
+			return fmt.Errorf("failed to write %s up migration: %w", nm.Source, err)
 		}
-		if err := os.WriteFile(base+".down.sql", []byte(m.Down), 0600); err != nil {
-			return fmt.Errorf("failed to write auth down migration: %w", err)
-		}
-	}
-
-	if e.authOnly {
-		return nil
-	}
-
-	for _, plugin := range e.plugins {
-		offset, err := resolveOffset(plugin)
-		if err != nil {
-			return err
-		}
-		pluginName := strings.ReplaceAll(plugin.Name(), "-", "_")
-		for _, m := range e.getPluginMigrations(plugin) {
-			num := offset + m.Number
-			base := filepath.Join(e.outputDir, fmt.Sprintf("%06d_aegis_%s_%s", num, pluginName, m.Version))
-			if err := os.WriteFile(base+".up.sql", []byte(m.Up), 0600); err != nil {
-				return fmt.Errorf("failed to write %s up migration: %w", plugin.Name(), err)
-			}
-			if err := os.WriteFile(base+".down.sql", []byte(m.Down), 0600); err != nil {
-				return fmt.Errorf("failed to write %s down migration: %w", plugin.Name(), err)
-			}
+		if err := os.WriteFile(base+".down.sql", []byte(nm.Down), 0600); err != nil {
+			return fmt.Errorf("failed to write %s down migration: %w", nm.Source, err)
 		}
 	}
-
 	return nil
 }
 
@@ -364,19 +298,10 @@ These migrations were exported from Aegis authentication library.
 
 ## Numbering Scheme
 
-All files live in a single flat directory. Each source occupies a stable numeric
-block so that adding new migrations to one source never renumbers another:
-
-| Source        | Block       |
-|---------------|-------------|
-| auth          | 00001–00099 |
-| admin         | 00101–00199 |
-| email_otp     | 00201–00299 |
-| jwt           | 00301–00399 |
-| oauth         | 00401–00499 |
-| organizations | 00501–00599 |
-| sms           | 00601–00699 |
-| external      | 01000+      |
+Migrations are numbered sequentially starting at 1: auth migrations first,
+then plugin migrations in alphabetical plugin-name order. Re-running
+"aegis export" replaces all Aegis-generated files and reassigns numbers from
+scratch, so the folder is always consistent with your current Aegis version.
 
 ## Running Migrations
 

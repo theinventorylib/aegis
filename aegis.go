@@ -524,6 +524,12 @@ func (a *Aegis) UseWithPriority(ctx context.Context, plugin plugins.Plugin, prio
 		return err
 	}
 
+	// If the plugin can validate bearer tokens (e.g., JWT), append it to the
+	// session service's validator chain so AuthMiddleware will try it.
+	if v, ok := plugin.(core.BearerTokenValidator); ok {
+		a.auth.Session.AddBearerTokenValidator(v)
+	}
+
 	a.mu.Lock()
 	a.plugins[plugin.Name()] = pluginRegistration{
 		plugin:   plugin,

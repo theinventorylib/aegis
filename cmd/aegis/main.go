@@ -201,6 +201,7 @@ func exportCmd() {
 	}
 
 	fmt.Printf("\n✓ Successfully exported migrations to %s\n", *output)
+	fmt.Printf("  (existing _aegis_ files were replaced; your own files were not modified)\n")
 }
 
 func printUsage() {
@@ -212,14 +213,16 @@ func printUsage() {
 	fmt.Println("FLAGS:")
 	fmt.Println("  --format string       Export format (default: sql)")
 	fmt.Println("                        Options: sql, goose, golang-migrate")
-	fmt.Println("  --output string       Output directory (default: ./migrations)")
+	fmt.Println("  --output string       Path to your migrations folder (default: ./migrations)")
+	fmt.Println("                        Existing files whose names contain \"_aegis_\" are")
+	fmt.Println("                        replaced; your own migration files are never touched.")
 	fmt.Println("  --dialect string      Database dialect to use (required: postgres, mysql, sqlite)")
 	fmt.Println("  --plugins string      Plugins to include (default: none, auth only)")
 	fmt.Println("                        Examples: all, emailotp,sms, oauth,jwt,admin")
 	fmt.Println("  --auth-only          Export only auth schema (alias for no plugins, deprecated)")
 	fmt.Println()
 	fmt.Println("EXAMPLES:")
-	fmt.Println("  # Export auth only (default behavior)")
+	fmt.Println("  # Export auth only into an existing folder (aegis files replaced, yours kept)")
 	fmt.Println("  aegis export --dialect postgres --output ./migrations")
 	fmt.Println()
 	fmt.Println("  # Export auth + all plugins as Goose format")
@@ -233,6 +236,12 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("  # Export auth + all plugins as golang-migrate format")
 	fmt.Println("  aegis export --dialect postgres --format golang-migrate --plugins all")
+	fmt.Println()
+	fmt.Println("NAMING CONVENTION:")
+	fmt.Println("  Aegis-generated files always contain \"_aegis_\" in their name")
+	fmt.Println("  (e.g. 00001_aegis_auth_initial.sql). Do not use that substring in")
+	fmt.Println("  your own migration filenames — those files will be overwritten on")
+	fmt.Println("  the next export.")
 	fmt.Println()
 	fmt.Println("AVAILABLE PLUGINS:")
 	fmt.Println("  - admin          Administrative endpoints for user management")
