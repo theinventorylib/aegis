@@ -102,6 +102,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/redis/go-redis/v9"
+	"github.com/theinventorylib/aegis/auth"
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
 	iversion "github.com/theinventorylib/aegis/internal/version"
@@ -166,6 +167,16 @@ type Config struct {
 	// to ensure old tokens can still be verified.
 	// Recommended: 30 days (covers refresh token lifetime + buffer)
 	KeyRetention time.Duration
+
+	// Audience is the default "aud" claim used by IssueCustomToken when
+	// the caller does not supply an audience. Ignored for standard
+	// access/refresh tokens, which carry no audience claim.
+	Audience []string
+
+	// Claims are static key/value pairs merged into every token produced
+	// by IssueCustomToken. Per-call extraClaims overwrite these for the
+	// same key, so config values act as defaults only.
+	Claims map[string]any
 }
 
 // DefaultConfig returns production-ready JWT configuration with security best practices.
@@ -623,6 +634,76 @@ func (p *Plugin) rotateKeyPair(ctx context.Context, keyType string) (jwk.Key, jw
 	return key, pubKey, nil
 }
 
+// GetCurrentJWK returns the public key of the current active access-token
+// signing key. Private key material is never exposed.
+//
+// The in-memory key cached during Init (or the last rotation) is returned
+// directly, so this call is effectively free. If for any reason the in-memory
+// key is absent (e.g. the Plugin was constructed but not yet initialised via
+// Init), the method falls back to a live lookup against the configured store.
+//
+// Typical use cases:
+//   - Passing the public key to a sidecar or downstream service for
+//     out-of-band JWT verification.
+//   - Pinning the current KID so callers can choose the right key when
+//     building a custom verification flow.
+//   - Inspection / debugging without going through the HTTP JWKS endpoint.
+//
+// Returns:
+//   - jwk.Key: Public key (RSA public key, never the private component).
+//   - string:  Key ID (kid) of the returned key.
+//   - error:   Non-nil only when neither the cache nor the store has a key.
+func (p *Plugin) GetCurrentJWK(ctx context.Context) (jwk.Key, string, error) {
+	// Fast path: use the already-loaded in-memory public key.
+	if p.accessTokenPublicKey != nil {
+		kid, _ := p.accessTokenPublicKey.KeyID()
+		return p.accessTokenPublicKey, kid, nil
+	}
+
+	// Slow path: fall back to the store (plugin was not yet initialised).
+	key, err := p.store.GetCurrentJWK(ctx, "RS256", "sig")
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to retrieve current JWK: %w", err)
+	}
+	pubKey, err := key.PublicKey()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to extract public key: %w", err)
+	}
+	kid, _ := pubKey.KeyID()
+	return pubKey, kid, nil
+}
+
+// SignToken signs an arbitrary pre-built jwt.Token with the plugin's current
+// access-token private key (RS256).
+//
+// This is the safe way for application code to issue custom JWTs (e.g. for
+// third-party services like PowerSync) without gaining access to the raw
+// private key material. The plugin acts as a signing oracle: it never exposes
+// the key, and the caller remains in full control of the token's claims.
+//
+// Caller responsibilities:
+//   - Build the token with the desired claims (Subject, Audience, Issuer,
+//     Expiration, custom claims, etc.) using jwt.NewBuilder().
+//   - Do NOT add a "token_type" claim — that claim is reserved for Aegis
+//     access/refresh tokens and will cause ValidateToken to accept this token
+//     as a first-party one if accidentally present.
+//
+// The returned byte slice is the compact (URL-safe) serialisation of the
+// signed JWT, identical to what you would pass to jwt.Sign yourself.
+//
+// Returns an error if the plugin has not been initialised yet (Init not
+// called) or if signing fails.
+func (p *Plugin) SignToken(tok jwt.Token) ([]byte, error) {
+	if p.accessTokenPrivateKey == nil {
+		return nil, errors.New("jwt plugin not initialised: no signing key available")
+	}
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256(), p.accessTokenPrivateKey))
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign token: %w", err)
+	}
+	return signed, nil
+}
+
 // GenerateTokenPair creates access and refresh tokens for a user
 func (p *Plugin) GenerateTokenPair(userID string) (*jwttypes.TokenPair, error) {
 	// Access Token
@@ -753,12 +834,66 @@ func (p *Plugin) ValidateToken(tokenStr string) (*jwttypes.Claims, error) {
 		TokenType: claimTokenType,
 	}
 
+	// Populate standard timing claims from the verified token.
+	if exp, ok := token.Expiration(); ok {
+		claims.ExpiresAt = exp
+	}
+	if iat, ok := token.IssuedAt(); ok {
+		claims.IssuedAt = iat
+	}
+	if jti, ok := token.JwtID(); ok {
+		claims.JTI = jti
+	}
+
 	// Additional validation
 	if claims.TokenType != TokenTypeAccess {
 		return nil, errors.New("token type mismatch")
 	}
 
 	return claims, nil
+}
+
+// ValidateBearerToken implements core.BearerTokenValidator.
+// It is called by AuthMiddleware when a request arrives with an
+// "Authorization: Bearer <token>" header and bearer auth is enabled.
+//
+// The method:
+//  1. Cryptographically verifies the JWT access token via ValidateToken.
+//  2. Looks up the user identified by the token's subject claim.
+//  3. Builds a synthetic *auth.Session from the JWT claims (JTI, exp, iat)
+//     so that endpoints receive consistent session data regardless of whether
+//     the user authenticated via cookie session or JWT bearer token.
+//
+// The returned session is not persisted — it exists only for the duration of
+// the request.
+func (p *Plugin) ValidateBearerToken(ctx context.Context, tokenStr string) (*auth.User, *auth.Session, error) {
+	claims, err := p.ValidateToken(tokenStr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	u, err := p.aegis.GetAuthService().User.GetUserByID(ctx, claims.UserID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	// Build a synthetic session from the JWT claims so that the request context
+	// carries consistent session data (id, userId, token, expiresAt, createdAt).
+	session := &auth.Session{
+		ID:        claims.JTI,
+		UserID:    claims.UserID,
+		Token:     tokenStr,
+		ExpiresAt: claims.ExpiresAt,
+		CreatedAt: claims.IssuedAt,
+	}
+
+	// Capture IP address and user agent from the request context when available.
+	if meta := core.GetRequestMeta(ctx); meta != nil {
+		session.IPAddress = meta.IPAddress
+		session.UserAgent = meta.UserAgent
+	}
+
+	return &u, session, nil
 }
 
 // RefreshTokens handles token refresh mechanism.

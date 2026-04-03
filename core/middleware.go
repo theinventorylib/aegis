@@ -141,9 +141,10 @@ func AuthMiddleware(sessionService *SessionService) func(http.Handler) http.Hand
 func handleAuth(sessionService *SessionService, cookieManager *CookieManager, next http.Handler, w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Check if session already in context (per-request cache)
-	// This avoids redundant DB/Redis calls within the same request
-	if HasSession(ctx) {
+	// Check if user is already authenticated in context (per-request cache).
+	// Using Authenticated instead of HasSession so that stateless token schemes
+	// (e.g. JWT) — which store a nil session — also benefit from the early exit.
+	if Authenticated(ctx) {
 		next.ServeHTTP(w, r)
 		return
 	}
@@ -166,8 +167,29 @@ func handleAuth(sessionService *SessionService, cookieManager *CookieManager, ne
 				token = token[7:]
 			}
 
-			session, user, err := sessionService.ValidateSession(ctx, token)
-			if err == nil && session != nil && user != nil {
+			var (
+				user    *auth.User
+				session *auth.Session
+				err     error
+			)
+
+			// Try each registered bearer token validator in order (e.g., JWT plugin,
+			// API-key plugin, …). The first validator that returns a non-nil user
+			// wins; remaining validators are skipped.
+			for _, v := range sessionService.GetBearerTokenValidators() {
+				user, session, err = v.ValidateBearerToken(ctx, token)
+				if err == nil && user != nil {
+					break
+				}
+			}
+
+			// Fall back to opaque session-token database lookup when no validator
+			// recognised the token.
+			if err != nil || user == nil {
+				session, user, err = sessionService.ValidateSession(ctx, token)
+			}
+
+			if err == nil && user != nil {
 				ctx = setAuthContext(ctx, user, session)
 				r = r.WithContext(ctx)
 			}

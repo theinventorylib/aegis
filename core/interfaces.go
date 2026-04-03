@@ -1,6 +1,11 @@
 package core
 
-import "time"
+import (
+	"context"
+	"time"
+
+	"github.com/theinventorylib/aegis/auth"
+)
 
 // This file defines model interfaces that allow for flexible data layer implementations.
 // While the auth package provides concrete User, Account, Session, and Verification
@@ -137,6 +142,21 @@ type SessionModel interface {
 
 	// SetUserAgent assigns the client user agent for security tracking
 	SetUserAgent(string)
+}
+
+// BearerTokenValidator is an optional interface for validating non-session bearer
+// tokens such as JWT access tokens. When registered with SessionService via
+// SetBearerTokenValidator, it is called by AuthMiddleware before falling back to
+// the opaque session-token database lookup.
+//
+// Implementations (e.g., the JWT plugin) should:
+//   - Cryptographically verify the token
+//   - Return the authenticated user and, if applicable, a synthetic session
+//   - Return a non-nil error if the token is invalid or expired
+//
+// A nil *auth.Session return value is valid for fully-stateless token schemes.
+type BearerTokenValidator interface {
+	ValidateBearerToken(ctx context.Context, token string) (*auth.User, *auth.Session, error)
 }
 
 // VerificationModel defines the required methods for a verification model implementation.

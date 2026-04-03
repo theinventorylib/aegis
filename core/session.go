@@ -44,7 +44,12 @@ type SessionService struct {
 	// bearerAuthEnabled indicates if bearer token auth is supported
 	bearerAuthEnabled bool
 
-	// mu protects concurrent access to bearerAuthEnabled
+	// bearerValidators is a chain of validators for non-session bearer tokens
+	// (e.g., JWT access tokens). Each registered plugin appends to this slice.
+	// Validators are tried in registration order; the first to succeed wins.
+	bearerValidators []BearerTokenValidator
+
+	// mu protects concurrent access to bearerAuthEnabled and bearerValidators
 	mu sync.RWMutex
 
 	// auditLogger records session creation and validation events
@@ -333,6 +338,24 @@ func (s *SessionService) IsBearerAuthEnabled() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.bearerAuthEnabled
+}
+
+// AddBearerTokenValidator appends a validator to the bearer token validation
+// chain. Multiple plugins can each register their own validator; they are tried
+// in registration order and the first to return a non-nil user wins.
+func (s *SessionService) AddBearerTokenValidator(v BearerTokenValidator) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.bearerValidators = append(s.bearerValidators, v)
+}
+
+// GetBearerTokenValidators returns a snapshot of the registered validators.
+func (s *SessionService) GetBearerTokenValidators() []BearerTokenValidator {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	snap := make([]BearerTokenValidator, len(s.bearerValidators))
+	copy(snap, s.bearerValidators)
+	return snap
 }
 
 // GetConfig returns the session configuration.
