@@ -241,6 +241,7 @@ func TestDefaultRateLimitConfig(t *testing.T) {
 	// Then
 	if config == nil {
 		t.Fatal("DefaultRateLimitConfig should return non-nil config")
+		return
 	}
 
 	if config.RequestsPerWindow != DefaultRateLimitRequests {
@@ -272,6 +273,7 @@ func TestAuthRateLimitConfig(t *testing.T) {
 	// Then
 	if config == nil {
 		t.Fatal("AuthRateLimitConfig should return non-nil config")
+		return
 	}
 
 	if config.RequestsPerWindow != AuthRateLimitRequests {
@@ -506,6 +508,7 @@ func TestDefaultLoginAttemptConfig(t *testing.T) {
 	// Then
 	if config == nil {
 		t.Fatal("DefaultLoginAttemptConfig should return non-nil config")
+		return
 	}
 
 	if config.MaxAttempts != DefaultMaxLoginAttempts {

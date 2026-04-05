@@ -68,6 +68,7 @@ func TestDefaultSessionConfig(t *testing.T) {
 	// Then
 	if config == nil {
 		t.Fatal("DefaultSessionConfig should return non-nil config")
+		return
 	}
 
 	if config.SessionExpiry != DefaultSessionExpiry {
