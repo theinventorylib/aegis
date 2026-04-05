@@ -184,7 +184,7 @@ func handleAuth(sessionService *SessionService, cookieManager *CookieManager, ne
 			}
 
 			// Fall back to opaque session-token database lookup when no validator
-			// recognised the token.
+			// recognized the token.
 			if err != nil || user == nil {
 				session, user, err = sessionService.ValidateSession(ctx, token)
 			}

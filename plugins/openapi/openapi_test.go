@@ -253,6 +253,7 @@ func TestBodyOfAndResponseOf(t *testing.T) {
 	resp404 := pathItem.Post.Responses["404"]
 	if resp404 == nil {
 		t.Fatal("404 response should exist")
+		return
 	}
 	if resp404.Content != nil {
 		t.Error("Text response should have no content")

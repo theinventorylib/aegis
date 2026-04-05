@@ -639,7 +639,7 @@ func (p *Plugin) rotateKeyPair(ctx context.Context, keyType string) (jwk.Key, jw
 //
 // The in-memory key cached during Init (or the last rotation) is returned
 // directly, so this call is effectively free. If for any reason the in-memory
-// key is absent (e.g. the Plugin was constructed but not yet initialised via
+// key is absent (e.g. the Plugin was constructed but not yet initialized via
 // Init), the method falls back to a live lookup against the configured store.
 //
 // Typical use cases:
@@ -660,7 +660,7 @@ func (p *Plugin) GetCurrentJWK(ctx context.Context) (jwk.Key, string, error) {
 		return p.accessTokenPublicKey, kid, nil
 	}
 
-	// Slow path: fall back to the store (plugin was not yet initialised).
+	// Slow path: fall back to the store (plugin was not yet initialized).
 	key, err := p.store.GetCurrentJWK(ctx, "RS256", "sig")
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to retrieve current JWK: %w", err)
@@ -688,14 +688,14 @@ func (p *Plugin) GetCurrentJWK(ctx context.Context) (jwk.Key, string, error) {
 //     access/refresh tokens and will cause ValidateToken to accept this token
 //     as a first-party one if accidentally present.
 //
-// The returned byte slice is the compact (URL-safe) serialisation of the
+// The returned byte slice is the compact (URL-safe) serialization of the
 // signed JWT, identical to what you would pass to jwt.Sign yourself.
 //
-// Returns an error if the plugin has not been initialised yet (Init not
+// Returns an error if the plugin has not been initialized yet (Init not
 // called) or if signing fails.
 func (p *Plugin) SignToken(tok jwt.Token) ([]byte, error) {
 	if p.accessTokenPrivateKey == nil {
-		return nil, errors.New("jwt plugin not initialised: no signing key available")
+		return nil, errors.New("jwt plugin not initialized: no signing key available")
 	}
 	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256(), p.accessTokenPrivateKey))
 	if err != nil {
