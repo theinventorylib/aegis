@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,6 +46,28 @@ type RateLimitConfig struct {
 	// ExcludePaths are URL paths exempt from rate limiting.
 	// Example: ["/health", "/metrics"] for monitoring endpoints.
 	ExcludePaths []string
+
+	// FailClosed controls behavior when the backing store (e.g. Redis)
+	// returns an error from Allow().
+	//
+	//   - false (default): fail-open. The request is allowed and the error
+	//     is logged at WARN level. Preserves availability if Redis is flaky
+	//     but a determined attacker can defeat brute-force protection by
+	//     deliberately straining the backing store.
+	//   - true: fail-closed. The request is rejected with HTTP 429. Stronger
+	//     security guarantee at the cost of availability when the backing
+	//     store is unhealthy. Recommended for high-value auth endpoints.
+	FailClosed bool
+
+	// TrustedProxies is a list of CIDR ranges (or single IPs in CIDR form,
+	// e.g. "10.0.0.5/32") whose X-Forwarded-For / X-Real-IP headers are
+	// honored. When the request's RemoteAddr is NOT within one of these
+	// ranges, proxy headers are ignored and the raw RemoteAddr is used as
+	// the client IP. Default empty = no proxy is trusted (most secure).
+	//
+	// Set this to your real proxy/load-balancer addresses in production
+	// when running behind a reverse proxy that sets these headers.
+	TrustedProxies []string
 }
 
 // RateLimiter provides distributed rate limiting functionality.
@@ -64,12 +87,21 @@ type RateLimiter struct {
 	// auditLogger records rate limit violations
 	auditLogger AuditLogger
 
+	// logger receives diagnostic messages (backing-store errors, etc.).
+	// May be nil; helpers handle that.
+	logger Logger
+
+	// trustedProxyNets is the parsed form of config.TrustedProxies. Built
+	// once at construction so the hot path doesn't re-parse CIDRs.
+	trustedProxyNets []*net.IPNet
+
 	// In-memory fallback for when Redis is not available.
 	// Used only in single-instance deployments.
 	memoryStore     map[string]*rateLimitEntry
 	memoryStoreMu   sync.RWMutex
 	cleanupTicker   *time.Ticker
 	cleanupStopChan chan struct{}
+	stopOnce        sync.Once
 }
 
 // rateLimitEntry tracks request counts in the in-memory store.
@@ -107,6 +139,7 @@ type LoginAttemptTracker struct {
 	memoryStoreMu   sync.RWMutex
 	cleanupTicker   *time.Ticker
 	cleanupStopChan chan struct{}
+	stopOnce        sync.Once
 }
 
 // loginAttemptEntry tracks login attempts in the in-memory store.
@@ -171,24 +204,30 @@ func AuthRateLimitConfig() *RateLimitConfig {
 //     in-memory fallback (only suitable for single-instance deployments).
 //   - auditLogger: Logger for recording rate limit violations. If nil, uses
 //     a no-op logger.
+//   - logger: Optional diagnostic logger. May be nil.
 //
 // The returned RateLimiter is safe for concurrent use. For multi-instance
 // deployments, a Redis client must be provided to enforce limits across
 // all instances.
-func NewRateLimiter(config *RateLimitConfig, redisClient *redis.Client, auditLogger AuditLogger) *RateLimiter {
+func NewRateLimiter(config *RateLimitConfig, redisClient *redis.Client, auditLogger AuditLogger, logger Logger) *RateLimiter {
 	if config == nil {
 		config = DefaultRateLimitConfig()
 	}
 	if auditLogger == nil {
 		auditLogger = &NoOpAuditLogger{}
 	}
+	if logger == nil {
+		logger = noopLogger{}
+	}
 
 	rl := &RateLimiter{
-		config:          config,
-		redisClient:     redisClient,
-		auditLogger:     auditLogger,
-		memoryStore:     make(map[string]*rateLimitEntry),
-		cleanupStopChan: make(chan struct{}),
+		config:           config,
+		redisClient:      redisClient,
+		auditLogger:      auditLogger,
+		logger:           logger,
+		trustedProxyNets: parseTrustedProxies(config.TrustedProxies, logger),
+		memoryStore:      make(map[string]*rateLimitEntry),
+		cleanupStopChan:  make(chan struct{}),
 	}
 
 	// Start cleanup goroutine for in-memory store
@@ -220,11 +259,13 @@ func (rl *RateLimiter) cleanupExpired() {
 	}
 }
 
-// Stop stops the rate limiter cleanup goroutine
+// Stop stops the rate limiter cleanup goroutine. Safe to call multiple times.
 func (rl *RateLimiter) Stop() {
-	if rl.cleanupTicker != nil {
-		close(rl.cleanupStopChan)
-	}
+	rl.stopOnce.Do(func() {
+		if rl.cleanupTicker != nil {
+			close(rl.cleanupStopChan)
+		}
+	})
 }
 
 // Allow checks if a request should be allowed
@@ -235,14 +276,23 @@ func (rl *RateLimiter) Allow(ctx context.Context, key string) (bool, int, error)
 	return rl.allowMemory(key)
 }
 
-// allowRedis uses Redis for distributed rate limiting
+// allowRedis uses Redis for distributed rate limiting.
+//
+// On a backing-store error, behavior depends on rl.config.FailClosed:
+//   - false (default): allow the request and signal the error to the
+//     middleware so it can be logged. We deliberately do not bubble the
+//     error up to the application.
+//   - true: deny the request (return false). The middleware will return 429.
 func (rl *RateLimiter) allowRedis(ctx context.Context, key string) (bool, int, error) {
 	redisKey := rl.config.KeyPrefix + key
 
 	// Use Redis INCR with expiry for atomic counter
 	count, err := rl.redisClient.Incr(ctx, redisKey).Result()
 	if err != nil {
-		return true, 0, err // Allow on error
+		if rl.config.FailClosed {
+			return false, 0, err
+		}
+		return true, 0, err
 	}
 
 	// Set expiry on first request in window
@@ -285,34 +335,100 @@ func (rl *RateLimiter) allowMemory(key string) (bool, int, error) {
 	return entry.count <= rl.config.RequestsPerWindow, remaining, nil
 }
 
-// getClientIP extracts the client IP from the request
-func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		// Take the first IP in the list
-		if idx := len(xff); idx > 0 {
-			for i, c := range xff {
-				if c == ',' {
-					return xff[:i]
+// parseTrustedProxies converts a list of CIDR strings into *net.IPNet values.
+// Invalid entries are logged and skipped. A bare IP (no "/") is automatically
+// treated as a /32 (IPv4) or /128 (IPv6) so callers can write
+// "10.0.0.5" instead of "10.0.0.5/32".
+func parseTrustedProxies(cidrs []string, logger Logger) []*net.IPNet {
+	if len(cidrs) == 0 {
+		return nil
+	}
+	if logger == nil {
+		logger = noopLogger{}
+	}
+	out := make([]*net.IPNet, 0, len(cidrs))
+	for _, raw := range cidrs {
+		entry := raw
+		if !strings.Contains(entry, "/") {
+			if ip := net.ParseIP(entry); ip != nil {
+				if ip.To4() != nil {
+					entry += "/32"
+				} else {
+					entry += "/128"
 				}
 			}
-			return xff
 		}
+		_, ipNet, err := net.ParseCIDR(entry)
+		if err != nil {
+			logger.Error("rate limiter: ignoring invalid TrustedProxies entry",
+				"value", raw, "error", err)
+			continue
+		}
+		out = append(out, ipNet)
 	}
+	return out
+}
 
-	// Check X-Real-IP header
-	xri := r.Header.Get("X-Real-IP")
-	if xri != "" {
-		return xri
-	}
-
-	// Fall back to RemoteAddr
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+// remoteAddrIP extracts the IP portion of r.RemoteAddr (which is "ip:port").
+func remoteAddrIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
-	return ip
+	return host
+}
+
+// isTrustedProxy reports whether ipStr is within any of the configured
+// trustedProxyNets. Returns false for an empty allowlist (the secure default).
+func isTrustedProxy(ipStr string, trusted []*net.IPNet) bool {
+	if len(trusted) == 0 {
+		return false
+	}
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, n := range trusted {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// clientIPFromRequest returns the best-guess client IP for r.
+//
+// X-Forwarded-For / X-Real-IP are honored ONLY when the immediate peer
+// (r.RemoteAddr) is in the trustedProxyNets allowlist. Otherwise the raw
+// remote-address IP is returned. This prevents an arbitrary client from
+// spoofing their IP for rate-limit / audit purposes by sending forged
+// proxy headers.
+func clientIPFromRequest(r *http.Request, trusted []*net.IPNet) string {
+	remote := remoteAddrIP(r)
+
+	if !isTrustedProxy(remote, trusted) {
+		return remote
+	}
+
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// X-Forwarded-For: "client, proxy1, proxy2" — take the leftmost.
+		if idx := strings.Index(xff, ","); idx != -1 {
+			xff = xff[:idx]
+		}
+		if ip := strings.TrimSpace(xff); ip != "" {
+			return ip
+		}
+	}
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+		return xri
+	}
+	return remote
+}
+
+// getClientIP extracts the client IP from the request, honoring proxy
+// headers only for peers in the rate-limiter's TrustedProxies allowlist.
+func (rl *RateLimiter) getClientIP(r *http.Request) string {
+	return clientIPFromRequest(r, rl.trustedProxyNets)
 }
 
 // RateLimitMiddleware creates a middleware that rate limits requests
@@ -346,7 +462,7 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 			}
 
 			if key == "" && limiter.config.ByIP {
-				key = "ip:" + getClientIP(r)
+				key = "ip:" + limiter.getClientIP(r)
 			}
 
 			if key == "" {
@@ -358,9 +474,20 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 			// Check rate limit
 			allowed, remaining, err := limiter.Allow(r.Context(), key)
 			if err != nil {
-				// On error, allow the request but log
-				next.ServeHTTP(w, r)
-				return
+				// Backing-store error (typically Redis). Log it; behavior
+				// depends on FailClosed (already applied inside Allow):
+				//   - fail-open: allowed=true, request proceeds
+				//   - fail-closed: allowed=false, request is rejected below
+				limiter.logger.Error("rate limiter: backing-store error",
+					"path", r.URL.Path,
+					"method", r.Method,
+					"fail_closed", limiter.config.FailClosed,
+					"error", err)
+				if !limiter.config.FailClosed {
+					next.ServeHTTP(w, r)
+					return
+				}
+				// fall through; allowed==false → 429 below
 			}
 
 			// Set rate limit headers
@@ -456,11 +583,13 @@ func (lat *LoginAttemptTracker) cleanupExpired() {
 	}
 }
 
-// Stop stops the tracker cleanup goroutine
+// Stop stops the tracker cleanup goroutine. Safe to call multiple times.
 func (lat *LoginAttemptTracker) Stop() {
-	if lat.cleanupTicker != nil {
-		close(lat.cleanupStopChan)
-	}
+	lat.stopOnce.Do(func() {
+		if lat.cleanupTicker != nil {
+			close(lat.cleanupStopChan)
+		}
+	})
 }
 
 // RecordFailedAttempt records a failed login attempt

@@ -78,7 +78,7 @@ type AuthService struct {
 //
 // The function ensures all nil inputs are replaced with safe defaults, so it
 // will never return a partially-configured service.
-func NewAuthService(authConfig *AuthConfig, authConn *auth.Auth, hashConfig *PasswordHasherConfig, auditLogger AuditLogger, loginAttemptTracker *LoginAttemptTracker) *AuthService {
+func NewAuthService(authConfig *AuthConfig, authConn *auth.Auth, hashConfig *PasswordHasherConfig, auditLogger AuditLogger, loginAttemptTracker *LoginAttemptTracker, logger Logger) *AuthService {
 	if hashConfig == nil {
 		hashConfig = DefaultPasswordHasherConfig()
 	}
@@ -90,6 +90,9 @@ func NewAuthService(authConfig *AuthConfig, authConn *auth.Auth, hashConfig *Pas
 	}
 	if auditLogger == nil {
 		auditLogger = &NoOpAuditLogger{}
+	}
+	if logger == nil {
+		logger = noopLogger{}
 	}
 
 	as := &AuthService{
@@ -104,10 +107,10 @@ func NewAuthService(authConfig *AuthConfig, authConn *auth.Auth, hashConfig *Pas
 	}
 
 	// Initialize sub-services
-	as.Account = NewAccountService(as.accountStore, as.sessionStore, hashConfig, authConfig, auditLogger)
+	as.Account = NewAccountService(as.accountStore, as.sessionStore, hashConfig, authConfig, auditLogger, authConn.Transactor(), logger)
 	as.User = NewUserService(as.userStore, as.accountStore, as.sessionStore, hashConfig, authConfig, auditLogger)
 	as.Verification = NewVerificationService(as.verificationStore, auditLogger)
-	as.Session = NewSessionService(as.userStore, as.sessionStore, nil, auditLogger)
+	as.Session = NewSessionService(as.userStore, as.sessionStore, nil, auditLogger, logger)
 	as.EmailPassword = NewEmailPasswordHandlers(as)
 
 	return as

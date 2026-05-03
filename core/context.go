@@ -12,41 +12,35 @@ import (
 // =============================================================================
 // Context Key Types
 // =============================================================================
-
-// contextKey is a custom type for context keys to prevent collisions.
 //
-// Using a custom unexported type ensures that Aegis context keys never conflict
-// with user application keys or keys from other libraries. This follows Go best
-// practices for context keys as described in the context package documentation.
-type contextKey string
+// Each context key has its own unexported empty-struct type. This is the
+// strongest possible guarantee against collisions: even if some other
+// package happens to define a key with the same string value, Go's type
+// system makes the keys distinct because the underlying types differ.
+// (See https://pkg.go.dev/context#WithValue: "The provided key must be
+// comparable and should not be of type string or any other built-in
+// type to avoid collisions between packages using context.")
 
-// Core context keys - all prefixed with "aegis_" for clarity and debugging.
-// These keys are used throughout the framework to pass authentication and
-// request metadata through the request lifecycle.
-const (
-	// userContextKey stores the base auth.User for authenticated requests
-	userContextKey contextKey = "aegis_user"
+type userContextKeyType struct{}
+type enrichedUserKeyType struct{}
+type sessionContextKeyType struct{}
+type requestIDContextKeyType struct{}
+type requestMetaKeyType struct{}
+type pathParamFuncKeyType struct{}
+type pluginDataKeyType struct{}
+type contextInitializedKeyType struct{}
 
-	// enrichedUserKey stores the EnrichedUser with plugin extensions
-	enrichedUserKey contextKey = "aegis_enriched_user"
-
-	// sessionContextKey stores the current session for authenticated requests
-	sessionContextKey contextKey = "aegis_session"
-
-	// requestIDContextKey stores a unique identifier for this request (for logging/tracing)
-	requestIDContextKey contextKey = "aegis_request_id"
-
-	// requestMetaKey stores arbitrary request metadata
-	requestMetaKey contextKey = "aegis_request_meta"
-
-	// pathParamFuncKey stores the router's path parameter extraction function
-	pathParamFuncKey contextKey = "aegis_path_param_func"
-
-	// pluginDataKey stores plugin-specific data that shouldn't be in EnrichedUser
-	pluginDataKey contextKey = "aegis_plugin_data"
-
-	// contextInitializedKey indicates if the Aegis context has been initialized
-	contextInitializedKey contextKey = "aegis_initialized"
+// Sentinel values used as context keys. These are package-private; all
+// access goes through the With*/Get* helpers below.
+var (
+	userContextKey        = userContextKeyType{}
+	enrichedUserKey       = enrichedUserKeyType{}
+	sessionContextKey     = sessionContextKeyType{}
+	requestIDContextKey   = requestIDContextKeyType{}
+	requestMetaKey        = requestMetaKeyType{}
+	pathParamFuncKey      = pathParamFuncKeyType{}
+	pluginDataKey         = pluginDataKeyType{}
+	contextInitializedKey = contextInitializedKeyType{}
 )
 
 // =============================================================================

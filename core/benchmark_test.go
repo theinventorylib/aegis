@@ -91,7 +91,7 @@ func BenchmarkGenerateID(b *testing.B) {
 func BenchmarkRateLimiter_Allow(b *testing.B) {
 	config := DefaultRateLimitConfig()
 	config.RequestsPerWindow = 1000000 // Set high to avoid blocking
-	limiter := NewRateLimiter(config, nil, nil)
+	limiter := NewRateLimiter(config, nil, nil, nil)
 	defer limiter.Stop()
 	ctx := context.Background()
 
@@ -105,7 +105,7 @@ func BenchmarkRateLimiter_Allow(b *testing.B) {
 func BenchmarkRateLimiter_Allow_SameKey(b *testing.B) {
 	config := DefaultRateLimitConfig()
 	config.RequestsPerWindow = 1000000 // Set high to avoid blocking
-	limiter := NewRateLimiter(config, nil, nil)
+	limiter := NewRateLimiter(config, nil, nil, nil)
 	defer limiter.Stop()
 	ctx := context.Background()
 
@@ -215,7 +215,7 @@ func BenchmarkGenerateULID_Parallel(b *testing.B) {
 func BenchmarkRateLimiter_Allow_Parallel(b *testing.B) {
 	config := DefaultRateLimitConfig()
 	config.RequestsPerWindow = 1000000
-	limiter := NewRateLimiter(config, nil, nil)
+	limiter := NewRateLimiter(config, nil, nil, nil)
 	defer limiter.Stop()
 	ctx := context.Background()
 

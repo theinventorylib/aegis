@@ -17,7 +17,7 @@ func TestNewSessionService(t *testing.T) {
 	config := DefaultSessionConfig()
 
 	// When
-	service := NewSessionService(mockUserStore, mockSessionStore, config, nil)
+	service := NewSessionService(mockUserStore, mockSessionStore, config, nil, nil)
 
 	// Then
 	if service == nil {
@@ -32,7 +32,7 @@ func TestNewSessionService_DefaultConfig(t *testing.T) {
 	mockSessionStore := &mockSessionStore{}
 
 	// When - nil config should use defaults
-	service := NewSessionService(mockUserStore, mockSessionStore, nil, nil)
+	service := NewSessionService(mockUserStore, mockSessionStore, nil, nil, nil)
 
 	// Then
 	if service == nil {
@@ -49,7 +49,7 @@ func TestSessionService_CookieManager(t *testing.T) {
 	mockUserStore := &mockUserStore{}
 	mockSessionStore := &mockSessionStore{}
 	config := DefaultSessionConfig()
-	service := NewSessionService(mockUserStore, mockSessionStore, config, nil)
+	service := NewSessionService(mockUserStore, mockSessionStore, config, nil, nil)
 
 	// When
 	cookieManager := service.GetCookieManager()
@@ -177,7 +177,7 @@ func TestSessionService_BearerAuth(t *testing.T) {
 	mockUserStore := &mockUserStore{}
 	mockSessionStore := &mockSessionStore{}
 	config := DefaultSessionConfig()
-	service := NewSessionService(mockUserStore, mockSessionStore, config, nil)
+	service := NewSessionService(mockUserStore, mockSessionStore, config, nil, nil)
 
 	// Initially disabled
 	if service.IsBearerAuthEnabled() {
