@@ -472,6 +472,9 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 			}
 
 			// Check rate limit
+			safePath := strings.ReplaceAll(r.URL.Path, "\n", "")
+			safePath = strings.ReplaceAll(safePath, "\r", "")
+
 			allowed, remaining, err := limiter.Allow(r.Context(), key)
 			if err != nil {
 				// Backing-store error (typically Redis). Log it; behavior
@@ -479,7 +482,7 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 				//   - fail-open: allowed=true, request proceeds
 				//   - fail-closed: allowed=false, request is rejected below
 				limiter.logger.Error("rate limiter: backing-store error",
-					"path", r.URL.Path,
+					"path", safePath,
 					"method", r.Method,
 					"fail_closed", limiter.config.FailClosed,
 					"error", err)
@@ -512,7 +515,7 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 				_ = limiter.auditLogger.LogAuthEvent(r.Context(), AuditEventRateLimitHit, "", false, map[string]any{
 					"key_type":  keyType,
 					"key_hash":  HashShort(keyVal),
-					"path":      r.URL.Path,
+					"path":      safePath,
 					"method":    r.Method,
 					"remaining": remaining,
 				})
