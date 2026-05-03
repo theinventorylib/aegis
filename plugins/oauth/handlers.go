@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/markbates/goth"
 	"github.com/theinventorylib/aegis/core"
@@ -171,6 +172,9 @@ func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Sanitize provider name before using in error message
 	providerName := core.SanitizeString(req.Provider, nil)
+	// Sanitize provider name for logs to prevent log-forging via line breaks.
+	providerNameForLog := strings.ReplaceAll(providerName, "\n", "")
+	providerNameForLog = strings.ReplaceAll(providerNameForLog, "\r", "")
 
 	// Get provider
 	provider, err := goth.GetProvider(req.Provider)
@@ -210,7 +214,7 @@ func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err := sess.Authorize(provider, params); err != nil {
 		if h.plugin.logger != nil {
 			h.plugin.logger.Error("oauth: Authorize failed",
-				"user_id", user.ID, "provider", providerName, "error", err)
+				"user_id", user.ID, "provider", providerNameForLog, "error", err)
 		}
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -224,7 +228,7 @@ func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if h.plugin.logger != nil {
 			h.plugin.logger.Error("oauth: FetchUser failed",
-				"user_id", user.ID, "provider", providerName, "error", err)
+				"user_id", user.ID, "provider", providerNameForLog, "error", err)
 		}
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
@@ -238,7 +242,7 @@ func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	if err := h.plugin.LinkAccount(r.Context(), user.ID, oauthUser, gothUser.Provider); err != nil {
 		if h.plugin.logger != nil {
 			h.plugin.logger.Error("oauth: LinkAccount failed",
-				"user_id", user.ID, "provider", providerName, "error", err)
+				"user_id", user.ID, "provider", providerNameForLog, "error", err)
 		}
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
