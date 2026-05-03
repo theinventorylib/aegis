@@ -32,7 +32,7 @@ import (
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/plugins/jwt"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/router/routers"
 )
 
 func main() {
@@ -64,7 +64,7 @@ func main() {
 		MaxAge:           300,
 	}))
 
-	r := router.NewChiRouter(mux)
+	r := routers.NewChiRouter(mux)
 
 	// 4. Create JWT plugin
 	jwtConfig := &jwt.Config{
@@ -76,12 +76,13 @@ func main() {
 
 	// 5. Create Aegis instance in API-only mode
 	// Bearer token auth is auto-enabled via WithAPIOnlyMode
-	a, err := aegis.New(context.Background(),
-		config.WithDB(db),
-		config.WithRouter(r),
-		config.WithSecret([]byte("your-32-byte-secret-key-here!!!!")),
-		config.WithAPIOnlyMode(true), // Disable cookies/CSRF, auto-enable Bearer auth
-	)
+	cfg := config.Default().
+		WithDB(db).
+		WithRouter(r).
+		WithSecret([]byte("your-32-byte-secret-key-here!!!!")).
+		WithAPIOnlyMode(true) // Disable cookies/CSRF, auto-enable Bearer auth
+
+	a, err := aegis.New(context.Background(), cfg)
 	if err != nil {
 		log.Fatal("Failed to create Aegis instance:", err)
 	}
@@ -93,9 +94,11 @@ func main() {
 
 	// 6. Mount Aegis routes
 	// JWT plugin adds these routes:
-	//   - POST /auth/jwt/token         - Generate JWT from session
-	//   - POST /auth/jwt/refresh       - Refresh JWT token
-	//   - POST /auth/jwt/revoke        - Revoke JWT token
+	//   - POST /auth/jwt/token          - Generate JWT from session
+	//   - POST /auth/jwt/getAccessToken  - Generate access token only
+	//   - POST /auth/jwt/refreshToken   - Refresh JWT tokens
+	//   - POST /auth/jwt/logout         - Revoke JWT token
+	//   - GET  /auth/jwt/.well-known/jwks.json - JWKS public keys
 	a.MountRoutes("/auth")
 
 	// 6. Public endpoints
@@ -124,6 +127,50 @@ func main() {
 	log.Println("🚀 JWT API Server starting on http://localhost:8080")
 	log.Println("📖 API documentation: http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", mux))
+}
+
+// Response types for consistent API responses
+
+type HealthStatus struct {
+	Status  string `json:"status"`
+	Service string `json:"service"`
+	Time    string `json:"time"`
+}
+
+type ProfileResponse struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type DataItem struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	UserID    string    `json:"user_id"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+}
+
+type ListDataResponse struct {
+	Items []DataItem `json:"items"`
+	Count int        `json:"count"`
+}
+
+type SimpleUser struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
+type AdminUsersResponse struct {
+	Users []SimpleUser `json:"users"`
+}
+
+type AdminStats struct {
+	TotalUsers    int `json:"total_users"`
+	ActiveUsers   int `json:"active_users"`
+	TotalRequests int `json:"total_requests"`
 }
 
 func apiDocsHandler(w http.ResponseWriter, r *http.Request) {
@@ -167,24 +214,26 @@ func apiDocsHandler(w http.ResponseWriter, r *http.Request) {
         <div class="section">
             <h2>🚀 Quick Start</h2>
             <pre># 1. Register
-curl -X POST http://localhost:8080/auth/signup \\
+curl -X POST http://localhost:8080/auth/default/signup \\
   -H "Content-Type: application/json" \\
   -d '{"email":"user@example.com","password":"SecurePass123","name":"John Doe"}'
 
-# 2. Login (get JWT token)
-curl -X POST http://localhost:8080/auth/login \\
+# 2. Login (get session token)
+curl -X POST http://localhost:8080/auth/default/login \\
   -H "Content-Type: application/json" \\
-  -d '{"email":"user@example.com","password":"SecurePass123"}'
+  -d '{"email":"user@example.com","password":"SecurePass123"}' \\
+  -c cookies.txt
 
-# Returns: {"success":true,"token":"eyJhbGc...","refresh_token":"..."}
+# 3. Get JWT token pair
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/jwt/token \\
+  -b cookies.txt | jq -r '.data.accessToken')
 
-# 3. Use token in subsequent requests
-TOKEN="eyJhbGc..."
+# 4. Use JWT token in subsequent requests
 curl http://localhost:8080/api/profile \\
   -H "Authorization: Bearer $TOKEN"
 
-# 4. Refresh token when it expires
-curl -X POST http://localhost:8080/auth/jwt/refresh \\
+# 5. Refresh token when it expires
+curl -X POST http://localhost:8080/auth/jwt/refreshToken \\
   -H "Content-Type: application/json" \\
   -d '{"refresh_token":"your-refresh-token"}'</pre>
         </div>
@@ -193,28 +242,28 @@ curl -X POST http://localhost:8080/auth/jwt/refresh \\
             <h2>📡 Authentication Endpoints</h2>
             
             <div class="endpoint">
-                <span class="method post">POST</span> <code>/auth/signup</code>
+                <span class="method post">POST</span> <code>/auth/default/signup</code>
                 <p>Register a new user account</p>
                 <p><strong>Body:</strong> <code>{"email": "user@example.com", "password": "SecurePass123", "name": "John Doe"}</code></p>
-                <p><strong>Returns:</strong> User object + JWT token</p>
+                <p><strong>Returns:</strong> User object</p>
             </div>
             
             <div class="endpoint">
-                <span class="method post">POST</span> <code>/auth/login</code>
+                <span class="method post">POST</span> <code>/auth/default/login</code>
                 <p>Login with email and password</p>
                 <p><strong>Body:</strong> <code>{"email": "user@example.com", "password": "SecurePass123"}</code></p>
-                <p><strong>Returns:</strong> <code>{"success": true, "token": "JWT...", "refresh_token": "..."}</code></p>
+                <p><strong>Returns:</strong> Session token (via cookie or Bearer header)</p>
             </div>
             
             <div class="endpoint">
-                <span class="method post">POST</span> <code>/auth/jwt/refresh</code>
+                <span class="method post">POST</span> <code>/auth/jwt/refreshToken</code>
                 <p>Refresh an expired access token</p>
                 <p><strong>Body:</strong> <code>{"refresh_token": "your-refresh-token"}</code></p>
                 <p><strong>Returns:</strong> New access token and refresh token</p>
             </div>
             
             <div class="endpoint">
-                <span class="method post">POST</span> <code>/auth/jwt/revoke</code>
+                <span class="method post">POST</span> <code>/auth/jwt/logout</code>
                 <p>Revoke a JWT token (blacklist it)</p>
                 <p><strong>Headers:</strong> <code>Authorization: Bearer {token}</code></p>
             </div>
@@ -277,10 +326,13 @@ curl -X POST http://localhost:8080/auth/jwt/refresh \\
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(map[string]any{
-		"status":  "healthy",
-		"service": "aegis-jwt-api",
-		"time":    time.Now().Format(time.RFC3339),
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: HealthStatus{
+			Status:  "healthy",
+			Service: "aegis-jwt-api",
+			Time:    time.Now().Format(time.RFC3339),
+		},
 	})
 }
 
@@ -291,14 +343,14 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"user": map[string]any{
-			"id":         user.ID,
-			"email":      user.Email,
-			"name":       user.Name,
-			"created_at": user.CreatedAt,
-			"updated_at": user.UpdatedAt,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: ProfileResponse{
+			ID:        user.ID,
+			Email:     user.Email,
+			Name:      user.Name,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
 		},
 	})
 }
@@ -311,16 +363,18 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mock data
-	data := []map[string]any{
-		{"id": "1", "title": "Item 1", "user_id": user.ID},
-		{"id": "2", "title": "Item 2", "user_id": user.ID},
-		{"id": "3", "title": "Item 3", "user_id": user.ID},
+	data := []DataItem{
+		{ID: "1", Title: "Item 1", UserID: user.ID},
+		{ID: "2", Title: "Item 2", UserID: user.ID},
+		{ID: "3", Title: "Item 3", UserID: user.ID},
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"data":    data,
-		"count":   len(data),
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: ListDataResponse{
+			Items: data,
+			Count: len(data),
+		},
 	})
 }
 
@@ -338,19 +392,18 @@ func createDataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mock creation
-	result := map[string]any{
-		"id":         "new_id",
-		"user_id":    user.ID,
-		"created_at": time.Now(),
+	result := DataItem{
+		ID:        "new_id",
+		UserID:    user.ID,
+		CreatedAt: time.Now(),
 	}
-	for k, v := range input {
-		result[k] = v
+	if title, ok := input["title"].(string); ok {
+		result.Title = title
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"data":    result,
+	core.WriteJSON(w, http.StatusCreated, &core.Response{
+		Success: true,
+		Data:    result,
 	})
 }
 
@@ -363,9 +416,9 @@ func deleteDataHandler(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"message": "Deleted item " + id,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Deleted item " + id,
 	})
 }
 
@@ -378,11 +431,13 @@ func adminUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 	// In production, check if user has admin role
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"users": []map[string]any{
-			{"id": "1", "email": "user1@example.com", "name": "User 1"},
-			{"id": "2", "email": "user2@example.com", "name": "User 2"},
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: AdminUsersResponse{
+			Users: []SimpleUser{
+				{ID: "1", Email: "user1@example.com", Name: "User 1"},
+				{ID: "2", Email: "user2@example.com", Name: "User 2"},
+			},
 		},
 	})
 }
@@ -394,23 +449,18 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"stats": map[string]any{
-			"total_users":    1234,
-			"active_users":   456,
-			"total_requests": 98765,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: AdminStats{
+			TotalUsers:    1234,
+			ActiveUsers:   456,
+			TotalRequests: 98765,
 		},
 	})
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": false,
-		"error":   message,
-	})
+	core.WriteJSONError(w, status, message)
 }
 
 // extractToken extracts JWT from Authorization header

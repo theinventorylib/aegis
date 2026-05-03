@@ -30,7 +30,7 @@ import (
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/plugins/organizations"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/router/routers"
 )
 
 func main() {
@@ -49,7 +49,7 @@ func main() {
 	mux := chi.NewRouter()
 	mux.Use(middleware.Logger)
 	mux.Use(middleware.Recoverer)
-	r := router.NewChiRouter(mux)
+	r := routers.NewChiRouter(mux)
 
 	// 3. Create organizations plugin
 	orgPlugin := organizations.New(nil, plugins.DialectPostgres)
@@ -174,7 +174,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
         <h2>cURL Examples</h2>
         <pre>
 # 1. Sign up
-curl -X POST http://localhost:8080/auth/signup \\
+curl -X POST http://localhost:8080/auth/default/signup \\
   -H "Content-Type: application/json" \\
   -d '{"email":"alice@example.com","password":"SecurePass123","name":"Alice"}' \\
   -c cookies.txt
@@ -304,6 +304,17 @@ type Project struct {
 	CreatedBy      string `json:"created_by"`
 }
 
+// ListProjectsResponse is the response structure for listing projects
+type ListProjectsResponse struct {
+	Projects       []Project `json:"projects"`
+	OrganizationID string    `json:"organization_id"`
+}
+
+// TeamMembersInfo provides info about where to find team members
+type TeamMembersInfo struct {
+	OrganizationID string `json:"organization_id"`
+}
+
 func listProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	// Get organization ID from path param
 	orgID := core.GetSanitizedPathParam(r, "id")
@@ -312,10 +323,12 @@ func listProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"success":         true,
-		"projects":        projects[orgID],
-		"organization_id": orgID,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: ListProjectsResponse{
+			Projects:       projects[orgID],
+			OrganizationID: orgID,
+		},
 	})
 }
 
@@ -359,9 +372,9 @@ func createProjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	projects[orgID] = append(projects[orgID], project)
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"project": project,
+	core.WriteJSON(w, http.StatusCreated, &core.Response{
+		Success: true,
+		Data:    project,
 	})
 }
 
@@ -377,9 +390,9 @@ func getProjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	for _, p := range projects[orgID] {
 		if p.ID == projectID {
-			json.NewEncoder(w).Encode(map[string]any{
-				"success": true,
-				"project": p,
+			core.WriteJSON(w, http.StatusOK, &core.Response{
+				Success: true,
+				Data:    p,
 			})
 			return
 		}
@@ -401,9 +414,9 @@ func deleteProjectHandler(w http.ResponseWriter, r *http.Request) {
 	for i, p := range projects[orgID] {
 		if p.ID == projectID {
 			projects[orgID] = append(projects[orgID][:i], projects[orgID][i+1:]...)
-			json.NewEncoder(w).Encode(map[string]any{
-				"success": true,
-				"message": "Project deleted",
+			core.WriteJSON(w, http.StatusOK, &core.Response{
+				Success: true,
+				Message: "Project deleted",
 			})
 			return
 		}
@@ -421,9 +434,11 @@ func teamMembersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// In real app, query members from database
-	json.NewEncoder(w).Encode(map[string]any{
-		"success":         true,
-		"message":         "Use GET /auth/organizations/" + orgID + "/members to see team members",
-		"organization_id": orgID,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Use GET /auth/organizations/" + orgID + "/members to see team members",
+		Data: TeamMembersInfo{
+			OrganizationID: orgID,
+		},
 	})
 }

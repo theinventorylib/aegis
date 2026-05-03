@@ -27,7 +27,7 @@ import (
 	"github.com/theinventorylib/aegis"
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/router/routers"
 )
 
 func main() {
@@ -46,7 +46,7 @@ func main() {
 	mux := chi.NewRouter()
 	mux.Use(middleware.Logger)
 	mux.Use(middleware.Recoverer)
-	r := router.NewChiRouter(mux)
+	r := routers.NewChiRouter(mux)
 
 	// 3. Create Aegis instance
 	cfg := config.Default().
@@ -60,10 +60,10 @@ func main() {
 
 	// 4. Mount Aegis routes
 	// This registers the following endpoints:
-	//   - POST /auth/signup   - User registration
-	//   - POST /auth/login    - User login
-	//   - POST /auth/logout   - User logout
-	//   - GET  /auth/user     - Get current user (protected)
+	//   - POST /auth/default/signup   - User registration
+	//   - POST /auth/default/login    - User login
+	//   - POST /auth/default/logout   - User logout
+	//   - GET  /auth/default/session  - Get current session (protected)
 	a.MountRoutes("/auth")
 
 	// 5. Public routes
@@ -129,10 +129,10 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
     
     <div class="section">
         <h2>API Endpoints</h2>
-        <p><code>POST /auth/signup</code> - Register new user</p>
-        <p><code>POST /auth/login</code> - Login</p>
-        <p><code>POST /auth/logout</code> - Logout</p>
-        <p><code>GET /auth/user</code> - Get current user (protected)</p>
+        <p><code>POST /auth/default/signup</code> - Register new user</p>
+        <p><code>POST /auth/default/login</code> - Login</p>
+        <p><code>POST /auth/default/logout</code> - Logout</p>
+        <p><code>GET /auth/default/session</code> - Get current session (protected)</p>
     </div>
 </body>
 </html>
@@ -177,7 +177,7 @@ func loginPageHandler(w http.ResponseWriter, r *http.Request) {
                 password: formData.get('password')
             };
             
-            const res = await fetch('/auth/login', {
+            const res = await fetch('/auth/default/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -238,7 +238,7 @@ func signupPageHandler(w http.ResponseWriter, r *http.Request) {
                 password: formData.get('password')
             };
             
-            const res = await fetch('/auth/signup', {
+            const res = await fetch('/auth/default/signup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -298,7 +298,7 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
     
     <script>
         async function logout() {
-            const res = await fetch('/auth/logout', {
+            const res = await fetch('/auth/default/logout', {
                 method: 'POST',
             });
             

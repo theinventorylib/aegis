@@ -16,7 +16,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"log"
 	"net/http"
 
@@ -26,7 +25,7 @@ import (
 	"github.com/theinventorylib/aegis"
 	"github.com/theinventorylib/aegis/config"
 	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/router/routers"
 )
 
 func main() {
@@ -45,15 +44,16 @@ func main() {
 	mux := chi.NewRouter()
 	mux.Use(middleware.Logger)
 	mux.Use(middleware.Recoverer)
-	r := router.NewChiRouter(mux)
+	r := routers.NewChiRouter(mux)
 
 	// 3. Create Aegis instance with ULID strategy (default)
-	a, err := aegis.New(context.Background(),
-		config.WithDB(db),
-		config.WithRouter(r),
-		config.WithSecret([]byte("your-32-byte-secret-key-here!!!!")),
-		config.WithIDStrategy(core.IDStrategyULID), // Explicitly set ULID
-	)
+	cfg := config.Default().
+		WithDB(db).
+		WithRouter(r).
+		WithSecret([]byte("your-32-byte-secret-key-here!!!!")).
+		WithIDStrategy(core.IDStrategyULID) // Explicitly set ULID
+
+	a, err := aegis.New(context.Background(), cfg)
 	if err != nil {
 		log.Fatal("Failed to create Aegis instance:", err)
 	}
@@ -120,57 +120,76 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
     <div class="section">
         <h2>Authentication</h2>
         <p>Try creating a user account to see how IDs are used:</p>
-        <a href="/auth/signup" class="button">Sign Up</a>
-        <a href="/auth/login" class="button">Login</a>
+        <a href="/auth/default/signup" class="button">Sign Up</a>
+        <a href="/auth/default/login" class="button">Login</a>
     </div>
 </body>
 </html>
 `))
 }
 
-func idsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+// Response types for consistent API responses
 
+type IDListResponse struct {
+	Strategy string   `json:"strategy"`
+	IDs      []string `json:"ids"`
+	Length   int      `json:"length"`
+}
+
+type IDStrategyInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Length      int    `json:"length"`
+	Sortable    bool   `json:"sortable"`
+	TimeBased   bool   `json:"time_based"`
+}
+
+type StrategyResponse struct {
+	CurrentStrategy     string           `json:"current_strategy"`
+	AvailableStrategies []IDStrategyInfo `json:"available_strategies"`
+}
+
+func idsHandler(w http.ResponseWriter, r *http.Request) {
 	ids := make([]string, 5)
 	for i := 0; i < 5; i++ {
 		ids[i] = core.GenerateID()
 	}
 
-	response := map[string]any{
-		"strategy": core.GetIDStrategy(),
-		"ids":      ids,
-		"length":   len(ids[0]),
-	}
-
-	json.NewEncoder(w).Encode(response)
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: IDListResponse{
+			Strategy: core.GetIDStrategy(),
+			IDs:      ids,
+			Length:   len(ids[0]),
+		},
+	})
 }
 
 func strategyHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	strategies := []map[string]any{
+	strategies := []IDStrategyInfo{
 		{
-			"name":        "ULID",
-			"description": "Universally Unique Lexicographically Sortable Identifier",
-			"length":      26,
-			"sortable":    true,
-			"time_based":  true,
+			Name:        "ULID",
+			Description: "Universally Unique Lexicographically Sortable Identifier",
+			Length:      26,
+			Sortable:    true,
+			TimeBased:   true,
 		},
 		{
-			"name":        "UUID",
-			"description": "Universally Unique Identifier (v4)",
-			"length":      36,
-			"sortable":    false,
-			"time_based":  false,
+			Name:        "UUID",
+			Description: "Universally Unique Identifier (v4)",
+			Length:      36,
+			Sortable:    false,
+			TimeBased:   false,
 		},
 	}
 
-	response := map[string]any{
-		"current_strategy":     core.GetIDStrategy(),
-		"available_strategies": strategies,
-	}
-
-	json.NewEncoder(w).Encode(response)
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: StrategyResponse{
+			CurrentStrategy:     core.GetIDStrategy(),
+			AvailableStrategies: strategies,
+		},
+	})
 }
 
 func dashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +217,7 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
     <h1>Dashboard</h1>
     <p>You are authenticated! Your user ID uses the current ID strategy.</p>
     <a href="/" class="button">Back to Home</a>
-    <a href="/auth/logout" class="button">Logout</a>
+    <a href="/auth/default/logout" class="button">Logout</a>
 </body>
 </html>
 `))
