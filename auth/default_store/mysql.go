@@ -216,3 +216,7 @@ func (m *mysqlQuerier) deleteSessionsByUserID(ctx context.Context, userID string
 func (m *mysqlQuerier) cleanupExpiredSessions(ctx context.Context, now string) error {
 	return m.q.CleanupExpiredSessions(ctx, now)
 }
+
+func (m *mysqlQuerier) withTx(tx *sql.Tx) querier {
+return &mysqlQuerier{q: m.q.WithTx(tx)}
+}

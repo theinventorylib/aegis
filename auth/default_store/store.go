@@ -14,7 +14,15 @@ import (
 // DefaultStore holds all default SQL-based store implementations.
 // It provides a complete implementation of all storage interfaces using
 // sqlc-generated database queries supporting PostgreSQL, MySQL, and SQLite.
-type DefaultStore struct{ q querier }
+//
+// In addition to the four store interfaces, DefaultStore implements
+// types.Transactor so callers can compose multiple writes into a single
+// database transaction (used, for example, by AccountService.UpdatePassword
+// to atomically rotate the password and revoke all active sessions).
+type DefaultStore struct {
+	q  querier
+	db *sql.DB
+}
 
 // NewDefaultStore creates a new default store for the given dialect.
 // The dialect switch happens exactly once here; all store methods call
@@ -31,7 +39,7 @@ func NewDefaultStore(db *sql.DB, dialect types.Dialect) (*DefaultStore, error) {
 	default:
 		return nil, fmt.Errorf("auth: unsupported dialect %q", dialect)
 	}
-	return &DefaultStore{q: q}, nil
+	return &DefaultStore{q: q, db: db}, nil
 }
 
 // UserStore returns the default user store implementation.
@@ -47,6 +55,54 @@ func (s *DefaultStore) VerificationStore() types.VerificationStore {
 
 // SessionStore returns the default session store implementation.
 func (s *DefaultStore) SessionStore() types.SessionStore { return &defaultSessionStore{q: s.q} }
+
+// BeginTx opens a database transaction and returns a types.Tx whose
+// store accessors are bound to the transaction. The caller must Commit
+// or Rollback the returned Tx; using `defer tx.Rollback()` immediately
+// after a successful BeginTx call is safe because Rollback after Commit
+// is a no-op.
+func (s *DefaultStore) BeginTx(ctx context.Context) (types.Tx, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("auth: default store has no *sql.DB; transactions unavailable")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &defaultTx{tx: tx, q: s.q.withTx(tx)}, nil
+}
+
+// defaultTx is the sql.Tx-backed implementation of types.Tx returned by
+// DefaultStore.BeginTx. The Tx is single-use: once Commit or Rollback is
+// called the tx is finished and additional calls to Rollback are no-ops.
+type defaultTx struct {
+	tx   *sql.Tx
+	q    querier
+	done bool
+}
+
+func (t *defaultTx) AccountStore() types.AccountStore { return &defaultAccountStore{q: t.q} }
+func (t *defaultTx) SessionStore() types.SessionStore { return &defaultSessionStore{q: t.q} }
+func (t *defaultTx) UserStore() types.UserStore       { return &defaultUserStore{q: t.q} }
+func (t *defaultTx) VerificationStore() types.VerificationStore {
+	return &defaultVerificationStore{q: t.q}
+}
+
+func (t *defaultTx) Commit() error {
+	if t.done {
+		return fmt.Errorf("auth: tx already finalized")
+	}
+	t.done = true
+	return t.tx.Commit()
+}
+
+func (t *defaultTx) Rollback() error {
+	if t.done {
+		return nil
+	}
+	t.done = true
+	return t.tx.Rollback()
+}
 
 type defaultUserStore struct{ q querier }
 
@@ -103,6 +159,8 @@ func (s *defaultUserStore) List(ctx context.Context, offset, limit int) ([]types
 	if limit <= 0 {
 		limit = 10
 	}
+	// ParsePagination already bounds these values for HTTP callers, but this
+	// store is also usable directly; keep the int32 clamps as defense-in-depth.
 	if offset > math.MaxInt32 {
 		offset = math.MaxInt32
 	}

@@ -216,3 +216,7 @@ func (s *sqliteQuerier) deleteSessionsByUserID(ctx context.Context, userID strin
 func (s *sqliteQuerier) cleanupExpiredSessions(ctx context.Context, now string) error {
 	return s.q.CleanupExpiredSessions(ctx, now)
 }
+
+func (s *sqliteQuerier) withTx(tx *sql.Tx) querier {
+return &sqliteQuerier{q: s.q.WithTx(tx)}
+}

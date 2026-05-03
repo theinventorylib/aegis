@@ -74,4 +74,10 @@ type querier interface {
 	deleteSession(ctx context.Context, id string) error
 	deleteSessionsByUserID(ctx context.Context, userID string) error
 	cleanupExpiredSessions(ctx context.Context, now string) error
+
+	// withTx returns a copy of this querier bound to the provided
+	// transaction. All subsequent calls on the returned querier execute
+	// on the transaction; the caller is responsible for committing or
+	// rolling back the transaction.
+	withTx(tx *sql.Tx) querier
 }

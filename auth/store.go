@@ -24,3 +24,11 @@ type VerificationStore = authtypes.VerificationStore
 // fetch by ID, token, and refresh token, list by user ID, delete, and clean up
 // expired sessions. Implement this to manage sessions in a custom store.
 type SessionStore = authtypes.SessionStore
+
+// Transactor is an optional capability re-exported from auth/types. Stores
+// that support cross-store transactions implement this; callers should treat
+// support as optional via Auth.Transactor.
+type Transactor = authtypes.Transactor
+
+// Tx is a re-export of the transaction handle returned by Transactor.BeginTx.
+type Tx = authtypes.Tx
