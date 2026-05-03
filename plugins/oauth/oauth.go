@@ -98,6 +98,7 @@ type Plugin struct {
 	sessionService  *core.SessionService
 	dialect         plugins.Dialect
 	aegis           plugins.Aegis
+	tokenKey        []byte // derived AES-256 key for encrypting provider tokens at rest
 	// initWarnings buffers provider-creation warnings from New() so they can be
 	// emitted via the structured logger once Init() wires it in.
 	initWarnings []string
@@ -252,6 +253,13 @@ func (p *Plugin) Description() string {
 // #nosec G101
 const SecretPurposeOAuthState = "aegis:oauth-state"
 
+// SecretPurposeOAuthTokens is the purpose string for deriving the AES-256-GCM
+// key used to encrypt provider access/refresh tokens at rest in the OAuth
+// connections store. Derived from the master secret via DeriveSecret so the
+// key is unique per deployment without requiring a separate config knob.
+// #nosec G101
+const SecretPurposeOAuthTokens = "aegis:oauth-tokens"
+
 // Init initializes the OAuth plugin with Aegis services.
 //
 // This method is called during Aegis startup to inject dependencies and set up
@@ -296,19 +304,90 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 		p.store = store
 	}
 
-	// Initialize OAuth state store with Aegis settings if not already done
+	// Initialize OAuth state store with Aegis settings if not already done.
+	//
+	// The state cookie protects the OAuth flow from CSRF; we MUST sign it.
+	// DeriveSecret returns nil when the master secret is missing (e.g. a
+	// misconfigured API-only deployment), in which case we fail loudly
+	// rather than silently fall back to unsigned cookies.
 	if p.stateStore == nil && a != nil {
-		secret := a.DeriveSecret(SecretPurposeOAuthState)
-		if len(secret) > 0 && p.sessionService != nil {
-			cfg := p.sessionService.GetConfig()
-			p.stateStore = NewStateStore(&StateStoreConfig{
-				SessionConfig: cfg,
-				Secret:        secret,
-				MaxAge:        15 * 60, // 15 minutes for OAuth state
-			})
+		if p.sessionService == nil {
+			return fmt.Errorf("oauth plugin: session service unavailable; cannot initialize state store")
 		}
+		secret := a.DeriveSecret(SecretPurposeOAuthState)
+		if len(secret) == 0 {
+			return fmt.Errorf("oauth plugin: cannot derive state-cookie secret; configure aegis with config.WithSecret(...) so OAuth state cookies can be signed")
+		}
+		store, err := NewStateStore(&StateStoreConfig{
+			SessionConfig: p.sessionService.GetConfig(),
+			Secret:        secret,
+			MaxAge:        15 * 60, // 15 minutes for OAuth state
+		})
+		if err != nil {
+			return fmt.Errorf("oauth plugin: failed to initialize state store: %w", err)
+		}
+		p.stateStore = store
 	}
 
+	// Derive the per-deployment key used to encrypt provider access/refresh
+	// tokens at rest. Without a master secret we refuse to start so that
+	// tokens are never written in plaintext by accident.
+	tokenKey := a.DeriveSecret(SecretPurposeOAuthTokens)
+	if len(tokenKey) == 0 {
+		return fmt.Errorf("oauth plugin: cannot derive token-encryption key; configure aegis with config.WithSecret(...) so provider tokens can be encrypted at rest")
+	}
+	p.tokenKey = tokenKey
+
+	return nil
+}
+
+// encryptConnectionTokens encrypts the access/refresh tokens on conn in place
+// using the deployment-specific key derived in Init. Empty tokens are left
+// unchanged. Already-encrypted values (carrying the EncryptionPrefix) are
+// left as-is so callers can pass round-tripped Connections back without
+// double-encrypting.
+func (p *Plugin) encryptConnectionTokens(conn *oauthtypes.Connection) error {
+	if conn == nil {
+		return nil
+	}
+	if conn.AccessToken != "" && !core.IsEncrypted(conn.AccessToken) {
+		sealed, err := core.SealWithKey(p.tokenKey, conn.AccessToken)
+		if err != nil {
+			return fmt.Errorf("oauth: encrypt access token: %w", err)
+		}
+		conn.AccessToken = sealed
+	}
+	if conn.RefreshToken != "" && !core.IsEncrypted(conn.RefreshToken) {
+		sealed, err := core.SealWithKey(p.tokenKey, conn.RefreshToken)
+		if err != nil {
+			return fmt.Errorf("oauth: encrypt refresh token: %w", err)
+		}
+		conn.RefreshToken = sealed
+	}
+	return nil
+}
+
+// decryptConnectionTokens reverses encryptConnectionTokens. Plaintext values
+// (legacy rows written before encryption was enabled) are returned unchanged
+// so reads remain backwards-compatible; the next write upgrades them.
+func (p *Plugin) decryptConnectionTokens(conn *oauthtypes.Connection) error {
+	if conn == nil {
+		return nil
+	}
+	if conn.AccessToken != "" {
+		pt, err := core.OpenWithKey(p.tokenKey, conn.AccessToken)
+		if err != nil {
+			return fmt.Errorf("oauth: decrypt access token: %w", err)
+		}
+		conn.AccessToken = pt
+	}
+	if conn.RefreshToken != "" {
+		pt, err := core.OpenWithKey(p.tokenKey, conn.RefreshToken)
+		if err != nil {
+			return fmt.Errorf("oauth: decrypt refresh token: %w", err)
+		}
+		conn.RefreshToken = pt
+	}
 	return nil
 }
 
@@ -703,6 +782,9 @@ func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser
 		UpdatedAt:      time.Now(),
 	}
 
+	if err := p.encryptConnectionTokens(&conn); err != nil {
+		return nil, err
+	}
 	_, err = p.store.CreateConnection(ctx, conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save OAuth connection: %w", err)
@@ -753,6 +835,9 @@ func (p *Plugin) LinkAccount(ctx context.Context, userID string, oauthUser *oaut
 		UpdatedAt:      time.Now(),
 	}
 
+	if err := p.encryptConnectionTokens(&conn); err != nil {
+		return err
+	}
 	_, err := p.store.CreateConnection(ctx, conn)
 	return err
 }
@@ -784,7 +869,11 @@ func (p *Plugin) GetUserConnections(ctx context.Context, userID string) ([]*oaut
 	}
 	result := make([]*oauthtypes.Connection, len(conns))
 	for i, conn := range conns {
-		result[i] = &conn
+		c := conn
+		if err := p.decryptConnectionTokens(&c); err != nil {
+			return nil, err
+		}
+		result[i] = &c
 	}
 	return result, nil
 }
@@ -854,6 +943,11 @@ func (p *Plugin) RefreshConnection(ctx context.Context, userID, provider string)
 		return nil, fmt.Errorf("no OAuth connection found for provider %s", provider)
 	}
 
+	// Decrypt the stored refresh token before handing it to the provider.
+	if err := p.decryptConnectionTokens(conn); err != nil {
+		return nil, fmt.Errorf("failed to decrypt OAuth tokens: %w", err)
+	}
+
 	if conn.RefreshToken == "" {
 		return nil, fmt.Errorf("no refresh token available for provider %s", provider)
 	}
@@ -883,7 +977,13 @@ func (p *Plugin) RefreshConnection(ctx context.Context, userID, provider string)
 	conn.ExpiresAt = newToken.Expiry
 	conn.UpdatedAt = time.Now()
 
-	if err := p.store.UpdateConnection(ctx, *conn); err != nil {
+	// Re-encrypt before persisting; keep the in-memory copy plaintext for
+	// the caller so they can use the new access token immediately.
+	persisted := *conn
+	if err := p.encryptConnectionTokens(&persisted); err != nil {
+		return nil, fmt.Errorf("failed to encrypt refreshed tokens: %w", err)
+	}
+	if err := p.store.UpdateConnection(ctx, persisted); err != nil {
 		return nil, fmt.Errorf("failed to persist refreshed tokens: %w", err)
 	}
 
