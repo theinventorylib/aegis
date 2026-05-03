@@ -153,6 +153,22 @@ type Aegis struct {
 
 	// plugins holds all registered plugins with their metadata
 	plugins map[string]pluginRegistration
+
+	// pluginSeq monotonically increments on each Use/UseWithPriority so
+	// GetPlugins can stably break ties between plugins registered at the
+	// same priority. Without this, the iteration order of the plugins map
+	// would surface in the sort and cause non-deterministic enricher /
+	// shutdown ordering across process restarts.
+	pluginSeq uint64
+
+	// migrations detects schema conflicts between plugins (two plugins
+	// creating the same table, or adding the same column to a shared table).
+	migrations *plugins.MigrationRegistry
+
+	// routes records every (method, path) registered during MountRoutes so
+	// callers can introspect the surface area and so duplicate registrations
+	// are flagged before the underlying router silently overwrites them.
+	routes *router.Registry
 }
 
 // pluginRegistration holds a plugin with its registration metadata.
@@ -169,6 +185,10 @@ type pluginRegistration struct {
 
 	// priority determines initialization/mounting order (lower = earlier)
 	priority int
+
+	// addedAt is the registration sequence number used as a stable
+	// tiebreaker when two plugins share the same priority.
+	addedAt uint64
 }
 
 // New creates a new Aegis authentication framework instance.
@@ -224,9 +244,11 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 	}
 
 	aegis := &Aegis{
-		config:  cfg,
-		router:  cfg.Router,
-		plugins: make(map[string]pluginRegistration),
+		config:     cfg,
+		router:     cfg.Router,
+		plugins:    make(map[string]pluginRegistration),
+		migrations: plugins.NewMigrationRegistry(),
+		routes:     router.NewRegistry(),
 	}
 
 	// Apply ID generation configuration from config
@@ -278,13 +300,19 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 		})
 	}
 
+	// Build coreLogger early so subsystems (rate limiter, auth) get it.
+	var coreLogger core.Logger
+	if cfg.Logger != nil {
+		coreLogger = cfg.Logger
+	}
+
 	// Initialize rate limiting if enabled
 	if cfg.RateLimitEnabled {
 		rateLimitConfig := cfg.RateLimitConfig
 		if rateLimitConfig == nil {
 			rateLimitConfig = core.DefaultRateLimitConfig()
 		}
-		aegis.rateLimiter = core.NewRateLimiter(rateLimitConfig, redisClient, auditLogger)
+		aegis.rateLimiter = core.NewRateLimiter(rateLimitConfig, redisClient, auditLogger, coreLogger)
 
 		loginAttemptConfig := cfg.LoginAttemptConfig
 		if loginAttemptConfig == nil {
@@ -301,7 +329,7 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 	}
 
 	// Create AuthService
-	aegis.auth = core.NewAuthService(cfg.CoreAuth, authConn, hashConfig, auditLogger, loginAttemptTracker)
+	aegis.auth = core.NewAuthService(cfg.CoreAuth, authConn, hashConfig, auditLogger, loginAttemptTracker, coreLogger)
 
 	// Enable Bearer token authentication if configured
 	// Bearer auth is auto-enabled in API mode unless explicitly disabled
@@ -380,13 +408,32 @@ func (a *Aegis) MountRoutes(prefix string) {
 	if a.config != nil {
 		coreAuth = a.config.CoreAuth
 	}
+
+	// Build a conflict callback that forwards collisions to the framework
+	// logger; if no logger is configured, conflicts are silently
+	// recorded (the registry still tracks them for later introspection).
+	var onConflict router.ConflictFunc
+	if a.config != nil && a.config.Logger != nil {
+		log := a.config.Logger
+		onConflict = func(method, path, newOwner, prevOwner string) {
+			log.Error("route registration conflict",
+				"method", method,
+				"path", path,
+				"new_owner", newOwner,
+				"previous_owner", prevOwner)
+		}
+	}
+
 	corePrefix := prefix + "/default"
-	defaults.MountRoutes(a.router, a.auth, coreAuth, corePrefix, a.rateLimiter)
+	coreRecRouter := router.NewRecorder(a.router, a.routes, "core", corePrefix, onConflict)
+	defaults.MountRoutes(coreRecRouter, a.auth, coreAuth, corePrefix, a.rateLimiter)
 
 	// Get sorted plugins for mounting
 	sortedPlugins := a.GetPlugins()
 	for _, p := range sortedPlugins {
-		p.MountRoutes(a.router, prefix+"/"+p.Name())
+		pluginPrefix := prefix + "/" + p.Name()
+		pluginRouter := router.NewRecorder(a.router, a.routes, p.Name(), pluginPrefix, onConflict)
+		p.MountRoutes(pluginRouter, pluginPrefix)
 	}
 }
 
@@ -524,6 +571,16 @@ func (a *Aegis) UseWithPriority(ctx context.Context, plugin plugins.Plugin, prio
 		return err
 	}
 
+	// Detect migration conflicts (CREATE TABLE / ADD COLUMN collisions
+	// between plugins) before committing the registration. Init has run,
+	// but the plugin is not yet visible to MountRoutes / GetPlugins, so
+	// callers can recover by simply not registering this plugin.
+	if a.migrations != nil {
+		if err := a.migrations.Register(plugin.Name(), plugin.GetMigrations()); err != nil {
+			return err
+		}
+	}
+
 	// If the plugin can validate bearer tokens (e.g., JWT), append it to the
 	// session service's validator chain so AuthMiddleware will try it.
 	if v, ok := plugin.(core.BearerTokenValidator); ok {
@@ -531,9 +588,11 @@ func (a *Aegis) UseWithPriority(ctx context.Context, plugin plugins.Plugin, prio
 	}
 
 	a.mu.Lock()
+	a.pluginSeq++
 	a.plugins[plugin.Name()] = pluginRegistration{
 		plugin:   plugin,
 		priority: priority,
+		addedAt:  a.pluginSeq,
 	}
 	a.mu.Unlock()
 
@@ -632,18 +691,24 @@ func (a *Aegis) AuthMiddleware() func(http.Handler) http.Handler {
 }
 
 // runUserEnrichers runs all plugins that implement UserEnricher.
+//
+// Enrichers run in plugin priority order (lowest priority number first),
+// matching the order of Init / MountRoutes. This makes it deterministic
+// for plugins that depend on fields written by earlier enrichers
+// (e.g. an "audit" plugin reading the "role" field set by the admin
+// plugin).
 func (a *Aegis) runUserEnrichers(ctx context.Context, user *core.EnrichedUser) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	for _, reg := range a.plugins {
-		if enricher, ok := reg.plugin.(plugins.UserEnricher); ok {
-			if err := enricher.EnrichUser(ctx, user); err != nil {
-				if a.config != nil && a.config.Logger != nil {
-					a.config.Logger.Error("UserEnricher failed",
-						"plugin", reg.plugin.Name(),
-						"error", err)
-				}
+	sortedPlugins := a.GetPlugins()
+	for _, p := range sortedPlugins {
+		enricher, ok := p.(plugins.UserEnricher)
+		if !ok {
+			continue
+		}
+		if err := enricher.EnrichUser(ctx, user); err != nil {
+			if a.config != nil && a.config.Logger != nil {
+				a.config.Logger.Error("UserEnricher failed",
+					"plugin", p.Name(),
+					"error", err)
 			}
 		}
 	}
@@ -744,6 +809,60 @@ func (a *Aegis) GetRateLimiter() *core.RateLimiter {
 	return a.rateLimiter
 }
 
+// SecurityHeadersMiddleware returns middleware that emits common HTTP
+// security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy,
+// optionally HSTS, etc.) on every response.
+//
+// Pass nil to use core.DefaultSecurityHeadersConfig().
+//
+// HSTS is only emitted when the request was served over TLS, so it is
+// safe to enable in mixed dev/prod setups.
+//
+// Example:
+//
+//	router.Use(aegis.SecurityHeadersMiddleware(nil))
+func (a *Aegis) SecurityHeadersMiddleware(cfg *core.SecurityHeadersConfig) func(http.Handler) http.Handler {
+	return core.SecurityHeadersMiddleware(cfg)
+}
+
+// CSRFMiddleware returns middleware that enforces CSRF protection using
+// the signed double-submit cookie pattern.
+//
+// The middleware derives its signing key from the master secret
+// (config.WithSecret(...)). It is therefore an error — and a panic — to
+// call CSRFMiddleware before configuring a master secret of at least
+// 32 bytes, or in API-only mode (which has no master secret).
+//
+// Bearer-token requests and safe methods (GET/HEAD/OPTIONS/TRACE) are
+// exempted automatically.
+//
+// Pass a nil cfg to use core.DefaultCSRFConfig() with the framework's
+// configured master secret. To override defaults, build a CSRFConfig,
+// leave MasterSecret empty (it will be filled in for you), and pass a
+// pointer to it.
+//
+// Example:
+//
+//	router.Use(aegis.CSRFMiddleware(nil))
+//
+//	cfg := core.DefaultCSRFConfig()
+//	cfg.SameSite = http.SameSiteStrictMode
+//	cfg.TrustedOrigins = []string{"https://app.example.com"}
+//	router.Use(aegis.CSRFMiddleware(&cfg))
+func (a *Aegis) CSRFMiddleware(cfg *core.CSRFConfig) func(http.Handler) http.Handler {
+	if a.config == nil || len(a.config.Secret) < 32 {
+		panic("aegis: CSRFMiddleware requires config.WithSecret(...) with at least 32 bytes of entropy")
+	}
+	effective := core.DefaultCSRFConfig()
+	if cfg != nil {
+		effective = *cfg
+	}
+	if len(effective.MasterSecret) == 0 {
+		effective.MasterSecret = a.config.Secret
+	}
+	return core.CSRFMiddleware(effective)
+}
+
 // GetLoginAttemptTracker returns the login attempt tracker (may be nil if not enabled).
 //
 // The login attempt tracker provides brute force protection by:
@@ -787,9 +906,13 @@ func (a *Aegis) GetPlugins() []plugins.Plugin {
 		regs = append(regs, reg)
 	}
 
-	// Sort by priority
+	// Sort by priority, breaking ties by registration order so the same
+	// configuration always yields the same plugin ordering.
 	sort.Slice(regs, func(i, j int) bool {
-		return regs[i].priority < regs[j].priority
+		if regs[i].priority != regs[j].priority {
+			return regs[i].priority < regs[j].priority
+		}
+		return regs[i].addedAt < regs[j].addedAt
 	})
 
 	result := make([]plugins.Plugin, 0, len(regs))
@@ -826,6 +949,18 @@ func (a *Aegis) GetPlugin(name string) (plugins.Plugin, bool) {
 		return reg.plugin, true
 	}
 	return nil, false
+}
+
+// Routes returns a snapshot of every (method, path) registered through
+// MountRoutes, including the owning plugin name. Useful for introspection,
+// generating route tables, or detecting overlap across plugins. The slice
+// is a copy and safe to retain. Returns an empty slice before MountRoutes
+// has been called.
+func (a *Aegis) Routes() []router.RouteEntry {
+	if a.routes == nil {
+		return nil
+	}
+	return a.routes.Routes()
 }
 
 // GetPluginTyped retrieves a plugin by name and type-casts it to the expected type.
@@ -908,8 +1043,13 @@ func (a *Aegis) Shutdown(ctx context.Context) error {
 	a.mu.RUnlock()
 
 	// Reverse priority order: higher priority numbers (application plugins) first.
+	// Within the same priority, shut down in reverse registration order so
+	// the plugin registered last is the first one torn down.
 	sort.Slice(regs, func(i, j int) bool {
-		return regs[i].priority > regs[j].priority
+		if regs[i].priority != regs[j].priority {
+			return regs[i].priority > regs[j].priority
+		}
+		return regs[i].addedAt > regs[j].addedAt
 	})
 
 	var errs []error
@@ -924,6 +1064,15 @@ func (a *Aegis) Shutdown(ctx context.Context) error {
 				errs = append(errs, err)
 			}
 		}
+	}
+
+	// Stop background workers owned by Aegis itself. Both Stop() methods
+	// are idempotent so this is safe even if Shutdown is called twice.
+	if a.rateLimiter != nil {
+		a.rateLimiter.Stop()
+	}
+	if a.loginAttemptTracker != nil {
+		a.loginAttemptTracker.Stop()
 	}
 
 	if len(errs) > 0 {
