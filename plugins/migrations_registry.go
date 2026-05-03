@@ -42,7 +42,7 @@ func NewMigrationRegistry() *MigrationRegistry {
 // (`"foo"` or "`foo`") are tolerated.
 var (
 	reCreateTable = regexp.MustCompile(`(?i)\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["` + "`" + `]?([a-zA-Z_][a-zA-Z0-9_]*)["` + "`" + `]?`)
-	reAddColumn   = regexp.MustCompile(`(?i)\bALTER\s+TABLE\s+["` + "`" + `]?([a-zA-Z_][a-zA-Z0-9_]*)["` + "`" + `]?[\s\S]*?\bADD\s+(?:COLUMN\s+)?["` + "`" + `]?([a-zA-Z_][a-zA-Z0-9_]*)["` + "`" + `]?`)
+	reAddColumn   = regexp.MustCompile(`(?i)\bALTER\s+TABLE\s+["` + "`" + `]?([a-zA-Z_][a-zA-Z0-9_]*)["` + "`" + `]?[\s\S]*?\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?["` + "`" + `]?([a-zA-Z_][a-zA-Z0-9_]*)["` + "`" + `]?`)
 )
 
 // scanMigration extracts (table, column) ownership claims from a single
