@@ -41,9 +41,14 @@ func (h *Handlers) beginAuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Begin OAuth flow using plugin method
 	if err := h.plugin.BeginAuth(w, r, provider); err != nil {
+		if h.plugin.logger != nil {
+			h.plugin.logger.Error("oauth: BeginAuth failed",
+				"provider", provider,
+				"error", err)
+		}
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
-			Error:   err.Error(),
+			Error:   "Unable to start OAuth flow",
 		})
 		return
 	}
@@ -53,9 +58,14 @@ func (h *Handlers) beginAuthHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) callbackHandler(w http.ResponseWriter, r *http.Request) {
 	user, session, err := h.plugin.CompleteAuth(r.Context(), w, r)
 	if err != nil {
+		if h.plugin.logger != nil {
+			h.plugin.logger.Error("oauth: CompleteAuth failed",
+				"provider", core.GetSanitizedPathParam(r, "provider"),
+				"error", err)
+		}
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
-			Error:   err.Error(),
+			Error:   "OAuth authentication failed",
 		})
 		return
 	}
@@ -67,9 +77,10 @@ func (h *Handlers) callbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
-		Data: map[string]any{
-			"user":    user,
-			"session": session,
+		Message: "OAuth login successful",
+		Data: &core.SessionWithUser{
+			Session: session,
+			User:    core.NewEnrichedUser(&user.User),
 		},
 	})
 }
@@ -116,9 +127,13 @@ func (h *Handlers) refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := h.plugin.RefreshConnection(r.Context(), user.ID, provider)
 	if err != nil {
+		if h.plugin.logger != nil {
+			h.plugin.logger.Error("oauth: RefreshConnection failed",
+				"user_id", user.ID, "provider", provider, "error", err)
+		}
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
-			Error:   err.Error(),
+			Error:   "Unable to refresh OAuth token",
 		})
 		return
 	}
@@ -192,9 +207,13 @@ func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 
 	params := r.URL.Query()
 	if _, err := sess.Authorize(provider, params); err != nil {
+		if h.plugin.logger != nil {
+			h.plugin.logger.Error("oauth: Authorize failed",
+				"user_id", user.ID, "provider", providerName, "error", err)
+		}
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
-			Error:   fmt.Sprintf("Authorization failed: %v", err),
+			Error:   "Authorization failed",
 		})
 		return
 	}
@@ -202,9 +221,13 @@ func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	// Fetch user from provider
 	gothUser, err := provider.FetchUser(sess)
 	if err != nil {
+		if h.plugin.logger != nil {
+			h.plugin.logger.Error("oauth: FetchUser failed",
+				"user_id", user.ID, "provider", providerName, "error", err)
+		}
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
-			Error:   fmt.Sprintf("Failed to fetch user: %v", err),
+			Error:   "Failed to fetch user from provider",
 		})
 		return
 	}
@@ -212,9 +235,13 @@ func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	// Link the account
 	oauthUser := GothUserToUser(gothUser)
 	if err := h.plugin.LinkAccount(r.Context(), user.ID, oauthUser, gothUser.Provider); err != nil {
+		if h.plugin.logger != nil {
+			h.plugin.logger.Error("oauth: LinkAccount failed",
+				"user_id", user.ID, "provider", providerName, "error", err)
+		}
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
-			Error:   fmt.Sprintf("Failed to link OAuth account: %v", err),
+			Error:   "Failed to link OAuth account",
 		})
 		return
 	}

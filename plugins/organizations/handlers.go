@@ -77,7 +77,8 @@ func (p *Plugin) validateOrgAccess(w http.ResponseWriter, r *http.Request) (orgI
 //
 //	{
 //	  "success": true,
-//	  "organization": {
+//	  "message": "Organization created successfully",
+//	  "data": {
 //	    "id": "org_abc123",
 //	    "name": "Acme Corporation",
 //	    "slug": "acme-corp",
@@ -114,9 +115,10 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	core.WriteJSON(w, http.StatusCreated, map[string]any{
-		"success":      true,
-		"organization": org,
+	core.WriteJSON(w, http.StatusCreated, &core.Response{
+		Success: true,
+		Message: "Organization created successfully",
+		Data:    org,
 	})
 }
 
@@ -134,10 +136,14 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 //
 //	{
 //	  "success": true,
-//	  "organizations": [
+//	  "items": [
 //	    {"id": "org_1", "name": "Acme Corp", "slug": "acme", ...},
 //	    {"id": "org_2", "name": "Tech Inc", "slug": "tech", ...}
-//	  ]
+//	  ],
+//	  "totalCount": 10,
+//	  "page": 1,
+//	  "offset": 0,
+//	  "limit": 20
 //	}
 func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
@@ -179,7 +185,8 @@ func (p *Plugin) ListOrganizationsHandler(w http.ResponseWriter, r *http.Request
 //
 //	{
 //	  "success": true,
-//	  "organization": {
+//	  "message": "Organization retrieved successfully",
+//	  "data": {
 //	    "id": "org_abc123",
 //	    "name": "Acme Corporation",
 //	    "slug": "acme-corp",
@@ -199,9 +206,10 @@ func (p *Plugin) GetOrganizationHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success":      true,
-		"organization": org,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Organization retrieved successfully",
+		Data:    org,
 	})
 }
 
@@ -245,9 +253,9 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "Organization updated",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Organization updated",
 	})
 }
 
@@ -275,9 +283,9 @@ func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "Organization deleted",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Organization deleted",
 	})
 }
 
@@ -328,9 +336,9 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	core.WriteJSON(w, http.StatusCreated, map[string]any{
-		"success": true,
-		"message": "Member added to organization",
+	core.WriteJSON(w, http.StatusCreated, &core.Response{
+		Success: true,
+		Message: "Member added to organization",
 	})
 }
 
@@ -404,9 +412,9 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "Role updated",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Role updated",
 	})
 }
 
@@ -441,9 +449,9 @@ func (p *Plugin) RemoveOrganizationMemberHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "Member removed from organization",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Member removed from organization",
 	})
 }
 
@@ -490,9 +498,10 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	core.WriteJSON(w, http.StatusCreated, map[string]any{
-		"success": true,
-		"team":    team,
+	core.WriteJSON(w, http.StatusCreated, &core.Response{
+		Success: true,
+		Message: "Team created successfully",
+		Data:    team,
 	})
 }
 
@@ -545,9 +554,10 @@ func (p *Plugin) GetTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"team":    team,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Team retrieved successfully",
+		Data:    team,
 	})
 }
 
@@ -597,9 +607,9 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "Team updated",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Team updated",
 	})
 }
 
@@ -633,9 +643,9 @@ func (p *Plugin) DeleteTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "Team deleted",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Team deleted",
 	})
 }
 
@@ -693,9 +703,9 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	core.WriteJSON(w, http.StatusCreated, map[string]any{
-		"success": true,
-		"message": "Member added to team",
+	core.WriteJSON(w, http.StatusCreated, &core.Response{
+		Success: true,
+		Message: "Member added to team",
 	})
 }
 
@@ -788,9 +798,9 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	core.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "Team member role updated",
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Team member role updated",
 	})
 }
 
