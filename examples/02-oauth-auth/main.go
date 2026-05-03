@@ -17,12 +17,12 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"html"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -36,7 +36,8 @@ import (
 	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
 	"github.com/theinventorylib/aegis/plugins/oauth"
-	"github.com/theinventorylib/aegis/router"
+	oauthTypes "github.com/theinventorylib/aegis/plugins/oauth/types"
+	"github.com/theinventorylib/aegis/router/routers"
 )
 
 func main() {
@@ -100,17 +101,17 @@ func main() {
 	mux := chi.NewRouter()
 	mux.Use(middleware.Logger)
 	mux.Use(middleware.Recoverer)
-	r := router.NewChiRouter(mux)
+	r := routers.NewChiRouter(mux)
 
 	// 6. Create OAuth plugin
 	oauthConfig := &oauth.Config{
 		CallbackURL: baseURL + "/auth",
-		Providers:   []oauth.ProviderConfig{},
+		Providers:   []oauthTypes.ProviderConfig{},
 	}
 
 	// Configure providers
 	if googleClientID != "" && googleClientSecret != "" {
-		oauthConfig.Providers = append(oauthConfig.Providers, oauth.ProviderConfig{
+		oauthConfig.Providers = append(oauthConfig.Providers, oauthTypes.ProviderConfig{
 			ProviderID:   "google",
 			ProviderType: "google",
 			ClientID:     googleClientID,
@@ -120,7 +121,7 @@ func main() {
 	}
 
 	if githubClientID != "" && githubClientSecret != "" {
-		oauthConfig.Providers = append(oauthConfig.Providers, oauth.ProviderConfig{
+		oauthConfig.Providers = append(oauthConfig.Providers, oauthTypes.ProviderConfig{
 			ProviderID:   "github",
 			ProviderType: "github",
 			ClientID:     githubClientID,
@@ -149,8 +150,8 @@ func main() {
 	// OAuth routes are automatically mounted:
 	//   - GET  /auth/oauth/:provider          - Initiate OAuth flow
 	//   - GET  /auth/oauth/:provider/callback - OAuth callback handler
-	//   - POST /auth/signup                   - Traditional signup
-	//   - POST /auth/login                    - Traditional login
+	//   - POST /auth/default/signup           - Traditional signup
+	//   - POST /auth/default/login            - Traditional login
 	a.MountRoutes("/auth")
 
 	// 9. Public routes
@@ -244,9 +245,9 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
         <h2>🔗 API Endpoints</h2>
         <p><code>GET /auth/oauth/:provider</code> - Start OAuth flow (google, github)</p>
         <p><code>GET /auth/oauth/:provider/callback</code> - OAuth callback handler</p>
-        <p><code>POST /auth/signup</code> - Traditional signup</p>
-        <p><code>POST /auth/login</code> - Traditional login</p>
-        <p><code>GET /auth/user</code> - Get current user (protected)</p>
+        <p><code>POST /auth/default/signup</code> - Traditional signup</p>
+        <p><code>POST /auth/default/login</code> - Traditional login</p>
+        <p><code>GET /auth/default/session</code> - Get current session (protected)</p>
         <p><code>GET /api/accounts</code> - List linked accounts (protected)</p>
     </div>
 </body>
@@ -311,7 +312,7 @@ func loginPageHandler(w http.ResponseWriter, r *http.Request) {
                 password: formData.get('password')
             };
             
-            const res = await fetch('/auth/login', {
+            const res = await fetch('/auth/default/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -380,7 +381,7 @@ func signupPageHandler(w http.ResponseWriter, r *http.Request) {
                 password: formData.get('password')
             };
             
-            const res = await fetch('/auth/signup', {
+            const res = await fetch('/auth/default/signup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -438,7 +439,7 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
     
     <script>
         async function logout() {
-            const res = await fetch('/auth/logout', { method: 'POST' });
+            const res = await fetch('/auth/default/logout', { method: 'POST' });
             if (res.ok) {
                 window.location.href = '/';
             }
@@ -449,6 +450,20 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	`, user.Name, user.Email, user.ID, user.CreatedAt.Format("January 2, 2006"))))
 }
 
+// Response types for consistent API responses
+
+type OAuthProfileResponse struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type AccountsInfo struct {
+	UserID string `json:"user_id"`
+}
+
 func profileHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
 	if err != nil || user == nil {
@@ -456,14 +471,14 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"user": map[string]any{
-			"id":         user.ID,
-			"email":      user.Email,
-			"name":       user.Name,
-			"created_at": user.CreatedAt,
-			"updated_at": user.UpdatedAt,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data: OAuthProfileResponse{
+			ID:        user.ID,
+			Email:     user.Email,
+			Name:      user.Name,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
 		},
 	})
 }
@@ -477,10 +492,12 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// In a real app, you'd query the accounts table here
 	// This is just a demonstration
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"message": "Query the auth.accounts table to see all linked authentication providers",
-		"user_id": user.ID,
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Query the auth.accounts table to see all linked authentication providers",
+		Data: AccountsInfo{
+			UserID: user.ID,
+		},
 	})
 }
 

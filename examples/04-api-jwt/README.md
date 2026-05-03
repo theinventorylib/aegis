@@ -91,12 +91,10 @@ Response:
 ```json
 {
   "success": true,
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "refresh_xxx",
-  "user": {
-    "id": "user_xxx",
-    "email": "alice@example.com",
-    "name": "Alice Johnson"
+  "message": "Registration successful",
+  "data": {
+    "session": {"id": "sess_...", "token": "tkn_...", "expiresAt": "2024-01-01T00:00:00Z"},
+    "user": {"id": "user_xxx", "email": "alice@example.com", "name": "Alice Johnson"}
   }
 }
 ```
@@ -116,8 +114,11 @@ Response:
 ```json
 {
   "success": true,
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "refresh_yyy"
+  "message": "Login successful",
+  "data": {
+    "session": {"id": "sess_...", "token": "tkn_...", "expiresAt": "2024-01-01T00:00:00Z"},
+    "user": {"id": "user_xxx", "email": "alice@example.com", "name": "Alice Johnson"}
+  }
 }
 ```
 
