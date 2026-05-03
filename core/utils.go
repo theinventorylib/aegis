@@ -321,6 +321,36 @@ func HashShort(s string) string {
 	return fmt.Sprintf("%x", h)[:8]
 }
 
+// HashTokenHex returns the SHA-256 hex digest of a token, suitable for
+// at-rest persistence and cache keying. The output is 64 lowercase hex
+// characters; an empty input yields an empty string. SHA-256 is appropriate
+// here because the input is high-entropy random bytes (not a low-entropy
+// password) — no per-token salt or cost factor is required for collision
+// resistance or pre-image protection at this entropy level.
+func HashTokenHex(token string) string {
+	if token == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte(token))
+	return fmt.Sprintf("%x", h)
+}
+
+// IsHashedToken reports whether s looks like a SHA-256 hex digest produced
+// by HashTokenHex. Used by migration helpers to skip already-hashed rows
+// for idempotency.
+func IsHashedToken(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // // GenerateUUID always generates a UUID v4, regardless of strategy
 // // Use this when you specifically need a UUID
 // func GenerateUUID() string {

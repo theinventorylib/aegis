@@ -127,7 +127,12 @@ func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaReq
 }
 
 // ValidateTableExists creates a requirement to check if a table exists.
+//
+// tableName must be a valid SQL identifier ([A-Za-z_][A-Za-z0-9_]*).
+// This panics on malformed identifiers to fail fast at startup —
+// see SanitizeSQLIdentifier for rationale.
 func ValidateTableExists(tableName string) SchemaRequirement {
+	tableName = SanitizeSQLIdentifier(tableName)
 	return SchemaRequirement{
 		Name: fmt.Sprintf("Table '%s' exists", tableName),
 		Query: fmt.Sprintf(
@@ -139,7 +144,18 @@ func ValidateTableExists(tableName string) SchemaRequirement {
 }
 
 // ValidateColumnExists creates a requirement to check if a column exists in a table.
+//
+// This is the simplest column check: presence only. If you also need to
+// detect schema drift (wrong type, unexpected NULL/NOT NULL, etc.), use
+// ValidateColumnSpec instead — silent type changes have caused real
+// production bugs in this codebase before.
+//
+// The generated query targets information_schema, which is supported by
+// PostgreSQL and MySQL but not by SQLite. SQLite callers should use
+// ValidateColumnExistsForDialect with DialectSQLite (see schema_dialects.go).
 func ValidateColumnExists(tableName, columnName string) SchemaRequirement {
+	tableName = SanitizeSQLIdentifier(tableName)
+	columnName = SanitizeSQLIdentifier(columnName)
 	return SchemaRequirement{
 		Name: fmt.Sprintf("Column '%s.%s' exists", tableName, columnName),
 		Query: fmt.Sprintf(
@@ -148,6 +164,93 @@ func ValidateColumnExists(tableName, columnName string) SchemaRequirement {
 		),
 		Description: fmt.Sprintf("Column '%s' does not exist in table '%s'", columnName, tableName),
 	}
+}
+
+// ColumnSpec describes the expected shape of a column for validation.
+//
+// Either field may be left at its zero value to skip that part of the
+// check:
+//   - DataType == "": don't compare types (presence-only check).
+//   - Nullable == nil: don't compare nullability.
+//
+// DataType is matched against information_schema.columns.data_type using
+// a case-insensitive equality test. Database-specific type aliases (e.g.
+// "int" vs "integer", "varchar" vs "character varying") are NOT
+// normalised — pass the canonical name your dialect reports. SQLite is
+// not supported by information_schema and will fall back to a
+// presence-only check.
+type ColumnSpec struct {
+	DataType string
+	Nullable *bool
+}
+
+// BoolPtr is a tiny convenience for building ColumnSpec.Nullable inline.
+func BoolPtr(b bool) *bool { return &b }
+
+// ValidateColumnSpec creates a requirement that checks not just the
+// existence of a column, but also (optionally) its data type and
+// nullability. It is the recommended replacement for
+// ValidateColumnExists when you care about detecting schema drift.
+//
+// The query selects the row from information_schema.columns and uses
+// boolean predicates to enforce the spec. A failed match returns zero
+// rows, which the validator interprets as a failure with a descriptive
+// message.
+func ValidateColumnSpec(tableName, columnName string, spec ColumnSpec) SchemaRequirement {
+	tableName = SanitizeSQLIdentifier(tableName)
+	columnName = SanitizeSQLIdentifier(columnName)
+	conditions := []string{
+		fmt.Sprintf("table_name = '%s'", tableName),
+		fmt.Sprintf("column_name = '%s'", columnName),
+	}
+	descParts := []string{fmt.Sprintf("column '%s.%s'", tableName, columnName)}
+
+	if spec.DataType != "" {
+		dt := sanitizeSQLLiteral(spec.DataType)
+		conditions = append(conditions, fmt.Sprintf("LOWER(data_type) = LOWER('%s')", dt))
+		descParts = append(descParts, fmt.Sprintf("data_type=%s", spec.DataType))
+	}
+	if spec.Nullable != nil {
+		want := "YES"
+		if !*spec.Nullable {
+			want = "NO"
+		}
+		conditions = append(conditions, fmt.Sprintf("UPPER(is_nullable) = '%s'", want))
+		descParts = append(descParts, fmt.Sprintf("nullable=%v", *spec.Nullable))
+	}
+
+	return SchemaRequirement{
+		Name: fmt.Sprintf("Column spec '%s.%s' matches", tableName, columnName),
+		Query: fmt.Sprintf(
+			"SELECT column_name FROM information_schema.columns WHERE %s LIMIT 1",
+			joinAnd(conditions),
+		),
+		Description: fmt.Sprintf("expected %s — column missing or schema drift detected", joinComma(descParts)),
+	}
+}
+
+// joinAnd / joinComma are tiny local helpers to avoid pulling strings into
+// this file for two call sites.
+func joinAnd(parts []string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += " AND "
+		}
+		out += p
+	}
+	return out
+}
+
+func joinComma(parts []string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += ", "
+		}
+		out += p
+	}
+	return out
 }
 
 // SchemaRequirements returns the schema requirements for core Aegis tables.

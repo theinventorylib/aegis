@@ -19,7 +19,7 @@ func TestNewRateLimiter(t *testing.T) {
 	config := DefaultRateLimitConfig()
 
 	// When
-	limiter := NewRateLimiter(config, nil, nil)
+	limiter := NewRateLimiter(config, nil, nil, nil)
 
 	// Then
 	if limiter == nil {
@@ -33,7 +33,7 @@ func TestNewRateLimiter(t *testing.T) {
 // TC-RL-002: Rate Limiter with Default Config
 func TestNewRateLimiter_DefaultConfig(t *testing.T) {
 	// When - nil config should use defaults
-	limiter := NewRateLimiter(nil, nil, nil)
+	limiter := NewRateLimiter(nil, nil, nil, nil)
 
 	// Then
 	if limiter == nil {
@@ -53,7 +53,7 @@ func TestRateLimiter_Allow_WithinLimit(t *testing.T) {
 		KeyPrefix:         "test:",
 		ByIP:              true,
 	}
-	limiter := NewRateLimiter(config, nil, nil)
+	limiter := NewRateLimiter(config, nil, nil, nil)
 	defer limiter.Stop()
 
 	ctx := context.Background()
@@ -84,7 +84,7 @@ func TestRateLimiter_Allow_ExceedLimit(t *testing.T) {
 		KeyPrefix:         "test:",
 		ByIP:              true,
 	}
-	limiter := NewRateLimiter(config, nil, nil)
+	limiter := NewRateLimiter(config, nil, nil, nil)
 	defer limiter.Stop()
 
 	ctx := context.Background()
@@ -119,7 +119,7 @@ func TestRateLimiter_Allow_DifferentKeys(t *testing.T) {
 		KeyPrefix:         "test:",
 		ByIP:              true,
 	}
-	limiter := NewRateLimiter(config, nil, nil)
+	limiter := NewRateLimiter(config, nil, nil, nil)
 	defer limiter.Stop()
 
 	ctx := context.Background()
@@ -156,7 +156,7 @@ func TestRateLimiter_Allow_WindowReset(t *testing.T) {
 		KeyPrefix:         "test:",
 		ByIP:              true,
 	}
-	limiter := NewRateLimiter(config, nil, nil)
+	limiter := NewRateLimiter(config, nil, nil, nil)
 	defer limiter.Stop()
 
 	ctx := context.Background()
@@ -199,7 +199,7 @@ func TestRateLimiter_Allow_Concurrent(t *testing.T) {
 		KeyPrefix:         "test:",
 		ByIP:              true,
 	}
-	limiter := NewRateLimiter(config, nil, nil)
+	limiter := NewRateLimiter(config, nil, nil, nil)
 	defer limiter.Stop()
 
 	ctx := context.Background()
@@ -291,7 +291,7 @@ func TestAuthRateLimitConfig(t *testing.T) {
 func TestRateLimiter_Stop(_ *testing.T) {
 	// Given
 	config := DefaultRateLimitConfig()
-	limiter := NewRateLimiter(config, nil, nil)
+	limiter := NewRateLimiter(config, nil, nil, nil)
 
 	// When - Stop should not panic
 	limiter.Stop()

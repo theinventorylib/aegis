@@ -2,8 +2,8 @@ package core
 
 import (
 	"context"
+	"net"
 	"net/http"
-	"strings"
 
 	"github.com/theinventorylib/aegis/auth"
 )
@@ -221,24 +221,30 @@ func RequireAuthMiddleware(_ *SessionService) func(http.Handler) http.Handler {
 }
 
 // GetClientIP extracts the client IP address from the request.
-// It checks headers in order: X-Forwarded-For, X-Real-IP, then falls back to RemoteAddr.
+//
+// SECURITY: This function does NOT trust X-Forwarded-For or X-Real-IP
+// headers. It returns r.RemoteAddr unchanged. Honoring proxy headers
+// without an allowlist lets any client spoof their IP, which would
+// break rate-limit / audit / lockout protection.
+//
+// If you run Aegis behind a reverse proxy, use GetClientIPTrusted with
+// a parsed CIDR allowlist of your trusted proxy addresses, or rely on
+// the rate-limiter's built-in TrustedProxies handling.
 func GetClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (may contain multiple IPs)
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		// X-Forwarded-For can be "client, proxy1, proxy2" — take the leftmost (original client)
-		if idx := strings.Index(ip, ","); idx != -1 {
-			ip = ip[:idx]
-		}
-		return strings.TrimSpace(ip)
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
+	return host
+}
 
-	// Check X-Real-IP header
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-
-	// Fall back to RemoteAddr
-	return r.RemoteAddr
+// GetClientIPTrusted returns the client IP, honoring X-Forwarded-For /
+// X-Real-IP only when the immediate peer (r.RemoteAddr) is contained in
+// one of the trustedProxies CIDR ranges. trustedProxies entries may be
+// in CIDR form ("10.0.0.0/8") or bare IP form ("10.0.0.5"); invalid
+// entries are silently ignored.
+func GetClientIPTrusted(r *http.Request, trustedProxies []string) string {
+	return clientIPFromRequest(r, parseTrustedProxies(trustedProxies, nil))
 }
 
 // MaxBodySizeMiddleware returns middleware that limits request body size.
