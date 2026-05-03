@@ -221,8 +221,8 @@ func (h *Handlers) refreshSessionHandler(w http.ResponseWriter, r *http.Request)
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Session refreshed",
-		Data: map[string]any{
-			"expiresAt": expiresAt.String(),
+		Data: core.SessionRefreshResponse{
+			ExpiresAt: expiresAt.String(),
 		},
 	})
 }
@@ -254,9 +254,9 @@ func (h *Handlers) getCurrentSessionHandler(w http.ResponseWriter, r *http.Reque
 		core.WriteJSON(w, http.StatusOK, &core.Response{
 			Success: true,
 			Message: "Session valid",
-			Data: map[string]any{
-				"session": core.GetSession(ctx),
-				"user":    user,
+			Data: &core.SessionWithUser{
+				Session: core.GetSession(ctx),
+				User:    core.NewEnrichedUser(user),
 			},
 		})
 		return

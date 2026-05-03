@@ -57,7 +57,8 @@ func NewHandlers(plugin *Plugin) *Handlers {
 //	  "success": true,
 //	  "message": "Login successful",
 //	  "data": {
-//	    "user": {"id": "user_123", "phone": "+14155551234", ...}
+//	    "session": {"id": "sess_123", "token": "tkn_abc", "expiresAt": "2024-01-01T00:00:00Z"},
+//	    "user": {"id": "user_123", "name": "John Doe", "phone": "+14155551234", "phoneVerified": true}
 //	  }
 //	}
 func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request) {
@@ -128,8 +129,8 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "Login successful",
-		Data: map[string]any{
-			"user": user,
+		Data: &core.SessionWithUser{
+			User: core.NewEnrichedUser(user),
 		},
 	})
 }
@@ -163,7 +164,8 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 //	  "success": true,
 //	  "message": "Registration successful",
 //	  "data": {
-//	    "user": {"id": "user_123", "phone": "+14155551234", "phoneVerified": false}
+//	    "session": {"id": "sess_123", "token": "tkn_abc", "expiresAt": "2024-01-01T00:00:00Z"},
+//	    "user": {"id": "user_123", "name": "John Doe", "phone": "+14155551234", "phoneVerified": false}
 //	  }
 //	}
 func (h *Handlers) RegisterWithPhoneHandler(w http.ResponseWriter, r *http.Request) {
@@ -237,8 +239,8 @@ func (h *Handlers) RegisterWithPhoneHandler(w http.ResponseWriter, r *http.Reque
 	core.WriteJSON(w, http.StatusCreated, &core.Response{
 		Success: true,
 		Message: "Registration successful",
-		Data: map[string]any{
-			"user": user,
+		Data: &core.SessionWithUser{
+			User: core.NewEnrichedUser(&user.User),
 		},
 	})
 }
