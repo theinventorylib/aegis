@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -97,9 +98,29 @@ const StateCookieName = "_aegis_oauth_state"
 //	    Secret: secret,
 //	    MaxAge: 15 * 60, // 15 minutes
 //	})
-func NewStateStore(cfg *StateStoreConfig) *StateStore {
+// NewStateStore creates a new StateStore for managing OAuth state with CSRF protection.
+//
+// The secret is REQUIRED and must be at least 16 bytes. Aegis derives this from
+// the master secret via DeriveSecret("aegis:oauth-state") so it is deterministic
+// across restarts and shared across instances.
+//
+// Returns an error if cfg.Secret is empty or shorter than 16 bytes — accepting
+// unsigned cookies would let an attacker forge state cookies and bypass the
+// OAuth CSRF check entirely.
+//
+// Parameters:
+//   - cfg: Configuration with session settings, secret, and max age
+//
+// Returns:
+//   - *StateStore: Initialized store ready for use
+//   - error: Configuration error (missing/short secret)
+func NewStateStore(cfg *StateStoreConfig) (*StateStore, error) {
 	if cfg == nil {
 		cfg = &StateStoreConfig{}
+	}
+
+	if len(cfg.Secret) < 16 {
+		return nil, fmt.Errorf("oauth state store: secret must be at least 16 bytes (got %d); derive one from your Aegis master secret", len(cfg.Secret))
 	}
 
 	sessionCfg := cfg.SessionConfig
@@ -116,7 +137,7 @@ func NewStateStore(cfg *StateStoreConfig) *StateStore {
 		cookieManager: core.NewCookieManager(sessionCfg),
 		secret:        cfg.Secret,
 		maxAge:        time.Duration(maxAge) * time.Second,
-	}
+	}, nil
 }
 
 // StateData holds the OAuth state data stored during the OAuth flow.
@@ -132,9 +153,10 @@ func NewStateStore(cfg *StateStoreConfig) *StateStore {
 //
 //	"a8f3d..." (HMAC) + "." + "YWJjMTIzfGdvb2dsZXxINHNJQUFBLi4u" (payload)
 type StateData struct {
-	State       string // CSRF state token (32 random bytes, base64)
-	Provider    string // OAuth provider name ("google", "github", etc.)
-	SessionData string // Marshaled goth.Session (provider-specific OAuth state)
+	State       string    // CSRF state token (32 random bytes, base64)
+	Provider    string    // OAuth provider name ("google", "github", etc.)
+	SessionData string    // Marshaled goth.Session (provider-specific OAuth state)
+	IssuedAt    time.Time // When the state was issued (server-side expiry source)
 }
 
 // GenerateState generates a cryptographically secure random state string.
@@ -259,7 +281,7 @@ func (s *StateStore) ValidateState(r *http.Request, callbackState string) (*Stat
 		return nil, err
 	}
 
-	if stored.State != callbackState {
+	if !hmac.Equal([]byte(stored.State), []byte(callbackState)) {
 		return nil, fmt.Errorf("state mismatch: possible CSRF attack")
 	}
 
@@ -268,7 +290,7 @@ func (s *StateStore) ValidateState(r *http.Request, callbackState string) (*Stat
 
 // encode serializes and signs the state data
 func (s *StateStore) encode(data *StateData) (string, error) {
-	// Simple format: state|provider|sessionData
+	// Format: state|provider|issuedAtUnix|sessionData
 	// We compress the session data since it can be large
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
@@ -280,56 +302,66 @@ func (s *StateStore) encode(data *StateData) (string, error) {
 	}
 
 	compressedSession := base64.URLEncoding.EncodeToString(buf.Bytes())
-	payload := fmt.Sprintf("%s|%s|%s", data.State, data.Provider, compressedSession)
+	issuedAt := time.Now().Unix()
+	payload := fmt.Sprintf("%s|%s|%d|%s", data.State, data.Provider, issuedAt, compressedSession)
 
-	// Sign the payload
-	if len(s.secret) > 0 {
-		signature := s.sign(payload)
-		return signature + "." + base64.URLEncoding.EncodeToString([]byte(payload)), nil
-	}
-
-	return base64.URLEncoding.EncodeToString([]byte(payload)), nil
+	// Sign the payload. NewStateStore guarantees a non-empty secret, so
+	// we never emit an unsigned cookie that an attacker could forge.
+	signature := s.sign(payload)
+	return signature + "." + base64.URLEncoding.EncodeToString([]byte(payload)), nil
 }
 
-// decode verifies signature and deserializes state data
+// decode verifies signature and deserializes state data.
+//
+// The signature is mandatory: NewStateStore rejects empty secrets, so any
+// cookie reaching this code path must carry a valid HMAC. Cookies without
+// a "<sig>.<payload>" structure or with an invalid signature are rejected.
 func (s *StateStore) decode(value string) (*StateData, error) {
-	var payload string
+	parts := strings.SplitN(value, ".", 2)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid cookie format")
+	}
+	signature, encodedPayload := parts[0], parts[1]
 
-	if len(s.secret) > 0 {
-		parts := strings.SplitN(value, ".", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid cookie format")
-		}
-		signature, encodedPayload := parts[0], parts[1]
+	payloadBytes, err := base64.URLEncoding.DecodeString(encodedPayload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode payload: %w", err)
+	}
+	payload := string(payloadBytes)
 
-		// Decode payload
-		payloadBytes, err := base64.URLEncoding.DecodeString(encodedPayload)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode payload: %w", err)
-		}
-		payload = string(payloadBytes)
-
-		// Verify signature
-		expectedSig := s.sign(payload)
-		if !hmac.Equal([]byte(signature), []byte(expectedSig)) {
-			return nil, fmt.Errorf("invalid cookie signature")
-		}
-	} else {
-		payloadBytes, err := base64.URLEncoding.DecodeString(value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode payload: %w", err)
-		}
-		payload = string(payloadBytes)
+	expectedSig := s.sign(payload)
+	if !hmac.Equal([]byte(signature), []byte(expectedSig)) {
+		return nil, fmt.Errorf("invalid cookie signature")
 	}
 
-	// Parse payload: state|provider|compressedSession
-	parts := strings.SplitN(payload, "|", 3)
-	if len(parts) != 3 {
+	// Parse payload: state|provider|issuedAtUnix|compressedSession
+	parts = strings.SplitN(payload, "|", 4)
+	if len(parts) != 4 {
 		return nil, fmt.Errorf("invalid payload format")
 	}
 
+	// Validate issued-at and enforce server-side expiry. Even though the
+	// browser cookie has its own MaxAge, we cannot trust the client to
+	// honor it — a stolen cookie could be replayed long after expiry.
+	issuedAtUnix, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid issued-at: %w", err)
+	}
+	issuedAt := time.Unix(issuedAtUnix, 0)
+	s.mu.RLock()
+	maxAge := s.maxAge
+	s.mu.RUnlock()
+	now := time.Now()
+	if now.Sub(issuedAt) > maxAge {
+		return nil, fmt.Errorf("oauth state cookie expired")
+	}
+	// Reject tokens dated in the future (allow small clock skew).
+	if issuedAt.After(now.Add(1 * time.Minute)) {
+		return nil, fmt.Errorf("oauth state cookie issued in the future")
+	}
+
 	// Decompress session data
-	compressedSession, err := base64.URLEncoding.DecodeString(parts[2])
+	compressedSession, err := base64.URLEncoding.DecodeString(parts[3])
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode session: %w", err)
 	}
@@ -348,6 +380,7 @@ func (s *StateStore) decode(value string) (*StateData, error) {
 	return &StateData{
 		State:       parts[0],
 		Provider:    parts[1],
+		IssuedAt:    issuedAt,
 		SessionData: string(sessionData),
 	}, nil
 }
