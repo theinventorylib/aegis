@@ -98,6 +98,7 @@ const StateCookieName = "_aegis_oauth_state"
 //	    Secret: secret,
 //	    MaxAge: 15 * 60, // 15 minutes
 //	})
+//
 // NewStateStore creates a new StateStore for managing OAuth state with CSRF protection.
 //
 // The secret is REQUIRED and must be at least 16 bytes. Aegis derives this from

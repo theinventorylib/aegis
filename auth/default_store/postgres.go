@@ -219,5 +219,5 @@ func (p *postgresQuerier) cleanupExpiredSessions(ctx context.Context, now string
 }
 
 func (p *postgresQuerier) withTx(tx *sql.Tx) querier {
-return &postgresQuerier{q: p.q.WithTx(tx)}
+	return &postgresQuerier{q: p.q.WithTx(tx)}
 }

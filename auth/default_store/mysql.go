@@ -218,5 +218,5 @@ func (m *mysqlQuerier) cleanupExpiredSessions(ctx context.Context, now string) e
 }
 
 func (m *mysqlQuerier) withTx(tx *sql.Tx) querier {
-return &mysqlQuerier{q: m.q.WithTx(tx)}
+	return &mysqlQuerier{q: m.q.WithTx(tx)}
 }
