@@ -182,7 +182,7 @@ func (p *Plugin) Description() string {
 }
 
 // Init initializes the plugin.
-func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
+func (p *Plugin) Init(ctx context.Context, a plugins.Aegis) error {
 	// Get services from Aegis interface - no type assertion needed
 	authService := a.GetAuthService()
 	p.accountService = authService.Account
@@ -198,6 +198,22 @@ func (p *Plugin) Init(_ context.Context, a plugins.Aegis) error {
 			return err
 		}
 		p.store = store
+	}
+
+	// Validate that the core tables this plugin depends on are present.
+	// Mirrors the JWT plugin pattern so missing migrations surface during
+	// startup instead of as a confusing query error at first OTP send.
+	d := string(p.dialect)
+	requirements := []plugins.SchemaRequirement{
+		plugins.ValidateTableExistsForDialect(d, "user"),
+		plugins.ValidateTableExistsForDialect(d, "verification"),
+		plugins.ValidateColumnExistsForDialect(d, "verification", "identifier"),
+		plugins.ValidateColumnExistsForDialect(d, "verification", "token"),
+		plugins.ValidateColumnExistsForDialect(d, "verification", "type"),
+		plugins.ValidateColumnExistsForDialect(d, "verification", "expires_at"),
+	}
+	if err := a.ValidateSchemaRequirements(ctx, requirements); err != nil {
+		return fmt.Errorf("emailotp plugin: schema validation failed: %w", err)
 	}
 
 	return nil

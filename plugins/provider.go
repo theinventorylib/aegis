@@ -22,6 +22,17 @@ var ValidateTableExists = core.ValidateTableExists
 // ValidateColumnExists creates a requirement to check if a column exists in a table
 var ValidateColumnExists = core.ValidateColumnExists
 
+// ValidateColumnSpec checks column presence + type/nullability for postgres/mysql
+var ValidateColumnSpec = core.ValidateColumnSpec
+
+// Dialect-aware variants — prefer these in plugin code so SQLite deployments
+// validate against pragma_table_info instead of the missing information_schema.
+var (
+	ValidateTableExistsForDialect  = core.ValidateTableExistsForDialect
+	ValidateColumnExistsForDialect = core.ValidateColumnExistsForDialect
+	ValidateColumnSpecForDialect   = core.ValidateColumnSpecForDialect
+)
+
 // Aegis is the interface that plugins use to interact with the Aegis framework.
 // Uses one generic parameter for the User model (U).
 // Account, Session, and Verification models are standard across the framework.

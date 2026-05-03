@@ -168,9 +168,12 @@ type Config struct {
 	// Recommended: 30 days (covers refresh token lifetime + buffer)
 	KeyRetention time.Duration
 
-	// Audience is the default "aud" claim used by IssueCustomToken when
-	// the caller does not supply an audience. Ignored for standard
-	// access/refresh tokens, which carry no audience claim.
+	// Audience is the JWT "aud" claim. It is REQUIRED: at least one entry
+	// must be configured. All configured values are embedded in every
+	// access and refresh token, and ValidateToken / RefreshTokens require
+	// every configured audience value to be present in the verified token.
+	// IssueCustomToken uses these as defaults when the caller does not
+	// supply its own audience list.
 	Audience []string
 
 	// Claims are static key/value pairs merged into every token produced
@@ -199,6 +202,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Issuer:              "aegis",
+		Audience:            []string{"aegis"},
 		AccessTokenExpiry:   15 * time.Minute,
 		RefreshTokenExpiry:  7 * 24 * time.Hour,
 		KeyRotationInterval: 24 * time.Hour,
@@ -372,6 +376,20 @@ func (p *Plugin) Description() string {
 func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	// Get logger from aegis instance
 	p.logger = aegis.GetLogger()
+
+	// Issuer and Audience are mandatory: they bind tokens to this
+	// deployment and prevent cross-service token confusion.
+	if strings.TrimSpace(p.config.Issuer) == "" {
+		return errors.New("jwt: Config.Issuer is required")
+	}
+	if len(p.config.Audience) == 0 {
+		return errors.New("jwt: Config.Audience is required (at least one entry)")
+	}
+	for _, aud := range p.config.Audience {
+		if strings.TrimSpace(aud) == "" {
+			return errors.New("jwt: Config.Audience entries must be non-empty")
+		}
+	}
 
 	// Initialize store if not provided
 	if p.store == nil {
@@ -726,6 +744,23 @@ func (p *Plugin) GenerateTokenPair(userID string) (*jwttypes.TokenPair, error) {
 	}, nil
 }
 
+// parseOptions builds the standard validation options used everywhere a
+// JWT must be cryptographically verified. It always enforces signature
+// validation, expiry/nbf, and the configured Issuer + Audience claims so
+// tokens issued for other deployments are rejected.
+func (p *Plugin) parseOptions(publicKey jwk.Key) []jwt.ParseOption {
+	opts := make([]jwt.ParseOption, 0, 3+len(p.config.Audience))
+	opts = append(opts,
+		jwt.WithKey(jwa.RS256(), publicKey),
+		jwt.WithValidate(true),
+		jwt.WithIssuer(p.config.Issuer),
+	)
+	for _, aud := range p.config.Audience {
+		opts = append(opts, jwt.WithAudience(aud))
+	}
+	return opts
+}
+
 // generateToken creates a signed JWT token
 func (p *Plugin) generateToken(userID, tokenType string, duration time.Duration) (string, time.Time, error) {
 	// Determine which key to use based on token type
@@ -750,6 +785,7 @@ func (p *Plugin) generateToken(userID, tokenType string, duration time.Duration)
 		Claim("user_id", userID).
 		Claim("token_type", tokenType).
 		Issuer(p.config.Issuer).
+		Audience(p.config.Audience).
 		Subject(userID).
 		Expiration(expiration).
 		NotBefore(time.Now()).
@@ -810,8 +846,7 @@ func (p *Plugin) ValidateToken(tokenStr string) (*jwttypes.Claims, error) {
 	// Parse and verify the token with public key
 	token, err := jwt.Parse(
 		[]byte(tokenStr),
-		jwt.WithKey(jwa.RS256(), p.accessTokenPublicKey),
-		jwt.WithValidate(true),
+		p.parseOptions(p.accessTokenPublicKey)...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("token validation failed: %w", err)
@@ -903,8 +938,7 @@ func (p *Plugin) RefreshTokens(refreshToken string) (*jwttypes.TokenPair, error)
 	// Validate the refresh token first
 	token, err := jwt.Parse(
 		[]byte(refreshToken),
-		jwt.WithKey(jwa.RS256(), p.refreshTokenPublicKey),
-		jwt.WithValidate(true),
+		p.parseOptions(p.refreshTokenPublicKey)...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("invalid refresh token: %w", err)
@@ -942,8 +976,7 @@ func (p *Plugin) blacklistTokenWithContext(ctx context.Context, tokenStr string)
 	// Parse token to get expiration time
 	token, err := jwt.Parse(
 		[]byte(tokenStr),
-		jwt.WithKey(jwa.RS256(), p.refreshTokenPublicKey),
-		jwt.WithValidate(true),
+		p.parseOptions(p.refreshTokenPublicKey)...,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to parse token: %w", err)
