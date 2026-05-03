@@ -92,11 +92,14 @@ type Account struct {
 	// Never returned in JSON responses (json:"-").
 	PasswordHash string `json:"-"`
 
-	// AccessToken stores the OAuth access token (OAuth providers only)
-	AccessToken string `json:"accessToken,omitempty"`
+	// AccessToken stores the OAuth access token (OAuth providers only).
+	// Never returned in JSON responses (json:"-") — these are provider secrets
+	// used internally to call the upstream provider on the user's behalf.
+	AccessToken string `json:"-"`
 
-	// RefreshToken stores the OAuth refresh token (OAuth providers only)
-	RefreshToken string `json:"refreshToken,omitempty"`
+	// RefreshToken stores the OAuth refresh token (OAuth providers only).
+	// Never returned in JSON responses (json:"-").
+	RefreshToken string `json:"-"`
 
 	// ExpiresAt indicates when the access token expires (OAuth providers only)
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
@@ -187,8 +190,10 @@ type Verification struct {
 	// Identifier is the target of verification (e.g., email address, phone number)
 	Identifier string `json:"identifier"`
 
-	// Token is the secret verification code or token
-	Token string `json:"token"`
+	// Token is the secret verification code or token.
+	// Never returned in JSON responses (json:"-") — exposing this would defeat
+	// the purpose of out-of-band verification (email, SMS, etc.).
+	Token string `json:"-"`
 
 	// Type categorizes the verification purpose (e.g., "email", "reset", "otp")
 	Type string `json:"type"`
@@ -250,11 +255,16 @@ type Session struct {
 	// UserID links this session to a User
 	UserID string `json:"userId"`
 
-	// Token is the session authentication token used in requests
-	Token string `json:"token"`
+	// Token is the session authentication token used in requests.
+	// Hidden from default JSON serialization (json:"-") so list endpoints
+	// (e.g. GET /sessions) cannot leak active tokens. Endpoints that intentionally
+	// return tokens to the caller (login, signup, refresh, GET /session) build
+	// their response explicitly via sessionToMap.
+	Token string `json:"-"`
 
-	// RefreshToken is an optional long-lived token for obtaining new sessions
-	RefreshToken string `json:"refreshToken,omitempty"`
+	// RefreshToken is an optional long-lived token for obtaining new sessions.
+	// Hidden from default JSON serialization (json:"-") for the same reason as Token.
+	RefreshToken string `json:"-"`
 
 	// ExpiresAt indicates when this session becomes invalid
 	ExpiresAt time.Time `json:"expiresAt"`

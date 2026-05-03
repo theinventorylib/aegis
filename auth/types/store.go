@@ -143,3 +143,39 @@ type SessionStore interface {
 	// This should be called periodically to prevent storage bloat.
 	CleanupExpired(ctx context.Context) error
 }
+
+// Transactor is an optional capability that store implementations may
+// expose to allow callers to compose multiple store operations in a single
+// database transaction. Custom store implementations that do not back onto
+// a single SQL database can omit this entirely; callers must treat
+// Transactor support as optional and provide a non-transactional fallback.
+type Transactor interface {
+	// BeginTx opens a new transaction and returns a Tx that exposes
+	// transaction-bound copies of the relevant stores. The returned Tx
+	// MUST be either committed or rolled back by the caller.
+	BeginTx(ctx context.Context) (Tx, error)
+}
+
+// Tx represents an in-flight database transaction across one or more
+// stores. All store accessors on Tx return implementations bound to the
+// transaction; writes are visible to other accessors on the same Tx but
+// are only persisted once Commit is called. Rollback discards all writes.
+//
+// Tx is single-use: once Commit or Rollback is called the Tx must not be
+// used again.
+type Tx interface {
+	// AccountStore returns an AccountStore bound to this transaction.
+	AccountStore() AccountStore
+	// SessionStore returns a SessionStore bound to this transaction.
+	SessionStore() SessionStore
+	// UserStore returns a UserStore bound to this transaction.
+	UserStore() UserStore
+	// VerificationStore returns a VerificationStore bound to this transaction.
+	VerificationStore() VerificationStore
+	// Commit persists all changes made via the Tx-bound stores.
+	Commit() error
+	// Rollback discards all changes made via the Tx-bound stores. It is
+	// safe to call after Commit (it becomes a no-op) so callers can use
+	// `defer tx.Rollback()` immediately after BeginTx.
+	Rollback() error
+}

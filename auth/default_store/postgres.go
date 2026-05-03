@@ -217,3 +217,7 @@ func (p *postgresQuerier) deleteSessionsByUserID(ctx context.Context, userID str
 func (p *postgresQuerier) cleanupExpiredSessions(ctx context.Context, now string) error {
 	return p.q.CleanupExpiredSessions(ctx, now)
 }
+
+func (p *postgresQuerier) withTx(tx *sql.Tx) querier {
+return &postgresQuerier{q: p.q.WithTx(tx)}
+}

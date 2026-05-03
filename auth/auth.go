@@ -74,6 +74,7 @@ type Auth struct {
 	accountStore      AccountStore
 	verificationStore VerificationStore
 	sessionStore      SessionStore
+	transactor        Transactor
 }
 
 // New creates a new Auth instance with the provided configuration.
@@ -110,11 +111,22 @@ func New(cfg Config) (*Auth, error) {
 		sessionStore = defaultStore.SessionStore()
 	}
 
+	// Transactor support is only available when ALL stores are the
+	// default SQL-backed ones. If any store is custom we cannot guarantee
+	// that operations on different stores would even hit the same
+	// underlying database, let alone the same transaction.
+	var transactor Transactor
+	if cfg.UserStore == nil && cfg.AccountStore == nil &&
+		cfg.VerificationStore == nil && cfg.SessionStore == nil {
+		transactor = defaultStore
+	}
+
 	return &Auth{
 		userStore:         userStore,
 		accountStore:      accountStore,
 		verificationStore: verificationStore,
 		sessionStore:      sessionStore,
+		transactor:        transactor,
 	}, nil
 }
 
@@ -142,4 +154,14 @@ func (a *Auth) VerificationStore() VerificationStore {
 // refresh token authentication flows.
 func (a *Auth) SessionStore() SessionStore {
 	return a.sessionStore
+}
+
+// Transactor returns the optional transactor capability if the
+// configured stores support cross-store transactions. It returns nil
+// when any store has been overridden with a custom implementation, since
+// in that case the auth package cannot assume the stores share a
+// transaction-capable backend. Callers must always handle a nil return
+// (typically by falling back to a non-transactional code path).
+func (a *Auth) Transactor() Transactor {
+	return a.transactor
 }
