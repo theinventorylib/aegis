@@ -59,9 +59,10 @@ func (h *Handlers) callbackHandler(w http.ResponseWriter, r *http.Request) {
 	user, session, err := h.plugin.CompleteAuth(r.Context(), w, r)
 	if err != nil {
 		if h.plugin.logger != nil {
+			safeErr := core.SanitizeString(err.Error(), nil)
 			h.plugin.logger.Error("oauth: CompleteAuth failed",
 				"provider", core.GetSanitizedPathParam(r, "provider"),
-				"error", err)
+				"error", safeErr)
 		}
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
 			Success: false,
