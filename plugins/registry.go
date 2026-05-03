@@ -10,6 +10,11 @@ import (
 
 var (
 	registry = make(map[string]Plugin)
+	// regOrder preserves registration order so iteration is deterministic.
+	// The global registry has no notion of priority (Aegis owns that), but
+	// stable ordering still matters when multiple plugins enrich the same
+	// user fields.
+	regOrder []string
 	mu       sync.RWMutex
 )
 
@@ -22,6 +27,7 @@ func Register(p Plugin) error {
 		return fmt.Errorf("plugin %q is already registered", p.Name())
 	}
 	registry[p.Name()] = p
+	regOrder = append(regOrder, p.Name())
 	return nil
 }
 
@@ -49,6 +55,7 @@ func Clear() {
 	mu.Lock()
 	defer mu.Unlock()
 	registry = make(map[string]Plugin)
+	regOrder = nil
 }
 
 // =============================================================================
@@ -155,11 +162,18 @@ func GetUserExtensionBool(ctx context.Context, key string) bool {
 // RunUserEnrichers runs all registered plugins that implement UserEnricher.
 // This populates the EnrichedUser with plugin-specific extension fields.
 // Called automatically by middleware after authentication.
+//
+// Enrichers run in registration order so a plugin that depends on a
+// field set by an earlier plugin sees a deterministic result.
 func RunUserEnrichers(ctx context.Context, user *core.EnrichedUser) error {
 	mu.RLock()
 	defer mu.RUnlock()
 
-	for _, p := range registry {
+	for _, name := range regOrder {
+		p, ok := registry[name]
+		if !ok {
+			continue
+		}
 		if enricher, ok := p.(UserEnricher); ok {
 			if err := enricher.EnrichUser(ctx, user); err != nil {
 				// Log error but continue with other enrichers

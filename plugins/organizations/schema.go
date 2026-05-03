@@ -1,6 +1,7 @@
 package organizations
 
 import (
+	"github.com/theinventorylib/aegis/core"
 	"github.com/theinventorylib/aegis/plugins"
 )
 
@@ -12,49 +13,48 @@ import (
 // Validation Checks:
 //   - Table existence: organization, members, team, team_member
 //   - Column existence: All required columns in each table
-//   - Column properties: Data types, nullability (not implemented yet)
-//
-// These checks help detect schema drift, incomplete migrations, or manual schema changes.
+//   - Security-critical role columns are checked with ColumnSpec to detect
+//     type/nullability drift that could cause silent privilege confusion.
 //
 // Parameters:
-//   - dialect: Database dialect (postgres, mysql)
+//   - dialect: Database dialect (postgres, mysql, sqlite)
 //
 // Returns:
 //   - []plugins.SchemaRequirement: List of validation requirements
 func GetSchemaRequirements(dialect plugins.Dialect) []plugins.SchemaRequirement {
+	d := string(dialect)
 	switch dialect {
-	case plugins.DialectPostgres, plugins.DialectMySQL:
+	case plugins.DialectPostgres, plugins.DialectMySQL, plugins.DialectSQLite:
+		notNull := core.BoolPtr(false)
 		return []plugins.SchemaRequirement{
-			// Table existence
-			plugins.ValidateTableExists("organization"),
-			plugins.ValidateTableExists("members"),
-			plugins.ValidateTableExists("team"),
-			plugins.ValidateTableExists("team_member"),
-			// Column existence and properties
-			plugins.ValidateColumnExists("organization", "id"),
-			plugins.ValidateColumnExists("organization", "name"),
-			plugins.ValidateColumnExists("organization", "slug"),
-			plugins.ValidateColumnExists("organization", "disabled"),
-			plugins.ValidateColumnExists("organization", "created_at"),
-			plugins.ValidateColumnExists("organization", "updated_at"),
-			plugins.ValidateColumnExists("members", "id"),
-			plugins.ValidateColumnExists("members", "user_id"),
-			plugins.ValidateColumnExists("members", "organization_id"),
-			plugins.ValidateColumnExists("members", "role"),
-			plugins.ValidateColumnExists("members", "created_at"),
-			plugins.ValidateColumnExists("members", "updated_at"),
-			plugins.ValidateColumnExists("team", "id"),
-			plugins.ValidateColumnExists("team", "organization_id"),
-			plugins.ValidateColumnExists("team", "name"),
-			plugins.ValidateColumnExists("team", "description"),
-			plugins.ValidateColumnExists("team", "created_at"),
-			plugins.ValidateColumnExists("team", "updated_at"),
-			plugins.ValidateColumnExists("team_member", "id"),
-			plugins.ValidateColumnExists("team_member", "team_id"),
-			plugins.ValidateColumnExists("team_member", "user_id"),
-			plugins.ValidateColumnExists("team_member", "role"),
-			plugins.ValidateColumnExists("team_member", "created_at"),
-			plugins.ValidateColumnExists("team_member", "updated_at"),
+			plugins.ValidateTableExistsForDialect(d, "organization"),
+			plugins.ValidateTableExistsForDialect(d, "members"),
+			plugins.ValidateTableExistsForDialect(d, "team"),
+			plugins.ValidateTableExistsForDialect(d, "team_member"),
+			plugins.ValidateColumnExistsForDialect(d, "organization", "id"),
+			plugins.ValidateColumnExistsForDialect(d, "organization", "name"),
+			plugins.ValidateColumnExistsForDialect(d, "organization", "slug"),
+			plugins.ValidateColumnExistsForDialect(d, "organization", "disabled"),
+			plugins.ValidateColumnExistsForDialect(d, "organization", "created_at"),
+			plugins.ValidateColumnExistsForDialect(d, "organization", "updated_at"),
+			plugins.ValidateColumnExistsForDialect(d, "members", "id"),
+			plugins.ValidateColumnSpecForDialect(d, "members", "user_id", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnSpecForDialect(d, "members", "organization_id", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnSpecForDialect(d, "members", "role", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnExistsForDialect(d, "members", "created_at"),
+			plugins.ValidateColumnExistsForDialect(d, "members", "updated_at"),
+			plugins.ValidateColumnExistsForDialect(d, "team", "id"),
+			plugins.ValidateColumnSpecForDialect(d, "team", "organization_id", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnExistsForDialect(d, "team", "name"),
+			plugins.ValidateColumnExistsForDialect(d, "team", "description"),
+			plugins.ValidateColumnExistsForDialect(d, "team", "created_at"),
+			plugins.ValidateColumnExistsForDialect(d, "team", "updated_at"),
+			plugins.ValidateColumnExistsForDialect(d, "team_member", "id"),
+			plugins.ValidateColumnSpecForDialect(d, "team_member", "team_id", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnSpecForDialect(d, "team_member", "user_id", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnSpecForDialect(d, "team_member", "role", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnExistsForDialect(d, "team_member", "created_at"),
+			plugins.ValidateColumnExistsForDialect(d, "team_member", "updated_at"),
 		}
 	default:
 		return []plugins.SchemaRequirement{}
