@@ -218,5 +218,5 @@ func (s *sqliteQuerier) cleanupExpiredSessions(ctx context.Context, now string) 
 }
 
 func (s *sqliteQuerier) withTx(tx *sql.Tx) querier {
-return &sqliteQuerier{q: s.q.WithTx(tx)}
+	return &sqliteQuerier{q: s.q.WithTx(tx)}
 }
