@@ -25,7 +25,7 @@ linters:
     - nilerr          # Find nil error returns
     - gocyclo         # Cyclomatic complexity
     - dupl            # Code duplication
-    - goconst         # Repeated strings that could be constants
+    # - goconst       # Repeated strings that could be constants # noisy
     - errname         # Check error naming conventions
   
   settings:
@@ -65,7 +65,7 @@ linters:
       excludes:
         - G404  # Use of weak random number generator - we use crypto/rand where needed
         - G117  # Exported struct field matches secret pattern - expected in an auth library
-  
+
   exclusions:
     rules:
       # Exclude test files from certain linters
