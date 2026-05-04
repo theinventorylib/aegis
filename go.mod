@@ -10,7 +10,7 @@ require (
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/lestrrat-go/jwx/v3 v3.0.13
 	github.com/markbates/goth v1.82.0
-	github.com/nyaruka/phonenumbers v1.6.12
+	github.com/nyaruka/phonenumbers v1.7.2
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/redis/go-redis/v9 v9.17.3
 	golang.org/x/crypto v0.49.0
@@ -66,7 +66,6 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
 	golang.org/x/arch v0.22.0 // indirect
-	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
