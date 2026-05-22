@@ -77,10 +77,10 @@ func TestChiRouter_MultiplePathParams(t *testing.T) {
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		id := core.GetSanitizedPathParam(r, "id")
-		teamId := core.GetSanitizedPathParam(r, "teamId")
+		teamID := core.GetSanitizedPathParam(r, "teamId")
 		core.WriteJSON(w, http.StatusOK, response{
 			ID:     id,
-			TeamID: teamId,
+			TeamID: teamID,
 		})
 	}
 
@@ -182,10 +182,10 @@ func TestChiRouter_GroupWithPathParams(t *testing.T) {
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		id := core.GetSanitizedPathParam(r, "id")
-		userId := core.GetSanitizedPathParam(r, "userId")
+		userID := core.GetSanitizedPathParam(r, "userId")
 		core.WriteJSON(w, http.StatusOK, response{
 			ID:     id,
-			UserID: userId,
+			UserID: userID,
 		})
 	}
 
@@ -306,10 +306,10 @@ func TestGinRouter_MultiplePathParams(t *testing.T) {
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		id := core.GetSanitizedPathParam(r, "id")
-		teamId := core.GetSanitizedPathParam(r, "teamId")
+		teamID := core.GetSanitizedPathParam(r, "teamId")
 		core.WriteJSON(w, http.StatusOK, response{
 			ID:     id,
-			TeamID: teamId,
+			TeamID: teamID,
 		})
 	}
 
@@ -414,10 +414,10 @@ func TestGinRouter_GroupWithPathParams(t *testing.T) {
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		id := core.GetSanitizedPathParam(r, "id")
-		userId := core.GetSanitizedPathParam(r, "userId")
+		userID := core.GetSanitizedPathParam(r, "userId")
 		core.WriteJSON(w, http.StatusOK, response{
 			ID:     id,
-			UserID: userId,
+			UserID: userID,
 		})
 	}
 
@@ -484,10 +484,10 @@ func TestEchoRouter_MultiplePathParams(t *testing.T) {
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		id := core.GetSanitizedPathParam(r, "id")
-		teamId := core.GetSanitizedPathParam(r, "teamId")
+		teamID := core.GetSanitizedPathParam(r, "teamId")
 		core.WriteJSON(w, http.StatusOK, response{
 			ID:     id,
-			TeamID: teamId,
+			TeamID: teamID,
 		})
 	}
 
@@ -589,10 +589,10 @@ func TestEchoRouter_GroupWithPathParams(t *testing.T) {
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		id := core.GetSanitizedPathParam(r, "id")
-		userId := core.GetSanitizedPathParam(r, "userId")
+		userID := core.GetSanitizedPathParam(r, "userId")
 		core.WriteJSON(w, http.StatusOK, response{
 			ID:     id,
-			UserID: userId,
+			UserID: userID,
 		})
 	}
 
@@ -721,8 +721,8 @@ func TestChiRouter_GroupParamConversion(t *testing.T) {
 	teamGroup := orgGroup.Group("/teams", "Teams")
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		teamId := core.GetSanitizedPathParam(r, "teamId")
-		core.WriteJSON(w, http.StatusOK, response{TeamID: teamId})
+		teamID := core.GetSanitizedPathParam(r, "teamId")
+		core.WriteJSON(w, http.StatusOK, response{TeamID: teamID})
 	}
 
 	teamGroup.GET("/:teamId", handler)
@@ -777,14 +777,14 @@ func TestChiRouter_OrganizationsRouteSimulation(t *testing.T) {
 	})
 	membersGroup.PATCH("/:userId", func(w http.ResponseWriter, r *http.Request) {
 		id := core.GetSanitizedPathParam(r, "id")
-		userId := core.GetSanitizedPathParam(r, "userId")
-		core.WriteJSON(w, http.StatusOK, response{ID: id, UserID: userId, Message: "update_member"})
+		userID := core.GetSanitizedPathParam(r, "userId")
+		core.WriteJSON(w, http.StatusOK, response{ID: id, UserID: userID, Message: "update_member"})
 	})
 
 	teamGroup := orgGroup.Group("/teams", "Teams")
 	teamGroup.GET("/:teamId", func(w http.ResponseWriter, r *http.Request) {
-		teamId := core.GetSanitizedPathParam(r, "teamId")
-		core.WriteJSON(w, http.StatusOK, response{TeamID: teamId, Message: "get_team"})
+		teamID := core.GetSanitizedPathParam(r, "teamId")
+		core.WriteJSON(w, http.StatusOK, response{TeamID: teamID, Message: "get_team"})
 	})
 
 	tests := []struct {

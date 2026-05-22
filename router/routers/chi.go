@@ -141,7 +141,7 @@ func (r *ChiRouter) Group(path string, groupName string) aegisrouter.GroupRouter
 		return &ChiGroupRouter{groupName: groupName, router: sub, groups: make(map[string]chi.Router)}
 	}
 	var sub chi.Router
-	r.Mux.Route(norm, func(r chi.Router) {
+	r.Route(norm, func(r chi.Router) {
 		sub = r
 	})
 	r.groups[norm] = sub
