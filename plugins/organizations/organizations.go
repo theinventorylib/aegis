@@ -204,7 +204,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	orgGroup := r.Group(prefix, "Organizations")
 
 	// Create organization (POST to prefix)
-	orgGroup.POST("", requireAuth(http.HandlerFunc(p.CreateOrganizationHandler)).ServeHTTP)
+	orgGroup.POST("/", requireAuth(http.HandlerFunc(p.CreateOrganizationHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix,
@@ -221,7 +221,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	})
 
 	// List organizations (GET to prefix)
-	orgGroup.GET("", requireAuth(http.HandlerFunc(p.ListOrganizationsHandler)).ServeHTTP)
+	orgGroup.GET("/", requireAuth(http.HandlerFunc(p.ListOrganizationsHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        prefix,
@@ -300,7 +300,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	// Organization Member Management - group under orgGroup
 	membersGroup := orgGroup.Group("/:id/members", "Members")
 
-	membersGroup.POST("", requireAuth(http.HandlerFunc(p.AddOrganizationMemberHandler)).ServeHTTP)
+	membersGroup.POST("/", requireAuth(http.HandlerFunc(p.AddOrganizationMemberHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/{id}/members",
@@ -320,7 +320,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	membersGroup.GET("", requireAuth(http.HandlerFunc(p.ListOrganizationMembersHandler)).ServeHTTP)
+	membersGroup.GET("/", requireAuth(http.HandlerFunc(p.ListOrganizationMembersHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        prefix + "/{id}/members",
@@ -384,7 +384,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	// Organization-specific teams under orgGroup
 	orgTeams := orgGroup.Group("/:id/teams", "Teams")
 
-	orgTeams.POST("", requireAuth(http.HandlerFunc(p.CreateTeamHandler)).ServeHTTP)
+	orgTeams.POST("/", requireAuth(http.HandlerFunc(p.CreateTeamHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/{id}/teams",
@@ -404,7 +404,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	orgTeams.GET("", requireAuth(http.HandlerFunc(p.ListTeamsHandler)).ServeHTTP)
+	orgTeams.GET("/", requireAuth(http.HandlerFunc(p.ListTeamsHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        prefix + "/{id}/teams",
@@ -427,7 +427,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	// Team operations at /teams/:teamId under plugin prefix
 	teamsGroup := orgGroup.Group("/teams", "Teams")
 
-	teamsGroup.GET(":/teamId", requireAuth(http.HandlerFunc(p.GetTeamHandler)).ServeHTTP)
+	teamsGroup.GET("/:teamId", requireAuth(http.HandlerFunc(p.GetTeamHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        prefix + "/teams/{teamId}",

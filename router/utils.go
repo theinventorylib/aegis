@@ -2,15 +2,15 @@ package router
 
 import "strings"
 
-// NormalizePathToOpenAPI converts router parameter syntax to OpenAPI path syntax.
+// NormalizePath converts router parameter syntax to OpenAPI path syntax.
 //
 // Different HTTP routers use different syntax for path parameters:
-//   - Chi, Gin, Echo: /users/:id/posts/:postId
-//   - Gorilla Mux: /users/{id}/posts/{postId}
-//   - OpenAPI spec: /users/{id}/posts/{postId}
+//   - Gin, Echo: /users/:id/posts/:postId
+//   - Chi v5, Gorilla Mux, OpenAPI spec: /users/{id}/posts/{postId}
 //
-// This function normalizes paths from :param syntax (chi/gin/echo) to {param}
-// syntax (OpenAPI spec) for automatic API documentation generation.
+// This function normalizes paths from :param syntax (gin/echo) to {param}
+// syntax (chi v5/OpenAPI spec) for automatic API documentation generation
+// and chi v5 route registration compatibility.
 //
 // Conversion rules:
 //   - :id → {id}
@@ -20,15 +20,15 @@ import "strings"
 //
 // Examples:
 //
-//	NormalizePathToOpenAPI("/users/:id")
+//	NormalizePath("/users/:id")
 //	// Returns: "/users/{id}"
 //
-//	NormalizePathToOpenAPI("/organizations/:orgId/members/:userId")
+//	NormalizePath("/organizations/:orgId/members/:userId")
 //	// Returns: "/organizations/{orgId}/members/{userId}"
 //
-//	NormalizePathToOpenAPI("/static/file.css")
+//	NormalizePath("/static/file.css")
 //	// Returns: "/static/file.css" (unchanged, no parameters)
-func NormalizePathToOpenAPI(path string) string {
+func NormalizePath(path string) string {
 	result := path
 	for {
 		start := strings.Index(result, ":")
