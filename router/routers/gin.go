@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/theinventorylib/aegis/core"
 	aegisrouter "github.com/theinventorylib/aegis/router"
 )
 
@@ -31,16 +33,18 @@ type GinRouter struct {
 
 // NewGinRouter creates a new GinRouter that wraps the provided gin.Engine.
 //
-// The engine should be configured with any global middleware before wrapping,
-// or middleware can be added later via the Router.Use method.
+// The gin.Engine should be configured with any global middleware before wrapping.
+// A path parameter bridging middleware is automatically injected to make
+// gin's parameter extraction accessible via core.GetPathParam.
 //
 // Example:
 //
 //	engine := gin.New()
 //	engine.Use(gin.Logger())
 //	engine.Use(gin.Recovery())
-//	router := routers.NewGinRouter(engine)
+//	router := router.NewGinRouter(engine)
 func NewGinRouter(engine *gin.Engine) *GinRouter {
+	engine.Use(ginPathParamMiddleware())
 	return &GinRouter{Engine: engine}
 }
 
@@ -173,5 +177,22 @@ func wrapGinMiddleware(mw func(http.Handler) http.Handler) gin.HandlerFunc {
 			c.Request = r
 			c.Next()
 		})).ServeHTTP(c.Writer, c.Request)
+	}
+}
+
+// ginPathParamMiddleware injects a PathParamFunc into the request context that
+// bridges gin's parameter extraction (c.Param) to core.GetPathParam.
+//
+// Gin stores path parameters in *gin.Context.Params, which is not accessible
+// via standard Go request APIs. Without this middleware, core.GetPathParam
+// would fall through to r.PathValue(), which gin does not populate.
+func ginPathParamMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		fn := core.PathParamFunc(func(r *http.Request, name string) string {
+			return c.Param(name)
+		})
+		ctx := core.WithPathParamFunc(c.Request.Context(), fn)
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
 	}
 }

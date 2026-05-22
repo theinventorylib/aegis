@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+
+	"github.com/theinventorylib/aegis/core"
 	aegisrouter "github.com/theinventorylib/aegis/router"
 )
 
@@ -32,15 +34,17 @@ type EchoRouter struct {
 // NewEchoRouter creates a new EchoRouter that wraps the provided echo.Echo instance.
 //
 // The Echo instance should be configured with any global middleware before
-// wrapping, or middleware can be added later via the Router.Use method.
+// wrapping. A path parameter bridging middleware is automatically injected
+// to make echo's parameter extraction accessible via core.GetPathParam.
 //
 // Example:
 //
 //	e := echo.New()
 //	e.Use(middleware.Logger())
 //	e.Use(middleware.Recover())
-//	router := routers.NewEchoRouter(e)
+//	router := router.NewEchoRouter(e)
 func NewEchoRouter(e *echo.Echo) *EchoRouter {
+	e.Use(echoPathParamMiddleware())
 	return &EchoRouter{Echo: e}
 }
 
@@ -159,5 +163,24 @@ func (g *EchoGroupRouter) Group(path string, groupName string) aegisrouter.Group
 		prefix:    g.prefix + path,
 		groupName: groupName,
 		group:     g.group.Group(path),
+	}
+}
+
+// echoPathParamMiddleware injects a PathParamFunc into the request context that
+// bridges echo's parameter extraction (c.Param) to core.GetPathParam.
+//
+// Echo stores path parameters in echo.Context, which is not accessible
+// via standard Go request APIs. Without this middleware, core.GetPathParam
+// would fall through to r.PathValue(), which echo does not populate.
+func echoPathParamMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			fn := core.PathParamFunc(func(r *http.Request, name string) string {
+				return c.Param(name)
+			})
+			ctx := core.WithPathParamFunc(c.Request().Context(), fn)
+			c.SetRequest(c.Request().WithContext(ctx))
+			return next(c)
+		}
 	}
 }
