@@ -1,6 +1,14 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.6.1] - 2026-05-23
+- chore: release changelog update (d01fca2)
+- chore: format core test files (ff8ed4c)
+- chore: format and docs deps updates (2d969e4)
+- fix: apply Go naming conventions and simplified chi group routing (42553f1)
+- Add comprehensive tests for HTTP routing and pagination handling (188c251)
+
+
 ## [Unreleased]
 
 ### Added
