@@ -204,7 +204,7 @@ jobs:
 
       - name: Create GitHub Release (without GoReleaser)
         if: ${{ !inputs.dry_run && !inputs.use_goreleaser }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.new_version.outputs.version }}
           name: Release ${{ steps.new_version.outputs.version }}
