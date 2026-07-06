@@ -34,6 +34,11 @@ type teamMemberRow struct {
 	ID, TeamID, UserID, Role, CreatedAt, UpdatedAt string
 }
 
+type invitationRow struct {
+	ID, OrganizationID, Email, Role, InviterID, TokenHash, Status, ExpiresAt, CreatedAt, UpdatedAt string
+	TeamID                                                                                         sql.NullString
+}
+
 // listOrgRow is the reduced row returned by ListUserOrganizations
 // (same fields as orgRow but kept separate for clarity).
 type listOrgRow = orgRow
@@ -69,6 +74,15 @@ type querier interface {
 	countTeams(ctx context.Context, orgID string) (int64, error)
 	updateTeam(ctx context.Context, id, name string, description sql.NullString, updatedAt string) error
 	deleteTeam(ctx context.Context, id string) error
+
+	// Invitation queries
+	createInvitation(ctx context.Context, id, organizationID, teamID, email, role, inviterID, tokenHash, status, expiresAt, createdAt, updatedAt string) error
+	getInvitationByID(ctx context.Context, id string) (invitationRow, error)
+	getInvitationByTokenHash(ctx context.Context, tokenHash string) (invitationRow, error)
+	listInvitations(ctx context.Context, orgID string, teamID string, offset, limit int32) ([]invitationRow, error)
+	countInvitations(ctx context.Context, orgID string, teamID string) (int64, error)
+	updateInvitationStatus(ctx context.Context, id, status, updatedAt string) error
+	deleteInvitation(ctx context.Context, id string) error
 
 	// Team member queries
 	createTeamMember(ctx context.Context, id, teamID, userID, role, createdAt, updatedAt string) error

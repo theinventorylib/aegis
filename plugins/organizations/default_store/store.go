@@ -132,19 +132,70 @@ func (s *DefaultOrganizationStore) GetMember(ctx context.Context, userID, orgID 
 	return buildMember(m), nil
 }
 
+// HasOrgRole checks whether the user has any of the given org-level roles.
+func (s *DefaultOrganizationStore) HasOrgRole(ctx context.Context, userID, orgID string, roles ...string) (bool, error) {
+	m, err := s.q.getMember(ctx, userID, orgID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil // user is not a member — not an error
+		}
+		return false, err
+	}
+	for _, role := range roles {
+		if m.Role == role {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// HasTeamRole checks whether the user has any of the given team-level roles.
+func (s *DefaultOrganizationStore) HasTeamRole(ctx context.Context, userID, teamID string, roles ...string) (bool, error) {
+	m, err := s.q.getTeamMember(ctx, teamID, userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil // user is not in the team — not an error
+		}
+		return false, err
+	}
+	for _, role := range roles {
+		if m.Role == role {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// CanAccessTeam checks whether a user can access a team.
+func (s *DefaultOrganizationStore) CanAccessTeam(ctx context.Context, userID, teamID string) (bool, error) {
+	t, err := s.q.getTeam(ctx, teamID)
+	if err != nil {
+		return false, err
+	}
+	orgOk, err := s.HasOrgRole(ctx, userID, t.OrganizationID, orgtypes.RoleOwner, orgtypes.RoleAdmin, orgtypes.RoleMember)
+	if err != nil || !orgOk {
+		return false, err
+	}
+	return s.HasTeamRole(ctx, userID, teamID, orgtypes.RoleTeamLead, orgtypes.RoleMember)
+}
+
 // IsOrganizationMember reports whether the user is a member of the organization.
+//
+// Deprecated: Use HasOrgRole instead.
 func (s *DefaultOrganizationStore) IsOrganizationMember(ctx context.Context, userID, orgID string) (bool, error) {
-	return s.q.isOrganizationMember(ctx, userID, orgID)
+	return s.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner, orgtypes.RoleAdmin, orgtypes.RoleMember)
 }
 
 // IsOwnerOrAdmin reports whether the user has the owner or admin role in the organization.
+//
+// Deprecated: Use HasOrgRole instead.
 func (s *DefaultOrganizationStore) IsOwnerOrAdmin(ctx context.Context, userID, orgID string) (bool, error) {
-	return s.q.isOwnerOrAdmin(ctx, userID, orgID)
+	return s.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner, orgtypes.RoleAdmin)
 }
 
 // IsOwner reports whether the user is the owner of the organization.
 func (s *DefaultOrganizationStore) IsOwner(ctx context.Context, userID, orgID string) (bool, error) {
-	return s.q.isOwner(ctx, userID, orgID)
+	return s.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner)
 }
 
 // UpdateMemberRole updates the role of a member within an organization.
@@ -228,6 +279,77 @@ func (s *DefaultOrganizationStore) UpdateTeam(ctx context.Context, id, name, des
 // DeleteTeam removes a team by its ID.
 func (s *DefaultOrganizationStore) DeleteTeam(ctx context.Context, id string) error {
 	return s.q.deleteTeam(ctx, id)
+}
+
+// ── Invitation operations ───────────────────────────────────────────────────
+
+// CreateInvitation stores a new invitation.
+func (s *DefaultOrganizationStore) CreateInvitation(ctx context.Context, inv orgtypes.Invitation) error {
+	teamID := sql.NullString{Valid: inv.TeamID != nil && *inv.TeamID != ""}
+	if teamID.Valid {
+		teamID.String = *inv.TeamID
+	}
+	return s.q.createInvitation(ctx,
+		inv.ID,
+		inv.OrganizationID,
+		teamID.String,
+		inv.Email,
+		inv.Role,
+		inv.InviterID,
+		inv.TokenHash,
+		inv.Status,
+		inv.ExpiresAt.Format(time.RFC3339),
+		inv.CreatedAt.Format(time.RFC3339),
+		inv.UpdatedAt.Format(time.RFC3339),
+	)
+}
+
+// GetInvitationByID retrieves an invitation by ID.
+func (s *DefaultOrganizationStore) GetInvitationByID(ctx context.Context, id string) (orgtypes.Invitation, error) {
+	inv, err := s.q.getInvitationByID(ctx, id)
+	if err != nil {
+		return orgtypes.Invitation{}, err
+	}
+	return buildInvitation(inv), nil
+}
+
+// GetInvitationByTokenHash retrieves an invitation by token hash.
+func (s *DefaultOrganizationStore) GetInvitationByTokenHash(ctx context.Context, tokenHash string) (orgtypes.Invitation, error) {
+	inv, err := s.q.getInvitationByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return orgtypes.Invitation{}, err
+	}
+	return buildInvitation(inv), nil
+}
+
+// ListInvitations returns a paginated list of invitations for an org.
+func (s *DefaultOrganizationStore) ListInvitations(ctx context.Context, orgID string, teamID string, offset, limit int) ([]orgtypes.Invitation, error) {
+	off, lim := clampPagination(offset, limit)
+	rows, err := s.q.listInvitations(ctx, orgID, teamID, off, lim)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]orgtypes.Invitation, len(rows))
+	for i, inv := range rows {
+		result[i] = buildInvitation(inv)
+	}
+	return result, nil
+}
+
+// CountInvitations returns the total number of invitations matching filters.
+func (s *DefaultOrganizationStore) CountInvitations(ctx context.Context, orgID string, teamID string) (int, error) {
+	n, err := s.q.countInvitations(ctx, orgID, teamID)
+	return int(n), err
+}
+
+// UpdateInvitationStatus updates the status of an invitation.
+func (s *DefaultOrganizationStore) UpdateInvitationStatus(ctx context.Context, id, status string, updatedAt time.Time) error {
+	return s.q.updateInvitationStatus(ctx, id, status, updatedAt.Format(time.RFC3339))
+}
+
+// DeleteInvitation deletes an invitation by ID.
+func (s *DefaultOrganizationStore) DeleteInvitation(ctx context.Context, id string) error {
+	return s.q.deleteInvitation(ctx, id)
 }
 
 // ── Team member operations ───────────────────────────────────────────────────
@@ -334,6 +456,28 @@ func buildTeamMember(m teamMemberRow) orgtypes.TeamMember {
 		CreatedAt: parseOrgTime(m.CreatedAt),
 		UpdatedAt: parseOrgTime(m.UpdatedAt),
 	}
+}
+
+// buildInvitation converts an invitationRow returned by the querier into the public
+// orgtypes.Invitation domain model. A NULL team_id column is treated as an
+// unset (nil) pointer.
+func buildInvitation(inv invitationRow) orgtypes.Invitation {
+	result := orgtypes.Invitation{
+		ID:             inv.ID,
+		OrganizationID: inv.OrganizationID,
+		Email:          inv.Email,
+		Role:           inv.Role,
+		InviterID:      inv.InviterID,
+		TokenHash:      inv.TokenHash,
+		Status:         inv.Status,
+		ExpiresAt:      parseOrgTime(inv.ExpiresAt),
+		CreatedAt:      parseOrgTime(inv.CreatedAt),
+		UpdatedAt:      parseOrgTime(inv.UpdatedAt),
+	}
+	if inv.TeamID.Valid {
+		result.TeamID = &inv.TeamID.String
+	}
+	return result
 }
 
 // parseOrgTime parses an RFC3339 timestamp string into time.Time.

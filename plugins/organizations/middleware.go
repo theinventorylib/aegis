@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/theinventorylib/aegis/core"
+	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
 )
 
 // orgRoleChecker is a function type for checking organization role requirements.
@@ -15,7 +16,6 @@ type orgRoleChecker func(ctx context.Context, userID, orgID string) (bool, error
 func (p *Plugin) requireOrganizationRole(checker orgRoleChecker) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Get user from context (populated by AuthMiddleware)
 			user, err := core.GetUser(r.Context())
 			if err != nil {
 				core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
@@ -28,7 +28,6 @@ func (p *Plugin) requireOrganizationRole(checker orgRoleChecker) func(http.Handl
 				return
 			}
 
-			// Check role using the provided checker function
 			hasRole, err := checker(r.Context(), user.ID, orgID)
 			if err != nil || !hasRole {
 				core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
@@ -40,83 +39,80 @@ func (p *Plugin) requireOrganizationRole(checker orgRoleChecker) func(http.Handl
 	}
 }
 
-// RequireOrganizationMemberMiddleware enforces organization membership.
-//
-// This middleware ensures the authenticated user is a member of the organization
-// specified in the URL path parameter ":id". It allows any role (owner, admin, member).
-//
-// Use Cases:
-//   - Viewing organization details
-//   - Listing organization members
-//   - Viewing teams
-//
-// Request Flow:
-//  1. Get authenticated user from context (set by RequireAuthMiddleware)
-//  2. Extract organization ID from path parameter ":id"
-//  3. Check if user is a member (any role)
-//  4. If yes → continue to handler, if no → 403 Forbidden
+// RequireOrgRole creates middleware that requires the authenticated user to have
+// at least one of the specified org-level roles on the organization identified
+// by the ":id" path parameter.
 //
 // Example:
 //
-//	r.GET("/organizations/:id",
+//	r.GET("/organizations/:id/settings",
 //	    requireAuth(
-//	        plugin.RequireOrganizationMemberMiddleware()(
+//	        plugin.RequireOrgRole(orgtypes.RoleOwner, orgtypes.RoleAdmin)(
 //	            http.HandlerFunc(handler),
 //	        ),
 //	    ),
 //	)
+func (p *Plugin) RequireOrgRole(roles ...string) func(http.Handler) http.Handler {
+	return p.requireOrganizationRole(func(ctx context.Context, userID, orgID string) (bool, error) {
+		return p.store.HasOrgRole(ctx, userID, orgID, roles...)
+	})
+}
+
+// RequireTeamRole creates middleware that requires the authenticated user to have
+// at least one of the specified team-level roles on the team identified by the
+// ":teamId" path parameter.
+//
+// Unlike RequireOrgRole, this middleware checks membership in the parent organization
+// as well (via CanAccessTeam), so a user must be both an org member and a team member.
+func (p *Plugin) RequireTeamRole(roles ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, err := core.GetUser(r.Context())
+			if err != nil {
+				core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+				return
+			}
+
+			teamID := core.GetSanitizedPathParam(r, "teamId")
+			if teamID == "" {
+				core.WriteJSONError(w, http.StatusBadRequest, "Team ID required")
+				return
+			}
+
+			canAccess, err := p.store.CanAccessTeam(r.Context(), user.ID, teamID)
+			if err != nil || !canAccess {
+				core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+				return
+			}
+
+			if len(roles) > 0 {
+				hasRole, err := p.store.HasTeamRole(r.Context(), user.ID, teamID, roles...)
+				if err != nil || !hasRole {
+					core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+					return
+				}
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireOrganizationMemberMiddleware enforces organization membership.
+//
+// Deprecated: Use RequireOrgRole instead.
 func (p *Plugin) RequireOrganizationMemberMiddleware() func(http.Handler) http.Handler {
-	return p.requireOrganizationRole(p.store.IsOrganizationMember)
+	return p.RequireOrgRole(orgtypes.RoleOwner, orgtypes.RoleAdmin, orgtypes.RoleMember)
 }
 
 // RequireOrganizationAdminMiddleware enforces admin or owner privileges.
 //
-// This middleware ensures the authenticated user has administrative privileges
-// (owner or admin role) in the organization. Regular members are denied access.
-//
-// Use Cases:
-//   - Adding/removing organization members
-//   - Creating/deleting teams
-//   - Updating organization settings
-//
-// Permission Requirements:
-//   - Owner role: Allowed ✓
-//   - Admin role: Allowed ✓
-//   - Member role: Denied ✗
-//
-// Request Flow:
-//  1. Get authenticated user from context
-//  2. Extract organization ID from path parameter ":id"
-//  3. Check if user has owner OR admin role
-//  4. If yes → continue, if no → 403 Forbidden
+// Deprecated: Use RequireOrgRole instead.
 func (p *Plugin) RequireOrganizationAdminMiddleware() func(http.Handler) http.Handler {
-	return p.requireOrganizationRole(p.store.IsOwnerOrAdmin)
+	return p.RequireOrgRole(orgtypes.RoleOwner, orgtypes.RoleAdmin)
 }
 
 // RequireOrganizationOwnerMiddleware enforces owner-only access.
-//
-// This middleware ensures the authenticated user is the organization owner.
-// This is the highest privilege level and is required for destructive operations.
-//
-// Use Cases:
-//   - Deleting organization (permanent)
-//   - Transferring ownership
-//   - Changing other members' roles to admin
-//
-// Permission Requirements:
-//   - Owner role: Allowed ✓
-//   - Admin role: Denied ✗
-//   - Member role: Denied ✗
-//
-// Request Flow:
-//  1. Get authenticated user from context
-//  2. Extract organization ID from path parameter ":id"
-//  3. Check if user has owner role (exact match)
-//  4. If yes → continue, if no → 403 Forbidden
-//
-// Best Practice:
-// Only one owner per organization is recommended. Multiple owners complicate
-// permission management and deletion workflows.
 func (p *Plugin) RequireOrganizationOwnerMiddleware() func(http.Handler) http.Handler {
-	return p.requireOrganizationRole(p.store.IsOwner)
+	return p.RequireOrgRole(orgtypes.RoleOwner)
 }

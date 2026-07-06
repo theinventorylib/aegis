@@ -96,3 +96,36 @@ UPDATE team_member SET role = ?, updated_at = ? WHERE team_id = ? AND user_id = 
 
 -- name: RemoveTeamMember :exec
 DELETE FROM team_member WHERE team_id = ? AND user_id = ?;
+
+-- Invitation queries
+
+-- name: CreateInvitation :exec
+INSERT INTO invitation (id, organization_id, team_id, email, role, inviter_id, token_hash, status, expires_at, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: GetInvitationByID :one
+SELECT id, organization_id, team_id, email, role, inviter_id, token_hash, status, expires_at, created_at, updated_at
+FROM invitation WHERE id = ?;
+
+-- name: GetInvitationByTokenHash :one
+SELECT id, organization_id, team_id, email, role, inviter_id, token_hash, status, expires_at, created_at, updated_at
+FROM invitation WHERE token_hash = ?;
+
+-- name: ListInvitations :many
+SELECT id, organization_id, team_id, email, role, inviter_id, token_hash, status, expires_at, created_at, updated_at
+FROM invitation
+WHERE organization_id = ?
+  AND (? = '' OR team_id = ?)
+ORDER BY created_at DESC LIMIT ? OFFSET ?;
+
+-- name: CountInvitations :one
+SELECT COUNT(*)
+FROM invitation
+WHERE organization_id = ?
+  AND (? = '' OR team_id = ?);
+
+-- name: UpdateInvitationStatus :exec
+UPDATE invitation SET status = ?, updated_at = ? WHERE id = ?;
+
+-- name: DeleteInvitation :exec
+DELETE FROM invitation WHERE id = ?;

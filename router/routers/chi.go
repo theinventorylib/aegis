@@ -49,7 +49,7 @@ import (
 //
 //	mux := chi.NewRouter()
 //	mux.Use(middleware.Logger)
-//	router := router.NewChiRouter(mux)
+//	router := routers.NewChiRouter(mux)
 //
 //	aegis.New(ctx,
 //	    config.WithRouter(router),
@@ -73,7 +73,7 @@ type ChiRouter struct {
 //	mux := chi.NewRouter()
 //	mux.Use(middleware.Logger)
 //	mux.Use(middleware.Recoverer)
-//	router := router.NewChiRouter(mux)
+//	router := routers.NewChiRouter(mux)
 func NewChiRouter(mux *chi.Mux) *ChiRouter {
 	mux.Use(chiPathParamMiddleware())
 	return &ChiRouter{

@@ -25,4 +25,11 @@ const (
 	SchemaMemberList       = "MemberList"
 	SchemaTeamMember       = "TeamMember"
 	SchemaTeamMemberList   = "TeamMemberList"
+
+	// Invitation schemas
+	SchemaCreateInvitationRequest  = "CreateInvitationRequest"
+	SchemaAcceptInvitationRequest  = "AcceptInvitationRequest"
+	SchemaDeclineInvitationRequest = "DeclineInvitationRequest"
+	SchemaInvitation               = "Invitation"
+	SchemaInvitationList           = "InvitationList"
 )

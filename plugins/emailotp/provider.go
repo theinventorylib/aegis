@@ -28,6 +28,12 @@ package emailotp
 //	    return smtp.SendMail(p.host+":"+strconv.Itoa(p.port), auth, p.from, []string{to}, []byte(msg))
 //	}
 //
+//	func (p *SMTPProvider) SendEmail(to, subject, body string) error {
+//	    auth := smtp.PlainAuth("", p.username, p.password, p.host)
+//	    msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s", p.from, to, subject, body)
+//	    return smtp.SendMail(p.host+":"+strconv.Itoa(p.port), auth, p.from, []string{to}, []byte(msg))
+//	}
+//
 //	func (p *SMTPProvider) VerifyOTP(to, code string) (bool, error) {
 //	    // Verification logic handled by plugin's OTP storage
 //	    // This method can be used for provider-specific validation if needed
@@ -53,6 +59,20 @@ package emailotp
 //	    _, err := client.Send(message)
 //	    return err
 //	}
+//
+//	func (p *SendGridProvider) SendEmail(to, subject, body string) error {
+//	    message := mail.NewV3Mail()
+//	    message.SetFrom(mail.NewEmail("", p.from))
+//	    message.Subject = subject
+//	    message.AddContent(mail.NewContent("text/plain", body))
+//	    personalization := mail.NewPersonalization()
+//	    personalization.AddTos(mail.NewEmail("", to))
+//	    message.AddPersonalizations(personalization)
+//
+//	    client := sendgrid.NewSendClient(p.apiKey)
+//	    _, err := client.Send(message)
+//	    return err
+//	}
 type Provider interface {
 	// SendOTP sends a one-time password to the specified email address.
 	//
@@ -63,6 +83,20 @@ type Provider interface {
 	// Returns:
 	//   - error: If email sending fails
 	SendOTP(to, code string) error
+
+	// SendEmail sends an arbitrary email with the given subject and body.
+	//
+	// This method allows other plugins (e.g. organizations) to reuse the same
+	// email provider for sending non-OTP emails such as invitation links.
+	//
+	// Parameters:
+	//   - to: Recipient email address
+	//   - subject: Email subject line
+	//   - body: Plain-text email body
+	//
+	// Returns:
+	//   - error: If email sending fails
+	SendEmail(to, subject, body string) error
 
 	// VerifyOTP verifies an OTP code for an email address.
 	//

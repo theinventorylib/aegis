@@ -4,6 +4,7 @@ import (
 	"regexp"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
+	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
 )
 
 // slugPattern defines the allowed format for organization slugs.
@@ -87,7 +88,7 @@ type AddOrganizationMemberRequest struct {
 func (r AddOrganizationMemberRequest) Validate() error {
 	return validation.ValidateStruct(&r,
 		validation.Field(&r.UserID, validation.Required),
-		validation.Field(&r.Role, validation.Required, validation.In("admin", "member")),
+		validation.Field(&r.Role, validation.Required, validation.In(orgtypes.RoleAdmin, orgtypes.RoleMember)),
 	)
 }
 
@@ -112,7 +113,7 @@ type UpdateMemberRoleRequest struct {
 // Validate validates the update member role request.
 func (r UpdateMemberRoleRequest) Validate() error {
 	return validation.ValidateStruct(&r,
-		validation.Field(&r.Role, validation.Required, validation.In("admin", "member")),
+		validation.Field(&r.Role, validation.Required, validation.In(orgtypes.RoleAdmin, orgtypes.RoleMember)),
 	)
 }
 
@@ -167,7 +168,7 @@ type AddTeamMemberRequest struct {
 func (r AddTeamMemberRequest) Validate() error {
 	return validation.ValidateStruct(&r,
 		validation.Field(&r.UserID, validation.Required),
-		validation.Field(&r.Role, validation.Required, validation.In("lead", "member")),
+		validation.Field(&r.Role, validation.Required, validation.In(orgtypes.RoleTeamLead, orgtypes.RoleMember)),
 	)
 }
 
@@ -179,6 +180,152 @@ type UpdateTeamMemberRoleRequest struct {
 // Validate validates the update team member role request.
 func (r UpdateTeamMemberRoleRequest) Validate() error {
 	return validation.ValidateStruct(&r,
-		validation.Field(&r.Role, validation.Required, validation.In("lead", "member")),
+		validation.Field(&r.Role, validation.Required, validation.In(orgtypes.RoleTeamLead, orgtypes.RoleMember)),
+	)
+}
+
+// ========== Invitation Request Schemas ==========
+
+// CreateInvitationRequest represents a request to invite a user to an organization or team.
+//
+// Validation Rules:
+//   - email: Required, valid email format
+//   - role: Required, must be "admin" or "member"
+//   - teamId: Optional (omit for org-level invitation)
+//   - expiresIn: Optional duration string (e.g. "72h"), defaults to 7 days
+//
+// Example Org-Level:
+//
+//	{
+//	  "email": "newuser@example.com",
+//	  "role": "member"
+//	}
+//
+// Example Team-Level:
+//
+//	{
+//	  "email": "dev@example.com",
+//	  "role": "member",
+//	  "teamId": "team_def456"
+//	}
+type CreateInvitationRequest struct {
+	Email     string  `json:"email"`               // Invitee email address
+	Role      string  `json:"role"`                // Role on acceptance ("admin" or "member")
+	TeamID    *string `json:"teamId,omitempty"`    // Optional team ID (omit for org-level)
+	ExpiresIn string  `json:"expiresIn,omitempty"` // Optional duration (e.g. "72h"), default 168h
+}
+
+// Validate validates the create invitation request.
+func (r CreateInvitationRequest) Validate() error {
+	return validation.ValidateStruct(&r,
+		validation.Field(&r.Email, validation.Required, validation.Length(1, 255)),
+		validation.Field(&r.Role, validation.Required, validation.In(orgtypes.RoleAdmin, orgtypes.RoleMember)),
+		validation.Field(&r.TeamID, validation.When(r.TeamID != nil && *r.TeamID != "", validation.Length(1, 255))),
+	)
+}
+
+// AcceptInvitationRequest represents a request to accept an invitation.
+//
+// Validation Rules:
+//   - token: Required
+type AcceptInvitationRequest struct {
+	Token string `json:"token"` // Raw invitation token from invite email
+}
+
+// Validate validates the accept invitation request.
+func (r AcceptInvitationRequest) Validate() error {
+	return validation.ValidateStruct(&r,
+		validation.Field(&r.Token, validation.Required),
+	)
+}
+
+// DeclineInvitationRequest represents a request to decline an invitation.
+//
+// Validation Rules:
+//   - token: Required
+type DeclineInvitationRequest struct {
+	Token string `json:"token"` // Raw invitation token from invite email
+}
+
+// Validate validates the decline invitation request.
+func (r DeclineInvitationRequest) Validate() error {
+	return validation.ValidateStruct(&r,
+		validation.Field(&r.Token, validation.Required),
+	)
+}
+
+// InvitationResponse is the response returned when creating an invitation.
+// It includes the raw token which must be delivered to the invitee.
+type InvitationResponse struct {
+	ID             string  `json:"id"`
+	OrganizationID string  `json:"organizationId"`
+	TeamID         *string `json:"teamId,omitempty"`
+	Email          string  `json:"email"`
+	Role           string  `json:"role"`
+	Token          string  `json:"token"` // Raw token — only returned at creation
+	Status         string  `json:"status"`
+	ExpiresAt      string  `json:"expiresAt"`
+	CreatedAt      string  `json:"createdAt"`
+	UpdatedAt      string  `json:"updatedAt"`
+}
+
+// ── Plugin-level validation (includes custom roles from Config) ──────────
+
+// orgMemberRoles returns the valid org-level assignable roles (built-in + custom).
+func (p *Plugin) orgMemberRoles() []any {
+	roles := make([]any, 0, 2+len(p.config.CustomOrgRoles))
+	roles = append(roles, orgtypes.RoleAdmin, orgtypes.RoleMember)
+	for _, r := range p.config.CustomOrgRoles {
+		roles = append(roles, r)
+	}
+	return roles
+}
+
+// teamMemberRoles returns the valid team-level assignable roles (built-in + custom).
+func (p *Plugin) teamMemberRoles() []any {
+	roles := make([]any, 0, 2+len(p.config.CustomTeamRoles))
+	roles = append(roles, orgtypes.RoleTeamLead, orgtypes.RoleMember)
+	for _, r := range p.config.CustomTeamRoles {
+		roles = append(roles, r)
+	}
+	return roles
+}
+
+// ValidateAddMember validates an AddOrganizationMemberRequest, including custom org roles.
+func (p *Plugin) ValidateAddMember(req AddOrganizationMemberRequest) error {
+	return validation.ValidateStruct(&req,
+		validation.Field(&req.UserID, validation.Required),
+		validation.Field(&req.Role, validation.Required, validation.In(p.orgMemberRoles()...)),
+	)
+}
+
+// ValidateUpdateMemberRole validates an UpdateMemberRoleRequest, including custom org roles.
+func (p *Plugin) ValidateUpdateMemberRole(req UpdateMemberRoleRequest) error {
+	return validation.ValidateStruct(&req,
+		validation.Field(&req.Role, validation.Required, validation.In(p.orgMemberRoles()...)),
+	)
+}
+
+// ValidateAddTeamMember validates an AddTeamMemberRequest, including custom team roles.
+func (p *Plugin) ValidateAddTeamMember(req AddTeamMemberRequest) error {
+	return validation.ValidateStruct(&req,
+		validation.Field(&req.UserID, validation.Required),
+		validation.Field(&req.Role, validation.Required, validation.In(p.teamMemberRoles()...)),
+	)
+}
+
+// ValidateUpdateTeamMemberRole validates an UpdateTeamMemberRoleRequest, including custom team roles.
+func (p *Plugin) ValidateUpdateTeamMemberRole(req UpdateTeamMemberRoleRequest) error {
+	return validation.ValidateStruct(&req,
+		validation.Field(&req.Role, validation.Required, validation.In(p.teamMemberRoles()...)),
+	)
+}
+
+// ValidateCreateInvitation validates a CreateInvitationRequest, including custom org roles.
+func (p *Plugin) ValidateCreateInvitation(req CreateInvitationRequest) error {
+	return validation.ValidateStruct(&req,
+		validation.Field(&req.Email, validation.Required, validation.Length(1, 255)),
+		validation.Field(&req.Role, validation.Required, validation.In(p.orgMemberRoles()...)),
+		validation.Field(&req.TeamID, validation.When(req.TeamID != nil && *req.TeamID != "", validation.Length(1, 255))),
 	)
 }

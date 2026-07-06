@@ -164,6 +164,83 @@ func (m *mysqlQuerier) deleteTeam(ctx context.Context, id string) error {
 	return m.q.DeleteTeam(ctx, id)
 }
 
+func (m *mysqlQuerier) createInvitation(ctx context.Context, id, organizationID, teamID, email, role, inviterID, tokenHash, status, expiresAt, createdAt, updatedAt string) error {
+	return m.q.CreateInvitation(ctx, sqlcmysql.CreateInvitationParams{
+		ID: id, OrganizationID: organizationID,
+		TeamID: sql.NullString{String: teamID, Valid: teamID != ""},
+		Email:  email, Role: role, InviterID: inviterID,
+		TokenHash: tokenHash, Status: status,
+		ExpiresAt: expiresAt, CreatedAt: createdAt, UpdatedAt: updatedAt,
+	})
+}
+
+func (m *mysqlQuerier) getInvitationByID(ctx context.Context, id string) (invitationRow, error) {
+	inv, err := m.q.GetInvitationByID(ctx, id)
+	if err != nil {
+		return invitationRow{}, err
+	}
+	return invitationRow{
+		ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
+		Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
+		TokenHash: inv.TokenHash, Status: inv.Status,
+		ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+	}, nil
+}
+
+func (m *mysqlQuerier) getInvitationByTokenHash(ctx context.Context, tokenHash string) (invitationRow, error) {
+	inv, err := m.q.GetInvitationByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return invitationRow{}, err
+	}
+	return invitationRow{
+		ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
+		Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
+		TokenHash: inv.TokenHash, Status: inv.Status,
+		ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+	}, nil
+}
+
+func (m *mysqlQuerier) listInvitations(ctx context.Context, orgID string, teamID string, offset, limit int32) ([]invitationRow, error) {
+	rows, err := m.q.ListInvitations(ctx, sqlcmysql.ListInvitationsParams{
+		OrganizationID: orgID,
+		Column2:        teamID,
+		TeamID:         sql.NullString{String: teamID, Valid: teamID != ""},
+		Limit:          limit,
+		Offset:         offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]invitationRow, len(rows))
+	for i, inv := range rows {
+		result[i] = invitationRow{
+			ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
+			Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
+			TokenHash: inv.TokenHash, Status: inv.Status,
+			ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+		}
+	}
+	return result, nil
+}
+
+func (m *mysqlQuerier) countInvitations(ctx context.Context, orgID string, teamID string) (int64, error) {
+	return m.q.CountInvitations(ctx, sqlcmysql.CountInvitationsParams{
+		OrganizationID: orgID,
+		Column2:        teamID,
+		TeamID:         sql.NullString{String: teamID, Valid: teamID != ""},
+	})
+}
+
+func (m *mysqlQuerier) updateInvitationStatus(ctx context.Context, id, status, updatedAt string) error {
+	return m.q.UpdateInvitationStatus(ctx, sqlcmysql.UpdateInvitationStatusParams{
+		Status: status, UpdatedAt: updatedAt, ID: id,
+	})
+}
+
+func (m *mysqlQuerier) deleteInvitation(ctx context.Context, id string) error {
+	return m.q.DeleteInvitation(ctx, id)
+}
+
 func (m *mysqlQuerier) createTeamMember(ctx context.Context, id, teamID, userID, role, createdAt, updatedAt string) error {
 	return m.q.CreateTeamMember(ctx, sqlcmysql.CreateTeamMemberParams{
 		ID: id, TeamID: teamID, UserID: userID, Role: role, CreatedAt: createdAt, UpdatedAt: updatedAt,

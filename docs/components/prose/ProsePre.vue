@@ -1,6 +1,6 @@
 <template>
   <ClientOnly v-if="language === 'mermaid'">
-    <div class="mermaid-container flex justify-center py-4 overflow-x-auto" v-html="svgCode"></div>
+    <div class="mermaid-container flex justify-center py-4 overflow-x-auto" v-html="svgCode" /><!-- eslint-disable-line vue/no-v-html -->
   </ClientOnly>
   <pre v-else :class="$props.class"><slot /></pre>
 </template>

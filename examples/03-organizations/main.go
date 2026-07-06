@@ -52,7 +52,7 @@ func main() {
 	r := routers.NewChiRouter(mux)
 
 	// 3. Create organizations plugin
-	orgPlugin := organizations.New(nil, plugins.DialectPostgres)
+	orgPlugin := organizations.New(nil, nil, plugins.DialectPostgres)
 
 	cfg := config.Default().WithDB(db).WithRouter(r).WithSecret([]byte("your-32-byte-secret-key-here!!!!"))
 	a, err := aegis.New(context.Background(), cfg)
@@ -90,12 +90,12 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(orgPlugin.RequireOrganizationMemberMiddleware()) // Require organization membership
 
-			r.Get("/api/projects", listProjectsHandler)
-			r.Post("/api/projects", createProjectHandler)
-			r.Get("/api/projects/{id}", getProjectHandler)
-			r.Delete("/api/projects/{id}", deleteProjectHandler)
+			r.Get("/api/orgs/{id}/projects", listProjectsHandler)
+			r.Post("/api/orgs/{id}/projects", createProjectHandler)
+			r.Get("/api/orgs/{id}/projects/{projectId}", getProjectHandler)
+			r.Delete("/api/orgs/{id}/projects/{projectId}", deleteProjectHandler)
 
-			r.Get("/api/team", teamMembersHandler)
+			r.Get("/api/orgs/{id}/team", teamMembersHandler)
 		})
 	})
 
@@ -386,7 +386,7 @@ func getProjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectID := core.GetSanitizedPathParam(r, "id")
+	projectID := core.GetSanitizedPathParam(r, "projectId")
 
 	for _, p := range projects[orgID] {
 		if p.ID == projectID {
@@ -409,7 +409,7 @@ func deleteProjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectID := core.GetSanitizedPathParam(r, "id")
+	projectID := core.GetSanitizedPathParam(r, "projectId")
 
 	for i, p := range projects[orgID] {
 		if p.ID == projectID {

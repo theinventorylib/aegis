@@ -9,17 +9,17 @@
   "dependencies": {
     "@nuxt/eslint": "1.13.0",
     "@nuxt/icon": "2.2.1",
-    "@nuxt/ui": "^4.8.0",
+    "@nuxt/ui": "^4.8.1",
     "@tailwindcss/vite": "^4.3.0",
     "better-sqlite3": "^12.10.0",
     "docus": "latest",
     "mermaid": "^11.15.0",
-    "nuxt": "^4.4.6",
+    "nuxt": "^4.4.7",
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
     "@nuxtjs/robots": "^5.7.1",
     "@nuxtjs/sitemap": "^7.6.0",
-    "nuxt-og-image": "^5.1.13"
+    "nuxt-og-image": "^6.5.1"
   }
 }

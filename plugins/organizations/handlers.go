@@ -1,8 +1,11 @@
 package organizations
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/theinventorylib/aegis/core"
 	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
@@ -321,7 +324,7 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 	req.UserID = core.SanitizeString(req.UserID, nil)
 	req.Role = core.SanitizeString(req.Role, nil)
 
-	if err := req.Validate(); err != nil {
+	if err := p.ValidateAddMember(req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
@@ -397,7 +400,7 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 	// Sanitize inputs
 	req.Role = core.SanitizeString(req.Role, nil)
 
-	if err := req.Validate(); err != nil {
+	if err := p.ValidateUpdateMemberRole(req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
@@ -687,7 +690,7 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 	req.UserID = core.SanitizeString(req.UserID, nil)
 	req.Role = core.SanitizeString(req.Role, nil)
 
-	if err := req.Validate(); err != nil {
+	if err := p.ValidateAddTeamMember(req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
@@ -788,7 +791,7 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 	// Sanitize inputs
 	req.Role = core.SanitizeString(req.Role, nil)
 
-	if err := req.Validate(); err != nil {
+	if err := p.ValidateUpdateTeamMemberRole(req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
@@ -836,4 +839,305 @@ func (p *Plugin) RemoveTeamMemberHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Member removed from team"})
+}
+
+// ========== INVITATION HANDLERS ==========
+//
+// These HTTP handlers implement invitation creation, listing, cancellation,
+// acceptance, decline, and verification.
+//
+// Permission Requirements:
+//   - Create/List/Cancel: Admin or owner of the organization
+//   - Accept/Decline/Verify: No auth required (token-based)
+
+// CreateInvitationHandler creates a new invitation.
+//
+// This handler accepts both org-level and team-level invitation requests.
+// For org-level invites, use POST /organizations/:id/invitations.
+// For team-level invites, use POST /teams/:teamId/invitations.
+//
+// Endpoint:
+//   - Method: POST
+//   - Path: /organizations/:id/invitations or /teams/:teamId/invitations
+//   - Auth: Required (must be admin or owner)
+//
+// Request Body:
+//
+//	{
+//	  "email": "user@example.com",
+//	  "role": "member",
+//	  "teamId": "team_abc123"
+//	}
+func (p *Plugin) CreateInvitationHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// Determine org ID from path — can be under /organizations/:id or /teams/:teamId
+	orgID := core.GetSanitizedPathParam(r, "id")
+	var teamID *string
+
+	if orgID == "" {
+		// Team-level invitation: get team and its org
+		tid := core.GetSanitizedPathParam(r, "teamId")
+		if tid == "" {
+			core.WriteJSONError(w, http.StatusBadRequest, "Organization ID or Team ID required")
+			return
+		}
+		team, err := p.GetTeam(r.Context(), tid)
+		if err != nil {
+			core.WriteJSONError(w, http.StatusNotFound, "Team not found")
+			return
+		}
+		orgID = team.OrganizationID
+		teamID = &tid
+	}
+
+	// Verify permission: admin or owner of the org
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
+		return
+	}
+
+	var req CreateInvitationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	req.Email = core.SanitizeString(req.Email, nil)
+	if p := req.TeamID; p != nil {
+		s := core.SanitizeString(*p, nil)
+		req.TeamID = &s
+	}
+
+	if err := p.ValidateCreateInvitation(req); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	// Use path-based teamID over body-based (path wins for /teams/:teamId routes)
+	if teamID == nil && req.TeamID != nil {
+		teamID = req.TeamID
+	}
+
+	inv, rawToken, err := p.CreateInvitation(r.Context(), orgID, teamID, req.Email, req.Role, user.ID, req.ExpiresIn)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	core.WriteJSON(w, http.StatusCreated, &core.Response{
+		Success: true,
+		Message: "Invitation created",
+		Data: InvitationResponse{
+			ID:             inv.ID,
+			OrganizationID: inv.OrganizationID,
+			TeamID:         inv.TeamID,
+			Email:          inv.Email,
+			Role:           inv.Role,
+			Token:          rawToken,
+			Status:         inv.Status,
+			ExpiresAt:      inv.ExpiresAt.Format(time.RFC3339),
+			CreatedAt:      inv.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:      inv.UpdatedAt.Format(time.RFC3339),
+		},
+	})
+}
+
+// ListInvitationsHandler lists pending invitations for an organization or team.
+func (p *Plugin) ListInvitationsHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// Determine org ID from path
+	orgID := core.GetSanitizedPathParam(r, "id")
+	teamID := ""
+
+	if orgID == "" {
+		// Team-level listing
+		tid := core.GetSanitizedPathParam(r, "teamId")
+		if tid == "" {
+			core.WriteJSONError(w, http.StatusBadRequest, "Organization ID or Team ID required")
+			return
+		}
+		team, err := p.GetTeam(r.Context(), tid)
+		if err != nil {
+			core.WriteJSONError(w, http.StatusNotFound, "Team not found")
+			return
+		}
+		orgID = team.OrganizationID
+		teamID = tid
+	}
+
+	// Verify permission: admin or owner
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
+		return
+	}
+
+	pagination := core.ParsePagination(r)
+
+	invitations, totalCount, err := p.ListInvitations(r.Context(), orgID, teamID, pagination.Offset, pagination.Limit)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[*orgtypes.Invitation]{
+		Items:      invitations,
+		TotalCount: totalCount,
+		Page:       pagination.Page,
+		Offset:     pagination.Offset,
+		Limit:      pagination.Limit,
+	})
+}
+
+// CancelInvitationHandler cancels (deletes) a pending invitation.
+func (p *Plugin) CancelInvitationHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// Determine org ID from path
+	orgID := core.GetSanitizedPathParam(r, "id")
+	if orgID == "" {
+		tid := core.GetSanitizedPathParam(r, "teamId")
+		if tid == "" {
+			core.WriteJSONError(w, http.StatusBadRequest, "Organization ID or Team ID required")
+			return
+		}
+		team, err := p.GetTeam(r.Context(), tid)
+		if err != nil {
+			core.WriteJSONError(w, http.StatusNotFound, "Team not found")
+			return
+		}
+		orgID = team.OrganizationID
+	}
+
+	// Verify permission: admin or owner
+	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
+		return
+	}
+
+	invitationID := core.GetSanitizedPathParam(r, "invitationId")
+	if invitationID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invitation ID required")
+		return
+	}
+
+	if err := p.CancelInvitation(r.Context(), invitationID); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Invitation canceled",
+	})
+}
+
+// AcceptInvitationHandler accepts a pending invitation using the raw token.
+//
+// This endpoint is NOT authenticated — the token is the credential.
+// The caller must provide the user ID of the accepting user in the request body.
+func (p *Plugin) AcceptInvitationHandler(w http.ResponseWriter, r *http.Request) {
+	var req AcceptInvitationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	req.Token = core.SanitizeString(req.Token, nil)
+
+	if err := req.Validate(); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	// Hash the token for lookup
+	sum := sha256.Sum256([]byte(req.Token))
+	tokenHash := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	// Get the authenticated user (or require user ID in body)
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Authentication required to accept invitation")
+		return
+	}
+
+	inv, err := p.AcceptInvitation(r.Context(), tokenHash, user.ID)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Invitation accepted",
+		Data:    inv,
+	})
+}
+
+// DeclineInvitationHandler declines a pending invitation using the raw token.
+//
+// This endpoint is NOT authenticated — the token is the credential.
+func (p *Plugin) DeclineInvitationHandler(w http.ResponseWriter, r *http.Request) {
+	var req DeclineInvitationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	req.Token = core.SanitizeString(req.Token, nil)
+
+	if err := req.Validate(); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	// Hash the token for lookup
+	sum := sha256.Sum256([]byte(req.Token))
+	tokenHash := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	inv, err := p.DeclineInvitation(r.Context(), tokenHash)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Invitation declined",
+		Data:    inv,
+	})
+}
+
+// VerifyInvitationHandler validates a raw invitation token and returns
+// invitation details (for UI pre-fill). Unauthenticated.
+func (p *Plugin) VerifyInvitationHandler(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Token required")
+		return
+	}
+
+	inv, err := p.VerifyInvitation(r.Context(), token)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Data:    inv,
+	})
 }

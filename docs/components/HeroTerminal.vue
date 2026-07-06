@@ -22,7 +22,7 @@
             <span class="text-gray-300"> {{ line.args }}</span>
           </template>
           <template v-else>
-            <br />
+            <br >
           </template>
         </div>
       </div>

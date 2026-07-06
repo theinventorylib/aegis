@@ -55,6 +55,18 @@ func GetSchemaRequirements(dialect plugins.Dialect) []plugins.SchemaRequirement 
 			plugins.ValidateColumnSpecForDialect(d, "team_member", "role", core.ColumnSpec{Nullable: notNull}),
 			plugins.ValidateColumnExistsForDialect(d, "team_member", "created_at"),
 			plugins.ValidateColumnExistsForDialect(d, "team_member", "updated_at"),
+			plugins.ValidateTableExistsForDialect(d, "invitation"),
+			plugins.ValidateColumnExistsForDialect(d, "invitation", "id"),
+			plugins.ValidateColumnSpecForDialect(d, "invitation", "organization_id", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnExistsForDialect(d, "invitation", "team_id"),
+			plugins.ValidateColumnExistsForDialect(d, "invitation", "email"),
+			plugins.ValidateColumnSpecForDialect(d, "invitation", "role", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnSpecForDialect(d, "invitation", "inviter_id", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnExistsForDialect(d, "invitation", "token_hash"),
+			plugins.ValidateColumnExistsForDialect(d, "invitation", "status"),
+			plugins.ValidateColumnExistsForDialect(d, "invitation", "expires_at"),
+			plugins.ValidateColumnExistsForDialect(d, "invitation", "created_at"),
+			plugins.ValidateColumnExistsForDialect(d, "invitation", "updated_at"),
 		}
 	default:
 		return []plugins.SchemaRequirement{}

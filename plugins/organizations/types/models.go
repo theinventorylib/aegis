@@ -3,6 +3,18 @@ package types
 
 import "time"
 
+const (
+	// RoleOwner is the organization owner role — full control.
+	RoleOwner = "owner"
+	// RoleAdmin is the organization admin role — can manage members and teams.
+	RoleAdmin = "admin"
+	// RoleMember is the base organization membership role — read access.
+	RoleMember = "member"
+
+	// RoleTeamLead is the team lead role — can manage team members.
+	RoleTeamLead = "lead"
+)
+
 // Organization represents a workspace, company, or tenant in a multi-tenant system.
 //
 // Organizations are the top-level container for resources in a multi-tenant application.
@@ -92,6 +104,60 @@ type Team struct {
 	Description    string    `json:"description"`    // Team purpose/description
 	CreatedAt      time.Time `json:"createdAt"`      // When the team was created
 	UpdatedAt      time.Time `json:"updatedAt"`      // Last update timestamp
+}
+
+// Invitation represents a pending invitation to join an organization or team.
+//
+// Invitations are created by org admins/owners and sent to prospective members
+// via email. A single type covers both org-level and team-level invitations:
+// a nil TeamID means it's an org-level invitation (user will become a member
+// of the organization), while a non-nil TeamID means the user is invited
+// directly to a specific team (and becomes an org member implicitly upon
+// acceptance).
+//
+// Database Table: invitation
+// Unique Constraint: token_hash
+// Foreign Keys: organization_id → organization.id, team_id → team.id,
+//
+//	inviter_id → auth.users.id
+//
+// Status Values:
+//   - "pending":  Invitation created, awaiting response
+//   - "accepted": Invitee accepted, member records created
+//   - "declined": Invitee declined
+//   - "expired":  Past expires_at without acceptance
+//
+// Security:
+// The raw token is a cryptographically random 32-byte value, base64url-encoded,
+// returned at creation time and never stored. Only the SHA-256 hash (TokenHash)
+// is persisted so a DB leak does not allow bulk-accepting invitations.
+//
+// Example:
+//
+//	{
+//	  "id": "inv_abc123",
+//	  "organizationId": "org_xyz789",
+//	  "teamId": null,
+//	  "email": "newuser@example.com",
+//	  "role": "member",
+//	  "inviterId": "user_456",
+//	  "status": "pending",
+//	  "expiresAt": "2024-01-08T00:00:00Z",
+//	  "createdAt": "2024-01-01T00:00:00Z",
+//	  "updatedAt": "2024-01-01T00:00:00Z"
+//	}
+type Invitation struct {
+	ID             string    `json:"id"`             // Unique invitation identifier
+	OrganizationID string    `json:"organizationId"` // Target organization ID (FK)
+	TeamID         *string   `json:"teamId"`         // Optional team ID (nil = org-level)
+	Email          string    `json:"email"`          // Invitee email address
+	Role           string    `json:"role"`           // Role on acceptance ("admin" or "member")
+	InviterID      string    `json:"inviterId"`      // User who created the invitation (FK)
+	TokenHash      string    `json:"-"`              // SHA-256 hash of the raw token (never exposed)
+	Status         string    `json:"status"`         // "pending", "accepted", "declined", "expired"
+	ExpiresAt      time.Time `json:"expiresAt"`      // When the invitation expires
+	CreatedAt      time.Time `json:"createdAt"`      // When the invitation was created
+	UpdatedAt      time.Time `json:"updatedAt"`      // Last status update timestamp
 }
 
 // TeamMember represents a user's membership in a team with a role.

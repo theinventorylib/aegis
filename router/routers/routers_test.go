@@ -617,7 +617,7 @@ func TestEchoRouter_GroupWithPathParams(t *testing.T) {
 }
 
 // =============================================================================
-// NormalizePathToOpenAPI Integration Tests (Chi route registration)
+// NormalizePath Integration Tests (Chi route registration)
 // =============================================================================
 
 // TC-REG-001: Chi adapter converts :param to {param} for route registration

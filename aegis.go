@@ -514,7 +514,7 @@ func (a *Aegis) Use(ctx context.Context, plugin plugins.Plugin) error {
 // Example:
 //
 //	// Register Organizations plugin first (priority 10)
-//	orgPlugin := organizations.New(orgConfig, dialect)
+//	orgPlugin := organizations.New(orgConfig, nil, dialect)
 //	a.UseWithPriority(ctx, orgPlugin, 10)
 //
 //	// Register Admin plugin second (priority 50, depends on Organizations)
@@ -562,12 +562,8 @@ func (a *Aegis) UseWithPriority(ctx context.Context, plugin plugins.Plugin, prio
 		}
 	}
 
-	// Instantiate the multi-generic Aegis interface for the plugin
-	// This allow the plugin to use any models while we use defaults internally
-	pAegis := &pluginAegisWrapper{Aegis: a}
-
 	// Initialize plugin
-	if err := plugin.Init(ctx, pAegis); err != nil {
+	if err := plugin.Init(ctx, a); err != nil {
 		return err
 	}
 
@@ -609,9 +605,14 @@ func (a *Aegis) DeriveSecret(purpose string) []byte {
 	return a.config.DeriveSecret(purpose)
 }
 
-// GetDB returns the database connection
-func (a *Aegis) GetDB() *sql.DB {
+// DB returns the database connection
+func (a *Aegis) DB() *sql.DB {
 	return a.config.DB
+}
+
+// GetLogger returns the configured logger (may be nil).
+func (a *Aegis) GetLogger() config.Logger {
+	return a.config.Logger
 }
 
 // ValidateSchemaRequirements validates that the database has the required tables.
@@ -948,6 +949,9 @@ func (a *Aegis) GetPlugin(name string) (plugins.Plugin, bool) {
 	if ok {
 		return reg.plugin, true
 	}
+	if a.config != nil && a.config.Logger != nil {
+		a.config.Logger.Info("plugin not found (optional dependency may be missing)", "plugin", name)
+	}
 	return nil, false
 }
 
@@ -992,35 +996,6 @@ func GetPluginTyped[T plugins.Plugin](a *Aegis, name string) (T, bool) {
 
 	typed, ok := p.(T)
 	return typed, ok
-}
-
-// pluginAegisWrapper implements the generic plugins.Aegis interface by wrapping a non-generic Aegis instance.
-type pluginAegisWrapper struct {
-	*Aegis
-}
-
-func (w *pluginAegisWrapper) GetAuthService() *core.AuthService {
-	// Re-wrap the single-generic AuthService into the multi-generic interface if needed.
-	// Actually, the framework's GetAuthService returns *core.AuthService .
-	// This wrapper needs to return the multi-parameter version for the interface.
-	// Since A, V, S are pinned anyway, this is just a type alias/cast.
-	return w.Aegis.GetAuthService()
-}
-
-func (w *pluginAegisWrapper) GetLogger() config.Logger {
-	return w.config.Logger
-}
-
-func (w *pluginAegisWrapper) GetRateLimiter() *core.RateLimiter {
-	return w.rateLimiter
-}
-
-func (w *pluginAegisWrapper) DB() *sql.DB {
-	return w.config.DB
-}
-
-func (w *pluginAegisWrapper) GetPlugin(name string) (plugins.Plugin, bool) {
-	return w.Aegis.GetPlugin(name)
 }
 
 // Shutdown gracefully stops all plugins that implement PluginShutdown, in

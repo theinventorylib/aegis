@@ -61,12 +61,32 @@ type OrganizationStore interface {
 	// GetMember retrieves a user's membership in an organization.
 	GetMember(ctx context.Context, userID, orgID string) (Member, error)
 
-	// IsOrganizationMember checks if a user is a member (any role).
-	// Used by middleware for access control.
+	// HasOrgRole checks whether the user has any of the given org-level roles.
+	// Use this instead of the deprecated IsOrganizationMember / IsOwnerOrAdmin
+	// methods for new code.
+	//
+	// Example:
+	//
+	//	hasAdmin, _ := store.HasOrgRole(ctx, userID, orgID, RoleOwner, RoleAdmin)
+	//	hasAny,  _ := store.HasOrgRole(ctx, userID, orgID, RoleOwner, RoleAdmin, RoleMember)
+	HasOrgRole(ctx context.Context, userID, orgID string, roles ...string) (bool, error)
+
+	// HasTeamRole checks whether the user has any of the given team-level roles.
+	//
+	// Example:
+	//
+	//	canLead, _ := store.HasTeamRole(ctx, userID, teamID, RoleTeamLead)
+	HasTeamRole(ctx context.Context, userID, teamID string, roles ...string) (bool, error)
+
+	// CanAccessTeam checks whether a user can access a team.
+	// A user can access a team if they are a member of the parent organization
+	// AND a member of the specific team (with any team role).
+	CanAccessTeam(ctx context.Context, userID, teamID string) (bool, error)
+
+	// Deprecated: Use HasOrgRole instead.
 	IsOrganizationMember(ctx context.Context, userID, orgID string) (bool, error)
 
-	// IsOwnerOrAdmin checks if a user has admin privileges.
-	// Returns true if role is "owner" or "admin".
+	// Deprecated: Use HasOrgRole instead.
 	IsOwnerOrAdmin(ctx context.Context, userID, orgID string) (bool, error)
 
 	// IsOwner checks if a user is the organization owner.
@@ -127,4 +147,39 @@ type OrganizationStore interface {
 
 	// RemoveTeamMember removes a user from a team.
 	RemoveTeamMember(ctx context.Context, teamID, userID string) error
+
+	// ========== Invitation operations ==========
+
+	// CreateInvitation stores a new invitation.
+	//
+	// The TokenHash field must contain the SHA-256 hash of the raw token.
+	// The raw token itself is never stored — it is returned at creation time
+	// and must be delivered to the invitee (the raw token is returned in the API response).
+	CreateInvitation(ctx context.Context, inv Invitation) error
+
+	// GetInvitationByID retrieves an invitation by its ID.
+	GetInvitationByID(ctx context.Context, id string) (Invitation, error)
+
+	// GetInvitationByTokenHash retrieves an invitation by its token hash.
+	// Used on accept/decline where the caller provides the raw token.
+	GetInvitationByTokenHash(ctx context.Context, tokenHash string) (Invitation, error)
+
+	// ListInvitations returns a paginated list of invitations for an org,
+	// optionally filtered to a specific team.
+	//
+	// Parameters:
+	//   - orgID: Organization ID (required)
+	//   - teamID: If non-empty, only return invitations for this team.
+	//     Pass empty string to return all org-level invites.
+	//   - offset, limit: Pagination
+	ListInvitations(ctx context.Context, orgID string, teamID string, offset, limit int) ([]Invitation, error)
+
+	// CountInvitations returns the total number of invitations matching filters.
+	CountInvitations(ctx context.Context, orgID string, teamID string) (int, error)
+
+	// UpdateInvitationStatus updates the status of an invitation.
+	UpdateInvitationStatus(ctx context.Context, id, status string, updatedAt time.Time) error
+
+	// DeleteInvitation removes an invitation by its ID.
+	DeleteInvitation(ctx context.Context, id string) error
 }

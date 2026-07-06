@@ -298,7 +298,7 @@ func getPluginsForExport(dialect plugins.Dialect, pluginNames []string) []plugin
 		"jwt":           jwt.New(nil, nil, dialect),
 		"oauth":         oauth.New(nil, nil, dialect),
 		"openapi":       openapi.New(nil),
-		"organizations": organizations.New(nil, dialect),
+		"organizations": organizations.New(nil, nil, dialect),
 		"sms":           sms.New(nil, nil, dialect),
 	}
 

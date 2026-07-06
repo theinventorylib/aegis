@@ -164,6 +164,83 @@ func (s *sqliteQuerier) deleteTeam(ctx context.Context, id string) error {
 	return s.q.DeleteTeam(ctx, id)
 }
 
+func (s *sqliteQuerier) createInvitation(ctx context.Context, id, organizationID, teamID, email, role, inviterID, tokenHash, status, expiresAt, createdAt, updatedAt string) error {
+	return s.q.CreateInvitation(ctx, sqlcsqlite.CreateInvitationParams{
+		ID: id, OrganizationID: organizationID,
+		TeamID: sql.NullString{String: teamID, Valid: teamID != ""},
+		Email:  email, Role: role, InviterID: inviterID,
+		TokenHash: tokenHash, Status: status,
+		ExpiresAt: expiresAt, CreatedAt: createdAt, UpdatedAt: updatedAt,
+	})
+}
+
+func (s *sqliteQuerier) getInvitationByID(ctx context.Context, id string) (invitationRow, error) {
+	inv, err := s.q.GetInvitationByID(ctx, id)
+	if err != nil {
+		return invitationRow{}, err
+	}
+	return invitationRow{
+		ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
+		Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
+		TokenHash: inv.TokenHash, Status: inv.Status,
+		ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+	}, nil
+}
+
+func (s *sqliteQuerier) getInvitationByTokenHash(ctx context.Context, tokenHash string) (invitationRow, error) {
+	inv, err := s.q.GetInvitationByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return invitationRow{}, err
+	}
+	return invitationRow{
+		ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
+		Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
+		TokenHash: inv.TokenHash, Status: inv.Status,
+		ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+	}, nil
+}
+
+func (s *sqliteQuerier) listInvitations(ctx context.Context, orgID string, teamID string, offset, limit int32) ([]invitationRow, error) {
+	rows, err := s.q.ListInvitations(ctx, sqlcsqlite.ListInvitationsParams{
+		OrganizationID: orgID,
+		Column2:        teamID,
+		TeamID:         sql.NullString{String: teamID, Valid: teamID != ""},
+		Limit:          int64(limit),
+		Offset:         int64(offset),
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]invitationRow, len(rows))
+	for i, inv := range rows {
+		result[i] = invitationRow{
+			ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
+			Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
+			TokenHash: inv.TokenHash, Status: inv.Status,
+			ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+		}
+	}
+	return result, nil
+}
+
+func (s *sqliteQuerier) countInvitations(ctx context.Context, orgID string, teamID string) (int64, error) {
+	return s.q.CountInvitations(ctx, sqlcsqlite.CountInvitationsParams{
+		OrganizationID: orgID,
+		Column2:        teamID,
+		TeamID:         sql.NullString{String: teamID, Valid: teamID != ""},
+	})
+}
+
+func (s *sqliteQuerier) updateInvitationStatus(ctx context.Context, id, status, updatedAt string) error {
+	return s.q.UpdateInvitationStatus(ctx, sqlcsqlite.UpdateInvitationStatusParams{
+		Status: status, UpdatedAt: updatedAt, ID: id,
+	})
+}
+
+func (s *sqliteQuerier) deleteInvitation(ctx context.Context, id string) error {
+	return s.q.DeleteInvitation(ctx, id)
+}
+
 func (s *sqliteQuerier) createTeamMember(ctx context.Context, id, teamID, userID, role, createdAt, updatedAt string) error {
 	return s.q.CreateTeamMember(ctx, sqlcsqlite.CreateTeamMemberParams{
 		ID: id, TeamID: teamID, UserID: userID, Role: role, CreatedAt: createdAt, UpdatedAt: updatedAt,

@@ -556,6 +556,34 @@ func (p *Plugin) MarkEmailVerified(ctx context.Context, email string) error {
 	return p.store.UpdateUserEmail(ctx, user.ID, email, true)
 }
 
+// SendEmail sends an arbitrary email using the configured email provider.
+//
+// This method is exposed so other plugins (e.g., organizations) can reuse the
+// same email provider for their own email needs (invitations, notifications, etc.)
+// without configuring a second email sender.
+//
+// If no provider is configured, the email is not sent and no error is returned
+// (the caller can decide how to handle delivery in this case).
+//
+// Parameters:
+//   - ctx: Request context
+//   - to: Recipient email address
+//   - subject: Email subject line
+//   - body: Plain-text email body
+//
+// Returns:
+//   - error: If provider is configured but sending fails
+//
+// Example:
+//
+//	err := plugin.SendEmail(ctx, "user@example.com", "Welcome!", "Thank you for joining.")
+func (p *Plugin) SendEmail(ctx context.Context, to, subject, body string) error {
+	if p.provider != nil {
+		return p.provider.SendEmail(to, subject, body)
+	}
+	return nil
+}
+
 // UpdateUserEmail updates a user's email address and verification status programmatically.
 //
 // Parameters:

@@ -96,3 +96,36 @@ UPDATE team_member SET role = $3, updated_at = $4 WHERE team_id = $1 AND user_id
 
 -- name: RemoveTeamMember :exec
 DELETE FROM team_member WHERE team_id = $1 AND user_id = $2;
+
+-- Invitation queries
+
+-- name: CreateInvitation :exec
+INSERT INTO invitation (id, organization_id, team_id, email, role, inviter_id, token_hash, status, expires_at, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+
+-- name: GetInvitationByID :one
+SELECT id, organization_id, team_id, email, role, inviter_id, token_hash, status, expires_at, created_at, updated_at
+FROM invitation WHERE id = $1;
+
+-- name: GetInvitationByTokenHash :one
+SELECT id, organization_id, team_id, email, role, inviter_id, token_hash, status, expires_at, created_at, updated_at
+FROM invitation WHERE token_hash = $1;
+
+-- name: ListInvitations :many
+SELECT id, organization_id, team_id, email, role, inviter_id, token_hash, status, expires_at, created_at, updated_at
+FROM invitation
+WHERE organization_id = $1
+  AND ($2 = '' OR team_id = $2)
+ORDER BY created_at DESC LIMIT $3 OFFSET $4;
+
+-- name: CountInvitations :one
+SELECT COUNT(*)
+FROM invitation
+WHERE organization_id = $1
+  AND ($2 = '' OR team_id = $2);
+
+-- name: UpdateInvitationStatus :exec
+UPDATE invitation SET status = $2, updated_at = $3 WHERE id = $1;
+
+-- name: DeleteInvitation :exec
+DELETE FROM invitation WHERE id = $1;

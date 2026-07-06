@@ -10,7 +10,7 @@ export default defineNuxtConfig({
     '@nuxt/ui',
     '@nuxtjs/sitemap',
     '@nuxtjs/robots',
-    'nuxt-og-image'
+    // 'nuxt-og-image'
   ],
   site: {
     url: 'https://theinventorylib.github.io/aegis',
@@ -30,9 +30,9 @@ export default defineNuxtConfig({
   robots: {
     robotsTxt: false // We use static public/robots.txt
   },
-  sitemap: {
-    strictNuxtContentPaths: true
-  },
+  // sitemap: {
+  //   strictNuxtContentPaths: false
+  // },
   compatibilityDate: '2026-02-05',
   colorMode: {
     preference: 'dark',

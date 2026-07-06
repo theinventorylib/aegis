@@ -36,7 +36,7 @@
 // Example Setup:
 //
 //	// Create organization plugin
-//	orgPlugin := organizations.New(nil, plugins.DialectPostgres)
+//	orgPlugin := organizations.New(nil, nil, plugins.DialectPostgres)
 //
 //	// User creates organization
 //	org, _ := orgPlugin.CreateOrganization(ctx, "Acme Corp", "acme", user.ID)
@@ -60,6 +60,10 @@ package organizations
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -72,6 +76,27 @@ import (
 	"github.com/theinventorylib/aegis/router"
 )
 
+// Config holds optional configuration for the organizations plugin.
+type Config struct {
+	// CustomOrgRoles extends the set of valid org-level roles beyond the
+	// built-ins (owner, admin, member). When set, schema validation accepts
+	// these roles in addition to the built-in set.
+	CustomOrgRoles []string
+
+	// CustomTeamRoles extends the set of valid team-level roles beyond the
+	// built-ins (lead, member).
+	CustomTeamRoles []string
+
+	// InvitationSubject is the subject line for invitation emails.
+	// Default: "You're invited!".
+	InvitationSubject string
+
+	// InvitationBodyTemplate is the body template for invitation emails.
+	// Use %s as a placeholder for the accept URL (substituted via fmt.Sprintf).
+	// Default: "You have been invited.\n\nAccept your invitation here: %s".
+	InvitationBodyTemplate string
+}
+
 // Plugin implements multi-tenant organization and team management.
 //
 // This plugin provides complete CRUD operations for organizations, members,
@@ -81,6 +106,9 @@ import (
 //   - sessionService: User authentication for protected routes
 //   - store: Database persistence for organizations, members, teams
 //   - dialect: SQL dialect (PostgreSQL, MySQL, SQLite)
+//   - config: Plugin configuration (roles, email templates)
+//   - emailSender: Optional function for delivering invitation emails,
+//     sourced from the email-otp plugin at init time
 //
 // Endpoints Provided:
 //
@@ -88,16 +116,24 @@ import (
 //	Members: POST, GET, PATCH, DELETE /organizations/:id/members
 //	Teams: POST, GET, PUT, DELETE /teams, /organizations/:id/teams
 //	Team Members: POST, GET, PATCH, DELETE /teams/:teamId/members
+//	Invitations: POST, GET, DELETE /organizations/:id/invitations
+//	            POST, GET, DELETE /teams/:teamId/invitations
+//	            POST /organizations/invitations/accept
+//	            POST /organizations/invitations/decline
+//	            GET  /organizations/invitations/verify
 type Plugin struct {
 	sessionService *core.SessionService
 	store          orgtypes.OrganizationStore
 	dialect        plugins.Dialect
 	aegis          plugins.Aegis
+	emailSender    func(ctx context.Context, to, subject, body string) error
+	config         Config
 }
 
 // New creates a new organizations plugin for multi-tenancy management.
 //
 // Parameters:
+//   - cfg: Optional configuration (nil = use defaults)
 //   - store: Organization storage implementation (nil = use DefaultOrganizationStore)
 //   - dialect: Database dialect (defaults to PostgreSQL)
 //
@@ -106,16 +142,35 @@ type Plugin struct {
 //
 // Example:
 //
-//	plugin := organizations.New(nil, plugins.DialectPostgres)
-func New(store orgtypes.OrganizationStore, dialect ...plugins.Dialect) *Plugin {
+//	plugin := organizations.New(nil, nil, plugins.DialectPostgres)
+func New(cfg *Config, store orgtypes.OrganizationStore, dialect ...plugins.Dialect) *Plugin {
 	d := plugins.DialectPostgres
 	if len(dialect) > 0 {
 		d = dialect[0]
 	}
-	return &Plugin{
+	p := &Plugin{
 		store:   store,
 		dialect: d,
+		config: Config{
+			InvitationSubject:      "You're invited!",
+			InvitationBodyTemplate: "You have been invited.\n\nAccept your invitation here: %s",
+		},
 	}
+	if cfg != nil {
+		if cfg.InvitationSubject != "" {
+			p.config.InvitationSubject = cfg.InvitationSubject
+		}
+		if cfg.InvitationBodyTemplate != "" {
+			p.config.InvitationBodyTemplate = cfg.InvitationBodyTemplate
+		}
+		if len(cfg.CustomOrgRoles) > 0 {
+			p.config.CustomOrgRoles = cfg.CustomOrgRoles
+		}
+		if len(cfg.CustomTeamRoles) > 0 {
+			p.config.CustomTeamRoles = cfg.CustomTeamRoles
+		}
+	}
+	return p
 }
 
 // Name returns the plugin name
@@ -182,6 +237,17 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 	// Store session service for auth middleware
 	p.sessionService = aegis.GetAuthService().Session
 	p.aegis = aegis
+
+	// Auto-wire email sender from email-otp plugin if available.
+	// The GetPlugin call already logs if the plugin is not found,
+	// so no additional logging is needed here.
+	if emailPlugin, ok := aegis.GetPlugin("email-otp"); ok {
+		if sender, ok := emailPlugin.(interface {
+			SendEmail(ctx context.Context, to, subject, body string) error
+		}); ok {
+			p.emailSender = sender.SendEmail
+		}
+	}
 
 	return nil
 }
@@ -574,6 +640,118 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			404: openapi.RefResponse("Team not found", "Error"),
 		},
 	})
+
+	// ── Invitation routes ─────────────────────────────────────────────────
+
+	// Accept/decline/verify endpoints are NOT authenticated — the token is
+	// the credential. They live at the plugin prefix level.
+	r.POST(prefix+"/invitations/accept", http.HandlerFunc(p.AcceptInvitationHandler).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/invitations/accept",
+		Summary:     "Accept invitation",
+		Description: "Accept a pending invitation using the raw token from the invite email",
+		Tags:        []string{"Invitations"},
+		Params: []openapi.Param{
+			{Name: "token", In: "query", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[AcceptInvitationRequest](),
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[orgtypes.Invitation]("Invitation accepted"),
+			400: openapi.RefResponse("Invalid or expired token", "Error"),
+		},
+	})
+
+	r.POST(prefix+"/invitations/decline", http.HandlerFunc(p.DeclineInvitationHandler).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/invitations/decline",
+		Summary:     "Decline invitation",
+		Description: "Decline a pending invitation using the raw token from the invite email",
+		Tags:        []string{"Invitations"},
+		Body:        openapi.BodyOf[DeclineInvitationRequest](),
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[orgtypes.Invitation]("Invitation declined"),
+			400: openapi.RefResponse("Invalid or expired token", "Error"),
+		},
+	})
+
+	r.GET(prefix+"/invitations/verify", http.HandlerFunc(p.VerifyInvitationHandler).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "GET",
+		Path:        prefix + "/invitations/verify",
+		Summary:     "Verify invitation token",
+		Description: "Check if an invitation token is valid and return invitation details",
+		Tags:        []string{"Invitations"},
+		Params: []openapi.Param{
+			{Name: "token", In: "query", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[orgtypes.Invitation]("Invitation details"),
+			400: openapi.RefResponse("Invalid or expired token", "Error"),
+		},
+	})
+
+	// Org-level invitation management (authenticated + admin/owner)
+	orgInvitesGroup := orgGroup.Group("/:id/invitations", "Invitations")
+
+	orgInvitesGroup.POST("/", requireAuth(http.HandlerFunc(p.CreateInvitationHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/{id}/invitations",
+		Summary:     "Create invitation",
+		Description: "Create a new invitation for an organization (requires admin role)",
+		Tags:        []string{"Invitations"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[CreateInvitationRequest](),
+		Responses: openapi.Responses{
+			201: openapi.DataResponseOf[InvitationResponse]("Invitation created"),
+			400: openapi.RefResponse("Invalid request or validation error", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+		},
+	})
+
+	orgInvitesGroup.GET("/", requireAuth(http.HandlerFunc(p.ListInvitationsHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "GET",
+		Path:        prefix + "/{id}/invitations",
+		Summary:     "List invitations",
+		Description: "List pending invitations for an organization (requires admin role)",
+		Tags:        []string{"Invitations"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[orgtypes.Invitation]]("List of invitations"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+		},
+	})
+
+	orgInvitesGroup.DELETE("/:invitationId", requireAuth(http.HandlerFunc(p.CancelInvitationHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "DELETE",
+		Path:        prefix + "/{id}/invitations/{invitationId}",
+		Summary:     "Cancel invitation",
+		Description: "Cancel a pending invitation (requires admin role)",
+		Tags:        []string{"Invitations"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "invitationId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Invitation canceled", "Success"),
+			400: openapi.RefResponse("Invalid invitation ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+		},
+	})
 }
 
 // EnrichUser implements plugins.UserEnricher to add organization memberships.
@@ -714,7 +892,39 @@ func (p *Plugin) GetUserOrganizations(ctx context.Context, userID string, offset
 
 // User Organization operations
 
+// HasOrgRole checks whether the user has any of the given org-level roles.
+//
+// This is the general-purpose role check for org-level permissions.
+// Pass one or more role constants to check against.
+//
+// Example:
+//
+//	isAdmin, _ := p.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner, orgtypes.RoleAdmin)
+//	isMember, _ := p.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner, orgtypes.RoleAdmin, orgtypes.RoleMember)
+func (p *Plugin) HasOrgRole(ctx context.Context, userID, orgID string, roles ...string) (bool, error) {
+	return p.store.HasOrgRole(ctx, userID, orgID, roles...)
+}
+
+// HasTeamRole checks whether the user has any of the given team-level roles.
+//
+// Example:
+//
+//	canLead, _ := p.HasTeamRole(ctx, userID, teamID, orgtypes.RoleTeamLead)
+func (p *Plugin) HasTeamRole(ctx context.Context, userID, teamID string, roles ...string) (bool, error) {
+	return p.store.HasTeamRole(ctx, userID, teamID, roles...)
+}
+
+// CanAccessTeam checks whether a user can access a team.
+//
+// A user can access a team if they are a member of the parent organization
+// AND a member of the specific team (with any team role).
+func (p *Plugin) CanAccessTeam(ctx context.Context, userID, teamID string) (bool, error) {
+	return p.store.CanAccessTeam(ctx, userID, teamID)
+}
+
 // IsOrganizationMember checks if a user is a member of an organization.
+//
+// Deprecated: Use HasOrgRole instead.
 //
 // This method is used by middleware to enforce organization access control.
 // Returns true only if the user has any role (owner, admin, or member).
@@ -727,11 +937,13 @@ func (p *Plugin) GetUserOrganizations(ctx context.Context, userID string, offset
 // Returns:
 //   - bool: true if user is a member with any role
 func (p *Plugin) IsOrganizationMember(ctx context.Context, userID, orgID string) bool {
-	isMember, err := p.store.IsOrganizationMember(ctx, userID, orgID)
-	return err == nil && isMember
+	ok, err := p.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner, orgtypes.RoleAdmin, orgtypes.RoleMember)
+	return err == nil && ok
 }
 
 // IsOwnerOrAdmin checks if a user is an owner or admin of an organization.
+//
+// Deprecated: Use HasOrgRole instead.
 //
 // This method enforces permission requirements for administrative actions:
 //   - Updating organization settings
@@ -746,8 +958,8 @@ func (p *Plugin) IsOrganizationMember(ctx context.Context, userID, orgID string)
 // Returns:
 //   - bool: true if user has owner or admin role
 func (p *Plugin) IsOwnerOrAdmin(ctx context.Context, userID, orgID string) bool {
-	isOwnerAdmin, err := p.store.IsOwnerOrAdmin(ctx, userID, orgID)
-	return err == nil && isOwnerAdmin
+	ok, err := p.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner, orgtypes.RoleAdmin)
+	return err == nil && ok
 }
 
 // IsOwner checks if a user is the owner of an organization.
@@ -765,8 +977,8 @@ func (p *Plugin) IsOwnerOrAdmin(ctx context.Context, userID, orgID string) bool 
 // Returns:
 //   - bool: true if user has owner role
 func (p *Plugin) IsOwner(ctx context.Context, userID, orgID string) bool {
-	isOwner, err := p.store.IsOwner(ctx, userID, orgID)
-	return err == nil && isOwner
+	ok, err := p.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner)
+	return err == nil && ok
 }
 
 // AddOrganizationMember adds a user to an organization with a specified role.
@@ -923,6 +1135,249 @@ func (p *Plugin) ListTeamMembers(ctx context.Context, teamID string, offset, lim
 	return result, count, nil
 }
 
+// ── Invitation operations ──────────────────────────────────────────────────
+
+// generateInvitationToken creates a cryptographically random 32-byte token,
+// returns the raw (base64url-encoded) form and its SHA-256 hash.
+func generateInvitationToken() (raw string, hash string, err error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", "", err
+	}
+	raw = base64.RawURLEncoding.EncodeToString(buf)
+	sum := sha256.Sum256([]byte(raw))
+	hash = base64.RawURLEncoding.EncodeToString(sum[:])
+	return raw, hash, nil
+}
+
+// CreateInvitation creates a new pending invitation, generates a token, and
+// optionally sends an invitation email via the email-otp plugin.
+//
+// Parameters:
+//   - ctx: Request context
+//   - orgID: Target organization ID
+//   - teamID: Optional team ID (nil = org-level invitation)
+//   - email: Invitee email address
+//   - role: Role on acceptance ("admin" or "member")
+//   - inviterID: User ID of the person creating the invitation
+//   - expiresIn: Duration until expiry (e.g. "72h"), defaults to 168h (7 days)
+//
+// Returns:
+//   - *Invitation: Created invitation (TokenHash is never exposed)
+//   - rawToken: The raw token — returned once and never stored
+//   - error: Database or token generation error
+func (p *Plugin) CreateInvitation(ctx context.Context, orgID string, teamID *string, email, role, inviterID, expiresIn string) (*orgtypes.Invitation, string, error) {
+	rawToken, tokenHash, err := generateInvitationToken()
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Parse expiry duration (default 7 days)
+	duration := 168 * time.Hour
+	if expiresIn != "" {
+		d, err := time.ParseDuration(expiresIn)
+		if err == nil && d > 0 {
+			duration = d
+		}
+	}
+
+	now := time.Now()
+	id := core.GenerateID()
+
+	inv := orgtypes.Invitation{
+		ID:             id,
+		OrganizationID: orgID,
+		TeamID:         teamID,
+		Email:          core.SanitizeString(email, nil),
+		Role:           role,
+		InviterID:      inviterID,
+		TokenHash:      tokenHash,
+		Status:         "pending",
+		ExpiresAt:      now.Add(duration),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	if err := p.store.CreateInvitation(ctx, inv); err != nil {
+		return nil, "", err
+	}
+
+	// Send invitation email via the email-otp plugin if available.
+	// If email-otp is not registered, no email is sent — the raw token
+	// is returned in the API response so the caller can deliver it.
+	if p.emailSender != nil {
+		acceptURL := p.buildAcceptURL(rawToken)
+		body := fmt.Sprintf(p.config.InvitationBodyTemplate, acceptURL)
+		if err := p.emailSender(ctx, inv.Email, p.config.InvitationSubject, body); err != nil {
+			return nil, "", err
+		}
+	}
+
+	// Never expose the token hash
+	inv.TokenHash = ""
+	return &inv, rawToken, nil
+}
+
+// buildAcceptURL constructs the acceptance URL for an invitation token.
+// Uses the base path from the plugin prefix if available, or a generic path.
+func (p *Plugin) buildAcceptURL(rawToken string) string {
+	return "/organizations/invitations/accept?token=" + rawToken
+}
+
+// AcceptInvitation accepts a pending invitation, creating the appropriate
+// member record (and team member record if team-level).
+//
+// The caller must validate the token (hash, expiry, status) before calling.
+//
+// Parameters:
+//   - ctx: Request context
+//   - tokenHash: SHA-256 hash of the raw token
+//   - userID: ID of the accepting user (must exist in the auth system)
+//
+// Returns:
+//   - *Invitation: Updated invitation with status "accepted"
+//   - error: If invitation not found, expired, or already processed
+func (p *Plugin) AcceptInvitation(ctx context.Context, tokenHash, userID string) (*orgtypes.Invitation, error) {
+	inv, err := p.store.GetInvitationByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return nil, err
+	}
+
+	if inv.Status != "pending" {
+		return nil, fmt.Errorf("invitation is %s, not pending", inv.Status)
+	}
+
+	if time.Now().After(inv.ExpiresAt) {
+		if err := p.store.UpdateInvitationStatus(ctx, inv.ID, "expired", time.Now()); err != nil {
+			if logger := p.aegis.GetLogger(); logger != nil {
+				logger.Error("failed to mark invitation as expired", "error", err, "invitation_id", inv.ID)
+			}
+		}
+		return nil, fmt.Errorf("invitation has expired")
+	}
+
+	now := time.Now()
+
+	// Create member record
+	if err := p.store.CreateMember(ctx, core.GenerateID(), userID, inv.OrganizationID, inv.Role, now, now); err != nil {
+		return nil, err
+	}
+
+	// If team-level invitation, also create team member record
+	if inv.TeamID != nil && *inv.TeamID != "" {
+		if err := p.store.CreateTeamMember(ctx, core.GenerateID(), *inv.TeamID, userID, inv.Role, now, now); err != nil {
+			return nil, err
+		}
+	}
+
+	// Update invitation status
+	if err := p.store.UpdateInvitationStatus(ctx, inv.ID, "accepted", now); err != nil {
+		return nil, err
+	}
+
+	inv.Status = "accepted"
+	inv.UpdatedAt = now
+	inv.TokenHash = ""
+	return &inv, nil
+}
+
+// DeclineInvitation declines a pending invitation without creating any member records.
+//
+// Parameters:
+//   - ctx: Request context
+//   - tokenHash: SHA-256 hash of the raw token
+//
+// Returns:
+//   - *Invitation: Updated invitation with status "declined"
+//   - error: If invitation not found or already processed
+func (p *Plugin) DeclineInvitation(ctx context.Context, tokenHash string) (*orgtypes.Invitation, error) {
+	inv, err := p.store.GetInvitationByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return nil, err
+	}
+
+	if inv.Status != "pending" {
+		return nil, fmt.Errorf("invitation is %s, not pending", inv.Status)
+	}
+
+	if err := p.store.UpdateInvitationStatus(ctx, inv.ID, "declined", time.Now()); err != nil {
+		return nil, err
+	}
+
+	inv.Status = "declined"
+	inv.UpdatedAt = time.Now()
+	inv.TokenHash = ""
+	return &inv, nil
+}
+
+// VerifyInvitation validates a raw invitation token and returns the invitation
+// details (without exposing the token hash). Used by the UI to pre-fill
+// invitation information before the user accepts.
+//
+// Parameters:
+//   - ctx: Request context
+//   - rawToken: The raw invitation token
+//
+// Returns:
+//   - *Invitation: Invitation details (TokenHash is empty)
+//   - error: If token is invalid, expired, or already processed
+func (p *Plugin) VerifyInvitation(ctx context.Context, rawToken string) (*orgtypes.Invitation, error) {
+	sum := sha256.Sum256([]byte(rawToken))
+	tokenHash := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	inv, err := p.store.GetInvitationByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return nil, err
+	}
+
+	if inv.Status != "pending" {
+		return nil, fmt.Errorf("invitation is %s, not pending", inv.Status)
+	}
+
+	if time.Now().After(inv.ExpiresAt) {
+		return nil, fmt.Errorf("invitation has expired")
+	}
+
+	inv.TokenHash = ""
+	return &inv, nil
+}
+
+// CancelInvitation deletes (cancels) a pending invitation.
+//
+// Only the inviter or an admin/owner can cancel. The caller should verify
+// permissions before calling.
+//
+// Parameters:
+//   - ctx: Request context
+//   - id: Invitation ID to cancel
+//
+// Returns:
+//   - error: Database error
+func (p *Plugin) CancelInvitation(ctx context.Context, id string) error {
+	return p.store.DeleteInvitation(ctx, id)
+}
+
+// ListInvitations returns a paginated list of invitations for an organization,
+// optionally filtered to a specific team.
+func (p *Plugin) ListInvitations(ctx context.Context, orgID string, teamID string, offset, limit int) ([]*orgtypes.Invitation, int, error) {
+	invites, err := p.store.ListInvitations(ctx, orgID, teamID, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	count, err := p.store.CountInvitations(ctx, orgID, teamID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]*orgtypes.Invitation, len(invites))
+	for i := range invites {
+		invites[i].TokenHash = ""
+		result[i] = &invites[i]
+	}
+	return result, count, nil
+}
+
 // Dependencies returns plugin dependencies
 func (p *Plugin) Dependencies() []plugins.Dependency {
 	return []plugins.Dependency{}
@@ -930,7 +1385,7 @@ func (p *Plugin) Dependencies() []plugins.Dependency {
 
 // RequiresTables returns required tables
 func (p *Plugin) RequiresTables() []string {
-	return []string{"organization", "members", "team", "team_member"}
+	return []string{"organization", "members", "team", "team_member", "invitation"}
 }
 
 // ProvidesAuthMethods returns the provided auth methods

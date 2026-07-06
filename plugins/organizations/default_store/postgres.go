@@ -164,6 +164,77 @@ func (p *postgresQuerier) deleteTeam(ctx context.Context, id string) error {
 	return p.q.DeleteTeam(ctx, id)
 }
 
+func (p *postgresQuerier) createInvitation(ctx context.Context, id, organizationID, teamID, email, role, inviterID, tokenHash, status, expiresAt, createdAt, updatedAt string) error {
+	return p.q.CreateInvitation(ctx, sqlcpostgres.CreateInvitationParams{
+		ID: id, OrganizationID: organizationID,
+		TeamID: sql.NullString{String: teamID, Valid: teamID != ""},
+		Email:  email, Role: role, InviterID: inviterID,
+		TokenHash: tokenHash, Status: status,
+		ExpiresAt: expiresAt, CreatedAt: createdAt, UpdatedAt: updatedAt,
+	})
+}
+
+func (p *postgresQuerier) getInvitationByID(ctx context.Context, id string) (invitationRow, error) {
+	inv, err := p.q.GetInvitationByID(ctx, id)
+	if err != nil {
+		return invitationRow{}, err
+	}
+	return invitationRow{
+		ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
+		Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
+		TokenHash: inv.TokenHash, Status: inv.Status,
+		ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+	}, nil
+}
+
+func (p *postgresQuerier) getInvitationByTokenHash(ctx context.Context, tokenHash string) (invitationRow, error) {
+	inv, err := p.q.GetInvitationByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return invitationRow{}, err
+	}
+	return invitationRow{
+		ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
+		Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
+		TokenHash: inv.TokenHash, Status: inv.Status,
+		ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+	}, nil
+}
+
+func (p *postgresQuerier) listInvitations(ctx context.Context, orgID string, teamID string, offset, limit int32) ([]invitationRow, error) {
+	rows, err := p.q.ListInvitations(ctx, sqlcpostgres.ListInvitationsParams{
+		OrganizationID: orgID, Column2: teamID, Limit: limit, Offset: offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]invitationRow, len(rows))
+	for i, inv := range rows {
+		result[i] = invitationRow{
+			ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
+			Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
+			TokenHash: inv.TokenHash, Status: inv.Status,
+			ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+		}
+	}
+	return result, nil
+}
+
+func (p *postgresQuerier) countInvitations(ctx context.Context, orgID string, teamID string) (int64, error) {
+	return p.q.CountInvitations(ctx, sqlcpostgres.CountInvitationsParams{
+		OrganizationID: orgID, Column2: teamID,
+	})
+}
+
+func (p *postgresQuerier) updateInvitationStatus(ctx context.Context, id, status, updatedAt string) error {
+	return p.q.UpdateInvitationStatus(ctx, sqlcpostgres.UpdateInvitationStatusParams{
+		ID: id, Status: status, UpdatedAt: updatedAt,
+	})
+}
+
+func (p *postgresQuerier) deleteInvitation(ctx context.Context, id string) error {
+	return p.q.DeleteInvitation(ctx, id)
+}
+
 func (p *postgresQuerier) createTeamMember(ctx context.Context, id, teamID, userID, role, createdAt, updatedAt string) error {
 	return p.q.CreateTeamMember(ctx, sqlcpostgres.CreateTeamMemberParams{
 		ID: id, TeamID: teamID, UserID: userID, Role: role, CreatedAt: createdAt, UpdatedAt: updatedAt,
