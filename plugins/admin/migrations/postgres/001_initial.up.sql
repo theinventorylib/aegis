@@ -1,5 +1,5 @@
 -- Admin plugin schema for PostgreSQL
-ALTER TABLE "user" ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
 
 -- Add ban management fields
 ALTER TABLE "user" ADD COLUMN IF NOT EXISTS banned INTEGER NOT NULL DEFAULT 0;
