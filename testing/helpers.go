@@ -238,34 +238,6 @@ func CleanDatabase(t testing.TB, db *sql.DB) {
 	_, _ = db.ExecContext(ctx, "SET session_replication_role = 'origin';")
 }
 
-// RunMigrations runs database migrations for testing.
-//
-// This function executes all Aegis migrations to set up the schema.
-// It should be called once per test database setup.
-//
-// Parameters:
-//   - t: Testing instance
-//   - db: Database connection
-//   - dialect: Database dialect ("postgres", "mysql", "sqlite")
-func RunMigrations(t testing.TB, db *sql.DB, _ string) {
-	t.Helper()
-
-	if db == nil {
-		return
-	}
-
-	// Note: This is a placeholder. In a real implementation, you would
-	// import and run the actual migration functions from the auth and
-	// plugin packages.
-	//
-	// Example:
-	//   auth.RunMigrations(ctx, db, dialect)
-	//   oauth.RunMigrations(ctx, db, dialect)
-	//   jwt.RunMigrations(ctx, db, dialect)
-
-	t.Log("Migrations would be run here in a full integration test setup")
-}
-
 // GenerateTestEmail generates a unique test email address.
 //
 // This is useful for tests that need unique email addresses to avoid
