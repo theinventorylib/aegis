@@ -80,13 +80,19 @@ type idConfig struct {
 	generator IDGeneratorFunc
 }
 
+// ulidEntropy is a simple crypto/rand-backed io.Reader for ULID entropy
+// that avoids the double-buffering bug in ulid.Monotonic's bufio.NewReader +
+// io.LimitedReader wrapping of crypto/rand.Reader.
+type ulidEntropy struct{}
+
+func (e *ulidEntropy) Read(p []byte) (int, error) {
+	return rand.Read(p)
+}
+
 // defaultIDConfig is the package-level ID generation config (default: ULID)
 var defaultIDConfig = &idConfig{
-	strategy: IDStrategyULID,
-	// ulidEntropy is the cryptographically secure random source for ULID generation.
-	// Uses monotonic mode to ensure IDs are strictly increasing even within the same
-	// millisecond (prevents sorting issues in high-throughput scenarios).
-	entropy:   ulid.Monotonic(rand.Reader, 0),
+	strategy:  IDStrategyULID,
+	entropy:   &ulidEntropy{},
 	generator: nil,
 }
 
