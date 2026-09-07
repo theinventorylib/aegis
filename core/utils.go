@@ -80,19 +80,12 @@ type idConfig struct {
 	generator IDGeneratorFunc
 }
 
-// ulidEntropy is a simple crypto/rand-backed io.Reader for ULID entropy
-// that avoids the double-buffering bug in ulid.Monotonic's bufio.NewReader +
-// io.LimitedReader wrapping of crypto/rand.Reader.
-type ulidEntropy struct{}
-
-func (e *ulidEntropy) Read(p []byte) (int, error) {
-	return rand.Read(p)
-}
-
-// defaultIDConfig is the package-level ID generation config (default: ULID)
+// defaultIDConfig is the package-level ID generation config (default: ULID).
+// entropy uses crypto/rand.Reader directly: it is concurrency-safe and avoids
+// the shared mutable state inside ulid.Monotonic.
 var defaultIDConfig = &idConfig{
 	strategy:  IDStrategyULID,
-	entropy:   &ulidEntropy{},
+	entropy:   rand.Reader,
 	generator: nil,
 }
 
@@ -246,8 +239,8 @@ func GenerateOTPCode(length int) (string, error) {
 func GenerateID() string {
 	switch defaultIDConfig.strategy {
 	case IDStrategyULID:
-		// Generate ULID with monotonic entropy for sortability
-		// Even if multiple IDs are generated in the same millisecond, they'll be unique and sorted
+		// ULID is sortable by creation time. IDs generated in the same
+		// millisecond are unique but not ordered among themselves.
 		return ulid.MustNew(ulid.Timestamp(time.Now()), defaultIDConfig.entropy).String()
 	case IDStrategyUUID:
 		return uuid.New().String()
