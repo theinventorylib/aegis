@@ -83,10 +83,10 @@ After the workflow completes:
 
 ```bash
 # Test library installation
-go get github.com/theinventorylib/aegis@v1.0.0
+go get github.com/theinventorylib/aegis/v2@v2.0.0
 
 # Test CLI installation
-go install github.com/theinventorylib/aegis/cmd/aegis@v1.0.0
+go install github.com/theinventorylib/aegis/v2/cmd/aegis@v2.0.0
 aegis version
 ```
 

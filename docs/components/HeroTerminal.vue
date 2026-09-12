@@ -33,10 +33,10 @@
 <script setup lang="ts">
 const lines = [
   { type: 'comment', text: '# Install Aegis core' },
-  { type: 'command', cmd: 'go ', args: 'get github.com/theinventorylib/aegis' },
+  { type: 'command', cmd: 'go ', args: 'get github.com/theinventorylib/aegis/v2' },
   { type: 'blank' },
   { type: 'comment', text: '# Install the CLI tool' },
-  { type: 'command', cmd: 'go ', args: 'install github.com/theinventorylib/aegis/cmd/aegis@latest' },
+  { type: 'command', cmd: 'go ', args: 'install github.com/theinventorylib/aegis/v2/cmd/aegis@latest' },
   { type: 'blank' },
   { type: 'comment', text: '# Export migrations for your database' },
   { type: 'command', cmd: 'aegis ', args: 'migrate export --dialect postgres --output ./migrations' },
