@@ -1,0 +1,55 @@
+name: Branch guard
+
+# `main` (v2) and `v1` are independent release lines, not a feature/baseline
+# pair. This guard fails any PR that tries to merge one line into the other,
+# and verifies that go.mod's module path matches the branch so the wrong line's
+# content can't land on a branch by accident.
+
+on:
+  pull_request:
+    branches: [main, v1]
+  push:
+    branches: [main, v1]
+
+permissions:
+  contents: read
+
+jobs:
+  line-guard:
+    name: Release-line guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject cross-line pull requests
+        if: github.event_name == 'pull_request'
+        run: |
+          base="${{ github.base_ref }}"
+          head="${{ github.head_ref }}"
+          if { [ "$base" = "main" ] && [ "$head" = "v1" ]; } || { [ "$base" = "v1" ] && [ "$head" = "main" ]; }; then
+            echo "::error::'$head' and '$base' are independent release lines. Do not merge them into each other — cherry-pick the fix onto the target line instead."
+            exit 1
+          fi
+          echo "OK: $head -> $base"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify go.mod module path matches the branch
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ref="${{ github.head_ref }}"
+          else
+            ref="${GITHUB_REF_NAME}"
+          fi
+          mod="$(grep -m1 '^module ' go.mod | cut -d' ' -f2)"
+          case "$ref" in
+            main) want="github.com/theinventorylib/aegis/v2" ;;
+            v1)   want="github.com/theinventorylib/aegis" ;;
+            *)    echo "No module-path rule for branch '$ref'; skipping."; exit 0 ;;
+          esac
+          if [ "$mod" != "$want" ]; then
+            echo "::error::go.mod declares '$mod', but branch '$ref' must declare '$want'."
+            exit 1
+          fi
+          echo "OK: '$ref' declares '$mod'"
