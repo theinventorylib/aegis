@@ -7,13 +7,13 @@ This document describes the release process for Aegis.
 Aegis supports two release workflows:
 
 1. **Automated Release** (via GitHub Actions) - For official versioned releases
-2. **Patch Release** (via workflow dispatch) - For quick patch/minor/major releases
+2. **Workflow-dispatch Release** (`release.yml`) - For patch/minor/major releases
 
-## Quick Patch Release (Recommended for Small Changes)
+## Quick Release (Recommended for Small Changes)
 
 For quick releases without manual tag creation:
 
-1. Go to [Actions > Patch Release](https://github.com/theinventorylib/aegis/actions/workflows/patch.yml)
+1. Go to [Actions > Release](https://github.com/theinventorylib/aegis/actions/workflows/release.yml)
 2. Click "Run workflow"
 3. Select options:
    - **Version bump type**: patch, minor, or major
@@ -29,11 +29,16 @@ The workflow will:
 - Create and push the version tag
 - Create GitHub release (optionally with GoReleaser binaries)
 
-### Example: Patch Release
+The workflow refuses a version that doesn't match the branch line: **`main`
+must produce `v2+`** (the v2 module line) and **`v1` must produce `v0`/`v1`**.
+So a `major` bump on `v1`, or a `minor`/`patch` bump on `main` before `v2.0.0`
+exists, will fail fast instead of minting a tag on the wrong line.
+
+### Example: Quick Release
 
 ```bash
 # No commands needed! Just use the GitHub UI:
-# Actions > Patch Release > Run workflow > Select "patch" > Run
+# Actions > Release > Run workflow > Select "patch" > Run
 ```
 
 ## Manual Tag-Based Release (Traditional)

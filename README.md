@@ -52,7 +52,7 @@ go install github.com/theinventorylib/aegis/v2/cmd/aegis@latest
 
 ## 🤝 Contributing
 
-We welcome contributions! See [.github/COMMIT_GUIDE.md](./.github/COMMIT_GUIDE.md) for commit conventions and [.github/RELEASE.md](./.github/RELEASE.md) for release process.
+We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for the branch model (v1 maintenance vs v2 development), [.github/COMMIT_GUIDE.md](./.github/COMMIT_GUIDE.md) for commit conventions, and [.github/RELEASE.md](./.github/RELEASE.md) for the release process.
 
 ## 📄 License
 
