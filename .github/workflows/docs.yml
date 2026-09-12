@@ -5,9 +5,11 @@
 name: Deploy Nuxt site to Pages
 
 on:
-  # Runs on pushes targeting the default branch
+  # Rebuild/deploy the combined site on either release line. The site root is
+  # always built from `main` and the v1 subpath from `v1` (see the checkouts
+  # below), so the triggering ref does not change what gets published.
   push:
-    branches: ["main"]
+    branches: ["main", "v1"]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -27,14 +29,12 @@ concurrency:
 jobs:
   # Build job
   build:
-    # Only the main (v2) deploy produces the combined site; it builds the v1
-    # subpath from the v1 branch. Guard so a manual dispatch from v1 can't
-    # publish a site built from the wrong line.
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout main (site root)
         uses: actions/checkout@v6
+        with:
+          ref: main
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
