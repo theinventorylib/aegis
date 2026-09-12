@@ -274,8 +274,8 @@ type InvitationResponse struct {
 // orgMemberRoles returns the assignable org-level roles (all configured roles
 // except owner, which cannot be assigned through the member endpoints).
 func (p *Plugin) orgMemberRoles() []any {
-	roles := make([]any, 0, len(p.orgRoles))
-	for role := range p.orgRoles {
+	roles := make([]any, 0, len(p.rt.orgRoles))
+	for role := range p.rt.orgRoles {
 		if role == orgtypes.RoleOwner {
 			continue
 		}
@@ -286,8 +286,8 @@ func (p *Plugin) orgMemberRoles() []any {
 
 // teamMemberRoles returns the assignable team-level roles.
 func (p *Plugin) teamMemberRoles() []any {
-	roles := make([]any, 0, len(p.teamRoles))
-	for role := range p.teamRoles {
+	roles := make([]any, 0, len(p.rt.teamRoles))
+	for role := range p.rt.teamRoles {
 		roles = append(roles, role)
 	}
 	return roles

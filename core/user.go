@@ -46,13 +46,15 @@ type UserService struct {
 	logger Logger
 
 	// sessionCachePurger, when set, clears cached sessions for a user before
-	// their DB session rows are deleted. Wired by AuthService.
-	sessionCachePurger func(ctx context.Context, userID string) error
+	// their DB session rows are deleted. Wired by AuthService. Held as a
+	// pointer so UserService stays comparable (==).
+	sessionCachePurger *func(ctx context.Context, userID string) error
 
 	// emailVerificationReset, when set by an email plugin, clears the email
 	// verification flag for a new address so a previously-verified flag never
-	// carries over after an email change.
-	emailVerificationReset func(ctx context.Context, userID, email string) error
+	// carries over after an email change. Held as a pointer so UserService
+	// stays comparable (==).
+	emailVerificationReset *func(ctx context.Context, userID, email string) error
 }
 
 // newUserService creates a new user service with the specified dependencies.
@@ -75,13 +77,13 @@ func newUserService(userStore auth.UserStore, accountStore auth.AccountStore, se
 // setSessionCachePurger wires the cache purge run before DeleteUser removes
 // the session rows. Set by AuthService.
 func (s *UserService) setSessionCachePurger(fn func(ctx context.Context, userID string) error) {
-	s.sessionCachePurger = fn
+	s.sessionCachePurger = &fn
 }
 
 // setEmailVerificationReset wires the verification reset run on email change.
 // Set by AuthService when an email plugin registers a resetter.
 func (s *UserService) setEmailVerificationReset(fn func(ctx context.Context, userID, email string) error) {
-	s.emailVerificationReset = fn
+	s.emailVerificationReset = &fn
 }
 
 // DeleteUser deletes a user and all associated data (accounts and sessions).
@@ -93,7 +95,7 @@ func (s *UserService) setEmailVerificationReset(fn func(ctx context.Context, use
 func (s *UserService) DeleteUser(ctx context.Context, id string) error {
 	// Purge cached sessions first: the purge walks the store for the rows.
 	if s.sessionCachePurger != nil {
-		if err := s.sessionCachePurger(ctx, id); err != nil {
+		if err := (*s.sessionCachePurger)(ctx, id); err != nil {
 			s.logger.Error("user: failed to purge session cache before delete", "user_id", id, "error", err)
 		}
 	}
@@ -350,7 +352,7 @@ func (s *UserService) UpdateUserEmail(ctx context.Context, userID, email string)
 	// Reset verification before switching the address, so a failure leaves the
 	// old address unverified rather than the new one wrongly verified.
 	if s.emailVerificationReset != nil {
-		if err := s.emailVerificationReset(ctx, userID, email); err != nil {
+		if err := (*s.emailVerificationReset)(ctx, userID, email); err != nil {
 			return err
 		}
 	}

@@ -99,13 +99,13 @@ func resolveRoles(defaults, overrides map[string]RoleDefinition) map[string]Role
 // OrgRoles returns the resolved organization role definitions (built-ins merged
 // with Config.OrgRoles). Mutating the returned map does not affect the plugin.
 func (p *Plugin) OrgRoles() map[string]RoleDefinition {
-	return cloneRoles(p.orgRoles)
+	return cloneRoles(p.rt.orgRoles)
 }
 
 // TeamRoles returns the resolved team role definitions (built-ins merged with
 // Config.TeamRoles). Mutating the returned map does not affect the plugin.
 func (p *Plugin) TeamRoles() map[string]RoleDefinition {
-	return cloneRoles(p.teamRoles)
+	return cloneRoles(p.rt.teamRoles)
 }
 
 func cloneRoles(in map[string]RoleDefinition) map[string]RoleDefinition {
@@ -127,7 +127,7 @@ func (p *Plugin) HasOrgPermission(ctx context.Context, userID, orgID string, per
 		}
 		return false, err
 	}
-	return p.orgRoles[m.Role].Allows(perm), nil
+	return p.rt.orgRoles[m.Role].Allows(perm), nil
 }
 
 // HasTeamPermission reports whether the user's role in the team grants perm.
@@ -141,7 +141,7 @@ func (p *Plugin) HasTeamPermission(ctx context.Context, userID, teamID string, p
 		}
 		return false, err
 	}
-	return p.teamRoles[m.Role].Allows(perm), nil
+	return p.rt.teamRoles[m.Role].Allows(perm), nil
 }
 
 // hasOrgPermissionForUser is the boolean, error-collapsed form used by

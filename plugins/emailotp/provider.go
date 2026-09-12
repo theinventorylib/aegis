@@ -84,20 +84,6 @@ type Provider interface {
 	//   - error: If email sending fails
 	SendOTP(to, code string) error
 
-	// SendEmail sends an arbitrary email with the given subject and body.
-	//
-	// This method allows other plugins (e.g. organizations) to reuse the same
-	// email provider for sending non-OTP emails such as invitation links.
-	//
-	// Parameters:
-	//   - to: Recipient email address
-	//   - subject: Email subject line
-	//   - body: Plain-text email body
-	//
-	// Returns:
-	//   - error: If email sending fails
-	SendEmail(to, subject, body string) error
-
 	// VerifyOTP verifies an OTP code for an email address.
 	//
 	// Note: Most implementations delegate verification to the plugin's OTP storage.
@@ -111,4 +97,12 @@ type Provider interface {
 	//   - bool: true if OTP is valid
 	//   - error: If verification fails
 	VerifyOTP(to, code string) (bool, error)
+}
+
+// EmailSender is an optional capability a Provider may implement to send
+// arbitrary (non-OTP) emails, such as organization invitations. It is kept
+// separate from Provider so providers written before it existed keep compiling.
+type EmailSender interface {
+	// SendEmail sends an email with the given subject and body.
+	SendEmail(to, subject, body string) error
 }

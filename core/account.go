@@ -54,7 +54,9 @@ type AccountService struct {
 	// before the DB session purge. Required with Redis session caching:
 	// the SQL delete alone leaves revoked sessions valid in the cache
 	// until their cached TTL expires. Wired by AuthService.
-	invalidateSessions func(ctx context.Context, userID string) error
+	//
+	// Held as a pointer so AccountService stays comparable (==).
+	invalidateSessions *func(ctx context.Context, userID string) error
 }
 
 // newAccountService creates a new account service with the specified dependencies.
@@ -85,7 +87,7 @@ func newAccountService(accountStore auth.AccountStore, sessionStore auth.Session
 // still present when it runs. Called by NewAuthService during setup; not
 // exported so the ordering invariant cannot be broken from outside.
 func (s *AccountService) setSessionInvalidator(f func(ctx context.Context, userID string) error) {
-	s.invalidateSessions = f
+	s.invalidateSessions = &f
 }
 
 // CreateAccount creates a new account
@@ -162,7 +164,7 @@ func (s *AccountService) UpdatePassword(ctx context.Context, userID, newPassword
 	// any session left cached is still revoked from the DB and will fail
 	// validation once its cache entry expires.
 	if s.invalidateSessions != nil {
-		if err := s.invalidateSessions(ctx, userID); err != nil {
+		if err := (*s.invalidateSessions)(ctx, userID); err != nil {
 			s.logger.Error("account: failed to invalidate cached sessions before password update",
 				"user_id", userID, "error", err)
 		}

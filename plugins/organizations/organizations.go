@@ -141,10 +141,17 @@ type Plugin struct {
 	caps           orgtypes.OrganizationStoreCapabilities
 	dialect        plugins.Dialect
 	aegis          plugins.Aegis
-	emailSender    func(ctx context.Context, to, subject, body string) error
-	config         Config
-	orgRoles       map[string]RoleDefinition
-	teamRoles      map[string]RoleDefinition
+	rt             *runtime
+}
+
+// runtime holds the plugin's mutable configuration and derived role maps.
+// Keeping it behind a single pointer leaves Plugin comparable (==), which the
+// maps and function fields would otherwise break.
+type runtime struct {
+	emailSender func(ctx context.Context, to, subject, body string) error
+	config      Config
+	orgRoles    map[string]RoleDefinition
+	teamRoles   map[string]RoleDefinition
 }
 
 // New creates a new organizations plugin with default configuration.
@@ -181,42 +188,44 @@ func NewWithConfig(cfg *Config, store orgtypes.OrganizationStore, dialect ...plu
 	p := &Plugin{
 		store:   store,
 		dialect: d,
-		config: Config{
-			InvitationSubject:      "You're invited!",
-			InvitationBodyTemplate: "You have been invited.\n\nAccept your invitation here: %s",
+		rt: &runtime{
+			config: Config{
+				InvitationSubject:      "You're invited!",
+				InvitationBodyTemplate: "You have been invited.\n\nAccept your invitation here: %s",
+			},
 		},
 	}
 	var orgRoles, teamRoles map[string]RoleDefinition
 	var customOrg, customTeam []string
 	if cfg != nil {
 		if cfg.InvitationSubject != "" {
-			p.config.InvitationSubject = cfg.InvitationSubject
+			p.rt.config.InvitationSubject = cfg.InvitationSubject
 		}
 		if cfg.InvitationBodyTemplate != "" {
-			p.config.InvitationBodyTemplate = cfg.InvitationBodyTemplate
+			p.rt.config.InvitationBodyTemplate = cfg.InvitationBodyTemplate
 		}
-		p.config.OrgRoles = cfg.OrgRoles
-		p.config.TeamRoles = cfg.TeamRoles
-		p.config.CustomOrgRoles = cfg.CustomOrgRoles
-		p.config.CustomTeamRoles = cfg.CustomTeamRoles
+		p.rt.config.OrgRoles = cfg.OrgRoles
+		p.rt.config.TeamRoles = cfg.TeamRoles
+		p.rt.config.CustomOrgRoles = cfg.CustomOrgRoles
+		p.rt.config.CustomTeamRoles = cfg.CustomTeamRoles
 		orgRoles = cfg.OrgRoles
 		teamRoles = cfg.TeamRoles
 		customOrg = cfg.CustomOrgRoles
 		customTeam = cfg.CustomTeamRoles
 	}
-	p.orgRoles = resolveRoles(defaultOrgRoles(), orgRoles)
-	p.teamRoles = resolveRoles(defaultTeamRoles(), teamRoles)
+	p.rt.orgRoles = resolveRoles(defaultOrgRoles(), orgRoles)
+	p.rt.teamRoles = resolveRoles(defaultTeamRoles(), teamRoles)
 
 	// Deprecated Custom*Roles: register the names as read-only roles so they
 	// stay assignable. OrgRoles/TeamRoles take precedence when both are set.
 	for _, role := range customOrg {
-		if _, exists := p.orgRoles[role]; !exists {
-			p.orgRoles[role] = RoleDefinition{Permissions: []Permission{PermOrgView, PermMemberView, PermTeamView}}
+		if _, exists := p.rt.orgRoles[role]; !exists {
+			p.rt.orgRoles[role] = RoleDefinition{Permissions: []Permission{PermOrgView, PermMemberView, PermTeamView}}
 		}
 	}
 	for _, role := range customTeam {
-		if _, exists := p.teamRoles[role]; !exists {
-			p.teamRoles[role] = RoleDefinition{Permissions: []Permission{PermTeamView}}
+		if _, exists := p.rt.teamRoles[role]; !exists {
+			p.rt.teamRoles[role] = RoleDefinition{Permissions: []Permission{PermTeamView}}
 		}
 	}
 	return p
@@ -303,7 +312,7 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 		if sender, ok := emailPlugin.(interface {
 			SendEmail(ctx context.Context, to, subject, body string) error
 		}); ok {
-			p.emailSender = sender.SendEmail
+			p.rt.emailSender = sender.SendEmail
 		}
 	}
 
@@ -1254,10 +1263,10 @@ func (p *Plugin) CreateInvitation(ctx context.Context, orgID string, teamID *str
 	// Send invitation email via the email-otp plugin if available.
 	// If email-otp is not registered, no email is sent — the raw token
 	// is returned in the API response so the caller can deliver it.
-	if p.emailSender != nil {
+	if p.rt.emailSender != nil {
 		acceptURL := p.buildAcceptURL(rawToken)
-		body := fmt.Sprintf(p.config.InvitationBodyTemplate, acceptURL)
-		if err := p.emailSender(ctx, inv.Email, p.config.InvitationSubject, body); err != nil {
+		body := fmt.Sprintf(p.rt.config.InvitationBodyTemplate, acceptURL)
+		if err := p.rt.emailSender(ctx, inv.Email, p.rt.config.InvitationSubject, body); err != nil {
 			return nil, "", err
 		}
 	}

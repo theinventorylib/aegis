@@ -118,7 +118,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, identifier, password 
 			h.auditFailure(ctx, loginKey, uid, "email_not_verified")
 			return nil, ErrEmailNotVerified
 		}
-		verified, verr := h.authService.emailVerificationCheck(ctx, user)
+		verified, verr := (*h.authService.emailVerificationCheck)(ctx, user)
 		if verr != nil || !verified {
 			h.auditFailure(ctx, loginKey, uid, "email_not_verified")
 			return nil, ErrEmailNotVerified

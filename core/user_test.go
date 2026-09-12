@@ -134,7 +134,8 @@ func TestRequireEmailVerificationGatesLogin(t *testing.T) {
 	}
 
 	// With a checker reporting verified, login proceeds.
-	as.emailVerificationCheck = func(context.Context, auth.User) (bool, error) { return true, nil }
+	verified := func(context.Context, auth.User) (bool, error) { return true, nil }
+	as.emailVerificationCheck = &verified
 	if _, err := as.EmailPassword.Login(ctx, "alice@example.com", "Str0ngPassword"); err != nil {
 		t.Fatalf("verified login: %v", err)
 	}
@@ -212,7 +213,8 @@ func TestDeleteUserPurgesSessionCacheAndDeletes(t *testing.T) {
 func TestUnverifiedLoginDoesNotLockOut(t *testing.T) {
 	as := newTestAuthService()
 	as.authConfig.RequireEmailVerification = true
-	as.emailVerificationCheck = func(context.Context, auth.User) (bool, error) { return false, nil }
+	unverified := func(context.Context, auth.User) (bool, error) { return false, nil }
+	as.emailVerificationCheck = &unverified
 	as.loginAttemptTracker = NewLoginAttemptTracker(DefaultLoginAttemptConfig(), nil)
 	ctx := context.Background()
 

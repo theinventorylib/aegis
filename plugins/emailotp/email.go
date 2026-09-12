@@ -606,8 +606,8 @@ func (p *Plugin) MarkEmailVerified(ctx context.Context, email string) error {
 //
 //	err := plugin.SendEmail(ctx, "user@example.com", "Welcome!", "Thank you for joining.")
 func (p *Plugin) SendEmail(ctx context.Context, to, subject, body string) error {
-	if p.provider != nil {
-		return p.provider.SendEmail(to, subject, body)
+	if sender, ok := p.provider.(EmailSender); ok {
+		return sender.SendEmail(to, subject, body)
 	}
 	return nil
 }

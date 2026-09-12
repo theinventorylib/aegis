@@ -60,7 +60,14 @@ type ChiRouter struct {
 	// groups caches sub-routers by path so repeated Group() calls with the
 	// same path reuse the existing chi sub-router instead of calling Route()
 	// again, which would panic with "attempting to Mount() on an existing path".
-	groups map[string]chi.Router
+	// A pointer keeps ChiRouter comparable (==); a map field would not.
+	groups *map[string]chi.Router
+}
+
+// newGroupCache returns a pointer to an empty sub-router cache.
+func newGroupCache() *map[string]chi.Router {
+	m := make(map[string]chi.Router)
+	return &m
 }
 
 // NewChiRouter creates a new ChiRouter that wraps the provided chi.Mux.
@@ -78,7 +85,7 @@ func NewChiRouter(mux *chi.Mux) *ChiRouter {
 	mux.Use(chiPathParamMiddleware())
 	return &ChiRouter{
 		Mux:    mux,
-		groups: make(map[string]chi.Router),
+		groups: newGroupCache(),
 	}
 }
 
@@ -137,18 +144,18 @@ func (r *ChiRouter) Use(middleware func(http.Handler) http.Handler) {
 // Implements Router.Group.
 func (r *ChiRouter) Group(path string, groupName string) aegisrouter.GroupRouter {
 	norm := aegisrouter.NormalizePath(path)
-	if sub, ok := r.groups[norm]; ok {
-		return &ChiGroupRouter{groupName: groupName, router: sub, groups: make(map[string]chi.Router)}
+	if sub, ok := (*r.groups)[norm]; ok {
+		return &ChiGroupRouter{groupName: groupName, router: sub, groups: newGroupCache()}
 	}
 	var sub chi.Router
 	r.Route(norm, func(r chi.Router) {
 		sub = r
 	})
-	r.groups[norm] = sub
+	(*r.groups)[norm] = sub
 	return &ChiGroupRouter{
 		groupName: groupName,
 		router:    sub,
-		groups:    make(map[string]chi.Router),
+		groups:    newGroupCache(),
 	}
 }
 
@@ -174,7 +181,7 @@ type ChiGroupRouter struct {
 
 	// groups caches nested sub-routers by path to prevent double-mount panics
 	// when Group() is called multiple times with the same path.
-	groups map[string]chi.Router
+	groups *map[string]chi.Router
 }
 
 // GET registers a GET route handler within this group.
@@ -213,21 +220,21 @@ func (g *ChiGroupRouter) Use(middleware func(http.Handler) http.Handler) {
 // Uses chi's Route() so the nested group inherits this group's middleware chain.
 func (g *ChiGroupRouter) Group(path string, groupName string) aegisrouter.GroupRouter {
 	norm := aegisrouter.NormalizePath(path)
-	if sub, ok := g.groups[norm]; ok {
-		return &ChiGroupRouter{groupName: groupName, router: sub, groups: make(map[string]chi.Router)}
+	if sub, ok := (*g.groups)[norm]; ok {
+		return &ChiGroupRouter{groupName: groupName, router: sub, groups: newGroupCache()}
 	}
 	var sub chi.Router
 	g.router.Route(norm, func(r chi.Router) {
 		sub = r
 	})
 	if g.groups == nil {
-		g.groups = make(map[string]chi.Router)
+		g.groups = newGroupCache()
 	}
-	g.groups[norm] = sub
+	(*g.groups)[norm] = sub
 	return &ChiGroupRouter{
 		groupName: groupName,
 		router:    sub,
-		groups:    make(map[string]chi.Router),
+		groups:    newGroupCache(),
 	}
 }
 

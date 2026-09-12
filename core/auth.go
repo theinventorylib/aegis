@@ -66,15 +66,16 @@ type AuthService struct {
 
 	// emailVerificationCheck, when set by an email plugin, reports whether a
 	// user's email is verified. Consulted only when
-	// authConfig.RequireEmailVerification is true.
-	emailVerificationCheck func(ctx context.Context, user auth.User) (bool, error)
+	// authConfig.RequireEmailVerification is true. Held as a pointer so
+	// AuthService stays comparable (==).
+	emailVerificationCheck *func(ctx context.Context, user auth.User) (bool, error)
 }
 
 // SetEmailVerificationCheck wires the email-verification checker used when
 // AuthConfig.RequireEmailVerification is enabled. Email plugins call this
 // during Init. Passing nil disables the check.
 func (as *AuthService) SetEmailVerificationCheck(fn func(ctx context.Context, user auth.User) (bool, error)) {
-	as.emailVerificationCheck = fn
+	as.emailVerificationCheck = &fn
 }
 
 // ValidatePassword checks password against the configured password policy.
