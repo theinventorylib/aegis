@@ -19,7 +19,8 @@ export default defineNuxtConfig({
     defaultLocale: 'en'
   },
   app: {
-    baseURL: process.env.NODE_ENV === 'production' ? '/aegis/' : '/',
+    // NUXT_APP_BASE_URL lets the versioned (v1) docs build target /aegis/v1/.
+    baseURL: process.env.NUXT_APP_BASE_URL || (process.env.NODE_ENV === 'production' ? '/aegis/' : '/'),
     head: {
       link: [
         { rel: 'icon', type: 'image/png', href: process.env.NODE_ENV === 'production' ? '/aegis/logo.png' : '/logo.png' }

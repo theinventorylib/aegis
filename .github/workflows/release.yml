@@ -116,6 +116,20 @@ jobs:
           echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
           echo "New version: $NEW_VERSION (prerelease: $IS_PRERELEASE)"
 
+      - name: Validate version against branch line
+        shell: bash
+        run: |
+          NEW="${{ steps.new_version.outputs.version }}"
+          MAJOR=$(echo "$NEW" | sed 's/^v//' | cut -d. -f1)
+          if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "$MAJOR" -lt 2 ]; then
+            echo "::error::main is the v2 line; refusing to create $NEW (pick 'major')"
+            exit 1
+          fi
+          if [ "${{ github.ref }}" = "refs/heads/v1" ] && [ "$MAJOR" -gt 1 ]; then
+            echo "::error::v1 is the v1 line; refusing to create $NEW"
+            exit 1
+          fi
+
       - name: Generate changelog
         if: ${{ !inputs.use_goreleaser }}
         id: changelog
@@ -143,43 +157,6 @@ jobs:
           echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${LATEST_TAG}...${NEW_VERSION}" >> CHANGELOG_RELEASE.md
 
           cat CHANGELOG_RELEASE.md
-
-      - name: Update changelog
-        if: ${{ !inputs.use_goreleaser && !inputs.dry_run }}
-        run: |
-          NEW_VERSION="${{ steps.new_version.outputs.version }}"
-          DATE=$(date +%Y-%m-%d)
-
-          # Build the new section into a temp file to avoid sed delimiter conflicts
-          # with special characters (e.g. '/', '&') in commit messages
-          {
-            echo "## [$NEW_VERSION] - $DATE"
-            sed '1,2d; $d' CHANGELOG_RELEASE.md
-            echo ""
-            echo "## [Unreleased]"
-          } > /tmp/new_section.txt
-
-          # Replace the [Unreleased] heading using awk, reading replacement from file
-          awk '
-            /^## \[Unreleased\]/ {
-              while ((getline line < "/tmp/new_section.txt") > 0) print line
-              close("/tmp/new_section.txt")
-              next
-            }
-            { print }
-          ' docs/content/changelog.md > /tmp/changelog_updated.md
-          mv /tmp/changelog_updated.md docs/content/changelog.md
-
-      - name: Commit changelog
-        if: ${{ !inputs.use_goreleaser && !inputs.dry_run }}
-        run: |
-          NEW_VERSION="${{ steps.new_version.outputs.version }}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add docs/content/changelog.md
-          git commit -m "Update changelog for $NEW_VERSION"
 
       - name: Create and push tag
         if: ${{ !inputs.dry_run }}

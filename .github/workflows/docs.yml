@@ -27,6 +27,10 @@ concurrency:
 jobs:
   # Build job
   build:
+    # Only the main (v2) deploy produces the combined site; it builds the v1
+    # subpath from the v1 branch. Guard so a manual dispatch from v1 can't
+    # publish a site built from the wrong line.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -54,35 +58,34 @@ jobs:
         working-directory: docs
 
       - name: Sync Changelog from GitHub Releases
-        run: |
-          echo "---" > docs/content/changelog.md
-          echo "title: Changelog" >> docs/content/changelog.md
-          echo "description: Release history and updates for Aegis." >> docs/content/changelog.md
-          echo "layout: default" >> docs/content/changelog.md
-          echo "navigation:" >> docs/content/changelog.md
-          echo "  icon: i-lucide-history" >> docs/content/changelog.md
-          echo "---" >> docs/content/changelog.md
-          echo "" >> docs/content/changelog.md
-          echo "# Changelog" >> docs/content/changelog.md
-          echo "" >> docs/content/changelog.md
-          echo "The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)," >> docs/content/changelog.md
-          echo "and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)." >> docs/content/changelog.md
-          echo "" >> docs/content/changelog.md
-          
-          # Fetch releases from GitHub API
-          curl -s "https://api.github.com/repos/${{ github.repository }}/releases" | \
-          jq -r '.[] | "## [\(.tag_name)] - \(.published_at | split("T")[0])\n\n\(.body)\n\n---\n"' >> docs/content/changelog.md
-          
-          # If no releases exist, add a placeholder
-          if [ $(wc -l < docs/content/changelog.md) -lt 15 ]; then
-            echo "## [Unreleased]" >> docs/content/changelog.md
-            echo "" >> docs/content/changelog.md
-            echo "No releases yet. Check the [GitHub repository](https://github.com/${{ github.repository }}) for updates." >> docs/content/changelog.md
-          fi
+        run: bash docs/scripts/sync-changelog.sh .
 
       - name: Build site
         run: pnpm generate
         working-directory: docs
+
+      # --- v1 line: build the previous major and serve it under /aegis/v1/ ---
+      - name: Checkout v1 docs
+        uses: actions/checkout@v6
+        with:
+          ref: v1
+          path: v1-src
+
+      - name: Install v1 docs dependencies
+        run: pnpm install
+        working-directory: v1-src/docs
+
+      - name: Sync v1 changelog
+        run: bash v1-src/docs/scripts/sync-changelog.sh v1-src
+
+      - name: Build v1 site
+        run: NUXT_APP_BASE_URL=/aegis/v1/ pnpm generate
+        working-directory: v1-src/docs
+
+      - name: Merge v1 site under /v1
+        run: |
+          mkdir -p docs/.output/public/v1
+          cp -R v1-src/docs/.output/public/. docs/.output/public/v1/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
