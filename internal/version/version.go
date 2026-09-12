@@ -2,13 +2,13 @@
 //
 // At build time, GoReleaser injects the git tag via:
 //
-//	-X github.com/theinventorylib/aegis/v2/internal/version.Version=v1.2.3
+//	-X github.com/theinventorylib/aegis/v2/internal/version.Version=v2.0.0
 //
 // At runtime (when built without GoReleaser, e.g. library consumers), the version
 // is resolved from the embedded module build info via runtime/debug.ReadBuildInfo().
 // This covers cases like:
 //
-//	go get github.com/theinventorylib/aegis/v2@v1.2.3  // version embedded in consumer binary
+//	go get github.com/theinventorylib/aegis/v2@v2.0.0  // version embedded in consumer binary
 //	go run ./...                                      // returns "dev"
 package version
 

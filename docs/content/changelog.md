@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Constructors: `NewSessionService`, `NewAccountService`, `NewUserService`, `NewVerificationService`, `NewPluginData`
   - Helpers: `ValidatePassword`, `ValidatePasswordSimple`, `BindAndValidate`, `ValidateMiddleware`, `WrapError`, `IsValidationError`, `MustGetUser`, `MustGetEnrichedUser`, `IsContextInitialized`, `AegisContext`
   - Sanitizers/utilities: `SanitizeFilename`, `SanitizeHTML`, `SanitizeSQL`, `SanitizeSQLIdentifier`, `StripTags`, `NormalizeWhitespace`, `RedactForLog`, `HashShort`, `HashTokenHex`, `IsHashedToken`, `BoolPtr`
-  - Types/config: `AccountModel`, `VerificationModel`, `IDGeneratorFunc`, `AuthRateLimitConfig`, `DefaultPasswordHasherConfig`, `DefaultPasswordPolicyConfig`, `GetAuthConfig`, `LoggerAuditLogger`, `NewLoggerAuditLogger`, `SanitizationConfig.NormalizeWhitespace`
+  - Types/config: `AccountModel`, `VerificationModel`, `IDGeneratorFunc`, `AuthRateLimitConfig`, `DefaultPasswordHasherConfig`, `DefaultPasswordPolicyConfig`, `GetAuthConfig`, `LoggerAuditLogger`, `NewLoggerAuditLogger`
   - Organizations `Config.CustomOrgRoles` / `Config.CustomTeamRoles` (use `OrgRoles` / `TeamRoles`)
 - New code should use the replacements noted on each symbol and `NewAuthService` / `aegis.New` for construction.
 
