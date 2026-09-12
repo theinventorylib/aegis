@@ -54,7 +54,7 @@ func (p *Plugin) requireOrganizationRole(checker orgRoleChecker) func(http.Handl
 //	)
 func (p *Plugin) RequireOrgRole(roles ...string) func(http.Handler) http.Handler {
 	return p.requireOrganizationRole(func(ctx context.Context, userID, orgID string) (bool, error) {
-		return p.store.HasOrgRole(ctx, userID, orgID, roles...)
+		return p.caps.HasOrgRole(ctx, userID, orgID, roles...)
 	})
 }
 
@@ -94,7 +94,7 @@ func (p *Plugin) RequireTeamPermission(perm Permission) func(http.Handler) http.
 				return
 			}
 
-			canAccess, err := p.store.CanAccessTeam(r.Context(), user.ID, teamID)
+			canAccess, err := p.caps.CanAccessTeam(r.Context(), user.ID, teamID)
 			if err != nil || !canAccess {
 				core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 				return
@@ -132,14 +132,14 @@ func (p *Plugin) RequireTeamRole(roles ...string) func(http.Handler) http.Handle
 				return
 			}
 
-			canAccess, err := p.store.CanAccessTeam(r.Context(), user.ID, teamID)
+			canAccess, err := p.caps.CanAccessTeam(r.Context(), user.ID, teamID)
 			if err != nil || !canAccess {
 				core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 				return
 			}
 
 			if len(roles) > 0 {
-				hasRole, err := p.store.HasTeamRole(r.Context(), user.ID, teamID, roles...)
+				hasRole, err := p.caps.HasTeamRole(r.Context(), user.ID, teamID, roles...)
 				if err != nil || !hasRole {
 					core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 					return

@@ -44,7 +44,7 @@ func TestRoleDefinition_Allows(t *testing.T) {
 }
 
 func TestNewResolvesBuiltInAndCustomRoles(t *testing.T) {
-	p := New(&Config{
+	p := NewWithConfig(&Config{
 		OrgRoles: map[string]RoleDefinition{
 			"billing": {Permissions: []Permission{PermOrgView, PermMemberView}},
 		},
@@ -76,7 +76,7 @@ func TestNewResolvesBuiltInAndCustomRoles(t *testing.T) {
 }
 
 func TestNewReplacesBuiltInRole(t *testing.T) {
-	p := New(&Config{
+	p := NewWithConfig(&Config{
 		OrgRoles: map[string]RoleDefinition{
 			// Downgrade member to nothing.
 			orgtypes.RoleMember: {Permissions: nil},
@@ -89,14 +89,14 @@ func TestNewReplacesBuiltInRole(t *testing.T) {
 }
 
 func TestNewNilConfig(t *testing.T) {
-	p := New(nil, nil)
+	p := New(nil)
 	if len(p.OrgRoles()) == 0 || len(p.TeamRoles()) == 0 {
 		t.Fatal("nil config must still produce built-in roles")
 	}
 }
 
 func TestOrgMemberRolesExcludeOwner(t *testing.T) {
-	p := New(&Config{
+	p := NewWithConfig(&Config{
 		OrgRoles: map[string]RoleDefinition{
 			"billing": {Permissions: []Permission{PermOrgView}},
 		},
@@ -130,7 +130,7 @@ func TestHasOrgPermission(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := New(nil, &fakeStore{memberOrgRole: tc.role})
+			p := New(&fakeStore{memberOrgRole: tc.role})
 			got, err := p.HasOrgPermission(ctx, "u1", "o1", tc.perm)
 			if err != nil {
 				t.Fatalf("HasOrgPermission: %v", err)
@@ -144,7 +144,7 @@ func TestHasOrgPermission(t *testing.T) {
 
 func TestHasTeamPermission(t *testing.T) {
 	ctx := context.Background()
-	p := New(nil, &fakeStore{teamRole: orgtypes.RoleTeamLead})
+	p := New(&fakeStore{teamRole: orgtypes.RoleTeamLead})
 	if ok, _ := p.HasTeamPermission(ctx, "u1", "t1", PermTeamMemberManage); !ok {
 		t.Error("team lead should manage team members")
 	}

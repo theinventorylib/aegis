@@ -36,7 +36,7 @@
 // Example Setup:
 //
 //	// Create organization plugin
-//	orgPlugin := organizations.New(nil, nil, plugins.DialectPostgres)
+//	orgPlugin := organizations.New(nil, plugins.DialectPostgres)
 //
 //	// User creates organization
 //	org, _ := orgPlugin.CreateOrganization(ctx, "Acme Corp", "acme", user.ID)
@@ -138,6 +138,7 @@ type Config struct {
 type Plugin struct {
 	sessionService *core.SessionService
 	store          orgtypes.OrganizationStore
+	caps           orgtypes.OrganizationStoreCapabilities
 	dialect        plugins.Dialect
 	aegis          plugins.Aegis
 	emailSender    func(ctx context.Context, to, subject, body string) error
@@ -146,10 +147,9 @@ type Plugin struct {
 	teamRoles      map[string]RoleDefinition
 }
 
-// New creates a new organizations plugin for multi-tenancy management.
+// New creates a new organizations plugin with default configuration.
 //
 // Parameters:
-//   - cfg: Optional configuration (nil = use defaults)
 //   - store: Organization storage implementation (nil = use DefaultOrganizationStore)
 //   - dialect: Database dialect (defaults to PostgreSQL)
 //
@@ -158,8 +158,22 @@ type Plugin struct {
 //
 // Example:
 //
-//	plugin := organizations.New(nil, nil, plugins.DialectPostgres)
-func New(cfg *Config, store orgtypes.OrganizationStore, dialect ...plugins.Dialect) *Plugin {
+//	plugin := organizations.New(nil, plugins.DialectPostgres)
+func New(store orgtypes.OrganizationStore, dialect ...plugins.Dialect) *Plugin {
+	return NewWithConfig(nil, store, dialect...)
+}
+
+// NewWithConfig creates a new organizations plugin with custom configuration.
+//
+// Parameters:
+//   - cfg: Optional configuration (nil = use defaults)
+//   - store: Organization storage implementation (nil = use DefaultOrganizationStore)
+//   - dialect: Database dialect (defaults to PostgreSQL)
+//
+// Example:
+//
+//	plugin := organizations.NewWithConfig(&organizations.Config{...}, nil, plugins.DialectPostgres)
+func NewWithConfig(cfg *Config, store orgtypes.OrganizationStore, dialect ...plugins.Dialect) *Plugin {
 	d := plugins.DialectPostgres
 	if len(dialect) > 0 {
 		d = dialect[0]
@@ -255,6 +269,15 @@ func (p *Plugin) Init(ctx context.Context, aegis plugins.Aegis) error {
 		}
 		p.store = store
 	}
+
+	// The plugin needs the post-v1.6 role/invitation operations. A custom store
+	// may implement only OrganizationStore (the v1.6 contract), so assert the
+	// capability here and fail with a clear message instead of panicking later.
+	caps, ok := p.store.(orgtypes.OrganizationStoreCapabilities)
+	if !ok {
+		return fmt.Errorf("organizations: store %T does not implement OrganizationStoreCapabilities", p.store)
+	}
+	p.caps = caps
 
 	// Build schema requirements
 	tables := p.RequiresTables()
@@ -937,7 +960,7 @@ func (p *Plugin) GetUserOrganizations(ctx context.Context, userID string, offset
 //	isAdmin, _ := p.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner, orgtypes.RoleAdmin)
 //	isMember, _ := p.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner, orgtypes.RoleAdmin, orgtypes.RoleMember)
 func (p *Plugin) HasOrgRole(ctx context.Context, userID, orgID string, roles ...string) (bool, error) {
-	return p.store.HasOrgRole(ctx, userID, orgID, roles...)
+	return p.caps.HasOrgRole(ctx, userID, orgID, roles...)
 }
 
 // HasTeamRole checks whether the user has any of the given team-level roles.
@@ -946,7 +969,7 @@ func (p *Plugin) HasOrgRole(ctx context.Context, userID, orgID string, roles ...
 //
 //	canLead, _ := p.HasTeamRole(ctx, userID, teamID, orgtypes.RoleTeamLead)
 func (p *Plugin) HasTeamRole(ctx context.Context, userID, teamID string, roles ...string) (bool, error) {
-	return p.store.HasTeamRole(ctx, userID, teamID, roles...)
+	return p.caps.HasTeamRole(ctx, userID, teamID, roles...)
 }
 
 // CanAccessTeam checks whether a user can access a team.
@@ -954,7 +977,7 @@ func (p *Plugin) HasTeamRole(ctx context.Context, userID, teamID string, roles .
 // A user can access a team if they are a member of the parent organization
 // AND a member of the specific team (with any team role).
 func (p *Plugin) CanAccessTeam(ctx context.Context, userID, teamID string) (bool, error) {
-	return p.store.CanAccessTeam(ctx, userID, teamID)
+	return p.caps.CanAccessTeam(ctx, userID, teamID)
 }
 
 // IsOrganizationMember checks if a user is a member of an organization.
@@ -1224,7 +1247,7 @@ func (p *Plugin) CreateInvitation(ctx context.Context, orgID string, teamID *str
 		UpdatedAt:      now,
 	}
 
-	if err := p.store.CreateInvitation(ctx, inv); err != nil {
+	if err := p.caps.CreateInvitation(ctx, inv); err != nil {
 		return nil, "", err
 	}
 
@@ -1264,7 +1287,7 @@ func (p *Plugin) buildAcceptURL(rawToken string) string {
 //   - *Invitation: Updated invitation with status "accepted"
 //   - error: If invitation not found, expired, or already processed
 func (p *Plugin) AcceptInvitation(ctx context.Context, tokenHash, userID string) (*orgtypes.Invitation, error) {
-	inv, err := p.store.GetInvitationByTokenHash(ctx, tokenHash)
+	inv, err := p.caps.GetInvitationByTokenHash(ctx, tokenHash)
 	if err != nil {
 		return nil, err
 	}
@@ -1274,7 +1297,7 @@ func (p *Plugin) AcceptInvitation(ctx context.Context, tokenHash, userID string)
 	}
 
 	if time.Now().After(inv.ExpiresAt) {
-		if err := p.store.UpdateInvitationStatus(ctx, inv.ID, "expired", time.Now()); err != nil {
+		if err := p.caps.UpdateInvitationStatus(ctx, inv.ID, "expired", time.Now()); err != nil {
 			if logger := p.aegis.GetLogger(); logger != nil {
 				logger.Error("failed to mark invitation as expired", "error", err, "invitation_id", inv.ID)
 			}
@@ -1305,7 +1328,7 @@ func (p *Plugin) AcceptInvitation(ctx context.Context, tokenHash, userID string)
 	}
 
 	// Update invitation status
-	if err := p.store.UpdateInvitationStatus(ctx, inv.ID, "accepted", now); err != nil {
+	if err := p.caps.UpdateInvitationStatus(ctx, inv.ID, "accepted", now); err != nil {
 		return nil, err
 	}
 
@@ -1325,7 +1348,7 @@ func (p *Plugin) AcceptInvitation(ctx context.Context, tokenHash, userID string)
 //   - *Invitation: Updated invitation with status "declined"
 //   - error: If invitation not found or already processed
 func (p *Plugin) DeclineInvitation(ctx context.Context, tokenHash string) (*orgtypes.Invitation, error) {
-	inv, err := p.store.GetInvitationByTokenHash(ctx, tokenHash)
+	inv, err := p.caps.GetInvitationByTokenHash(ctx, tokenHash)
 	if err != nil {
 		return nil, err
 	}
@@ -1334,7 +1357,7 @@ func (p *Plugin) DeclineInvitation(ctx context.Context, tokenHash string) (*orgt
 		return nil, fmt.Errorf("invitation is %s, not pending", inv.Status)
 	}
 
-	if err := p.store.UpdateInvitationStatus(ctx, inv.ID, "declined", time.Now()); err != nil {
+	if err := p.caps.UpdateInvitationStatus(ctx, inv.ID, "declined", time.Now()); err != nil {
 		return nil, err
 	}
 
@@ -1358,7 +1381,7 @@ func (p *Plugin) DeclineInvitation(ctx context.Context, tokenHash string) (*orgt
 func (p *Plugin) VerifyInvitation(ctx context.Context, rawToken string) (*orgtypes.Invitation, error) {
 	tokenHash := hashTokenForLookup(rawToken)
 
-	inv, err := p.store.GetInvitationByTokenHash(ctx, tokenHash)
+	inv, err := p.caps.GetInvitationByTokenHash(ctx, tokenHash)
 	if err != nil {
 		return nil, err
 	}
@@ -1387,18 +1410,18 @@ func (p *Plugin) VerifyInvitation(ctx context.Context, rawToken string) (*orgtyp
 // Returns:
 //   - error: Database error
 func (p *Plugin) CancelInvitation(ctx context.Context, id string) error {
-	return p.store.DeleteInvitation(ctx, id)
+	return p.caps.DeleteInvitation(ctx, id)
 }
 
 // ListInvitations returns a paginated list of invitations for an organization,
 // optionally filtered to a specific team.
 func (p *Plugin) ListInvitations(ctx context.Context, orgID string, teamID string, offset, limit int) ([]*orgtypes.Invitation, int, error) {
-	invites, err := p.store.ListInvitations(ctx, orgID, teamID, offset, limit)
+	invites, err := p.caps.ListInvitations(ctx, orgID, teamID, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	count, err := p.store.CountInvitations(ctx, orgID, teamID)
+	count, err := p.caps.CountInvitations(ctx, orgID, teamID)
 	if err != nil {
 		return nil, 0, err
 	}

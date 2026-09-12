@@ -362,10 +362,10 @@ func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, purpose string) error
 	return nil
 }
 
-// VerifyOTP verifies an OTP code for a phone number. The code is bound to
-// the phone number and purpose it was issued for, and is consumed on
+// VerifyOTPForPurpose verifies an OTP code for a phone number. The code is
+// bound to the phone number and purpose it was issued for, and is consumed on
 // success (single use).
-func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, purpose, code string) (bool, error) {
+func (p *Plugin) VerifyOTPForPurpose(ctx context.Context, phoneNumber, purpose, code string) (bool, error) {
 	// Sanitize phone number
 	phoneNumber = core.SanitizePhoneNumber(phoneNumber)
 	// Mirror SendOTP's default so programmatic callers passing "" verify.
@@ -391,6 +391,13 @@ func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, purpose, code strin
 	}
 
 	return true, nil
+}
+
+// VerifyOTP verifies an OTP code for the phone_verification purpose.
+//
+// Deprecated: use VerifyOTPForPurpose to pass an explicit purpose.
+func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, code string) (bool, error) {
+	return p.VerifyOTPForPurpose(ctx, phoneNumber, "phone_verification", code)
 }
 
 // GetUserByPhone retrieves a user by phone number

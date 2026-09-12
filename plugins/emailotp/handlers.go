@@ -189,7 +189,7 @@ func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	valid, err := h.plugin.VerifyOTP(r.Context(), req.Email, req.Purpose, req.Code)
+	valid, err := h.plugin.VerifyOTPForPurpose(r.Context(), req.Email, req.Purpose, req.Code)
 	if err != nil || !valid {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,

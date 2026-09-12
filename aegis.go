@@ -535,7 +535,7 @@ func (a *Aegis) Use(ctx context.Context, plugin plugins.Plugin) error {
 // Example:
 //
 //	// Register Organizations plugin first (priority 10)
-//	orgPlugin := organizations.New(orgConfig, nil, dialect)
+//	orgPlugin := organizations.NewWithConfig(orgConfig, nil, dialect)
 //	a.UseWithPriority(ctx, orgPlugin, 10)
 //
 //	// Register Admin plugin second (priority 50, depends on Organizations)
@@ -629,6 +629,13 @@ func (a *Aegis) DeriveSecret(purpose string) []byte {
 // DB returns the database connection
 func (a *Aegis) DB() *sql.DB {
 	return a.config.DB
+}
+
+// GetDB returns the database connection.
+//
+// Deprecated: use DB.
+func (a *Aegis) GetDB() *sql.DB {
+	return a.DB()
 }
 
 // GetLogger returns the configured logger (may be nil).

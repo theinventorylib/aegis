@@ -48,6 +48,13 @@ func NormalizePath(path string) string {
 	return result
 }
 
+// NormalizePathToOpenAPI converts a router path to OpenAPI parameter syntax.
+//
+// Deprecated: use NormalizePath.
+func NormalizePathToOpenAPI(path string) string {
+	return NormalizePath(path)
+}
+
 // isParamChar returns true if the character is valid in a router parameter name.
 //
 // Valid characters:

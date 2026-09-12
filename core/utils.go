@@ -63,8 +63,8 @@ func SetIDStrategy(strategy IDStrategy) {
 // SetCustomIDGenerator sets a custom ID generation function and switches the
 // strategy to IDStrategyCustom. The generator must return unique IDs and be
 // thread-safe if called concurrently.
-func SetCustomIDGenerator(generator func() string) {
-	defaultIDConfig.generator = generator
+func SetCustomIDGenerator(generator IDGeneratorFunc) {
+	defaultIDConfig.generator = iDGeneratorFunc(generator)
 	defaultIDConfig.strategy = IDStrategyCustom
 }
 

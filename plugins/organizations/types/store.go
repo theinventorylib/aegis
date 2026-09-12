@@ -61,29 +61,7 @@ type OrganizationStore interface {
 	// GetMember retrieves a user's membership in an organization.
 	GetMember(ctx context.Context, userID, orgID string) (Member, error)
 
-	// HasOrgRole checks whether the user has any of the given org-level roles.
-	// Use this instead of the deprecated IsOrganizationMember / IsOwnerOrAdmin
-	// methods for new code.
-	//
-	// Example:
-	//
-	//	hasAdmin, _ := store.HasOrgRole(ctx, userID, orgID, RoleOwner, RoleAdmin)
-	//	hasAny,  _ := store.HasOrgRole(ctx, userID, orgID, RoleOwner, RoleAdmin, RoleMember)
-	HasOrgRole(ctx context.Context, userID, orgID string, roles ...string) (bool, error)
-
-	// HasTeamRole checks whether the user has any of the given team-level roles.
-	//
-	// Example:
-	//
-	//	canLead, _ := store.HasTeamRole(ctx, userID, teamID, RoleTeamLead)
-	HasTeamRole(ctx context.Context, userID, teamID string, roles ...string) (bool, error)
-
-	// CanAccessTeam checks whether a user can access a team.
-	// A user can access a team if they are a member of the parent organization
-	// AND a member of the specific team (with any team role).
-	CanAccessTeam(ctx context.Context, userID, teamID string) (bool, error)
-
-	// Deprecated: Use HasOrgRole instead.
+	// Deprecated: Use OrganizationStoreCapabilities.HasOrgRole instead.
 	IsOrganizationMember(ctx context.Context, userID, orgID string) (bool, error)
 
 	// Deprecated: Use HasOrgRole instead.
@@ -147,31 +125,36 @@ type OrganizationStore interface {
 
 	// RemoveTeamMember removes a user from a team.
 	RemoveTeamMember(ctx context.Context, teamID, userID string) error
+}
 
-	// ========== Invitation operations ==========
+// OrganizationStoreCapabilities adds the role-check and invitation operations
+// introduced after v1.6.
+//
+// The default store implements it. The organizations plugin requires this
+// capability at Init, so a custom store written against the v1.6
+// OrganizationStore interface keeps compiling, but must implement these methods
+// to use the plugin's role and invitation features.
+type OrganizationStoreCapabilities interface {
+	// HasOrgRole checks whether the user has any of the given org-level roles.
+	HasOrgRole(ctx context.Context, userID, orgID string, roles ...string) (bool, error)
+
+	// HasTeamRole checks whether the user has any of the given team-level roles.
+	HasTeamRole(ctx context.Context, userID, teamID string, roles ...string) (bool, error)
+
+	// CanAccessTeam checks whether a user can access a team (org member AND team
+	// member, any role in each).
+	CanAccessTeam(ctx context.Context, userID, teamID string) (bool, error)
 
 	// CreateInvitation stores a new invitation.
-	//
-	// The TokenHash field must contain the SHA-256 hash of the raw token.
-	// The raw token itself is never stored — it is returned at creation time
-	// and must be delivered to the invitee (the raw token is returned in the API response).
 	CreateInvitation(ctx context.Context, inv Invitation) error
 
 	// GetInvitationByID retrieves an invitation by its ID.
 	GetInvitationByID(ctx context.Context, id string) (Invitation, error)
 
 	// GetInvitationByTokenHash retrieves an invitation by its token hash.
-	// Used on accept/decline where the caller provides the raw token.
 	GetInvitationByTokenHash(ctx context.Context, tokenHash string) (Invitation, error)
 
-	// ListInvitations returns a paginated list of invitations for an org,
-	// optionally filtered to a specific team.
-	//
-	// Parameters:
-	//   - orgID: Organization ID (required)
-	//   - teamID: If non-empty, only return invitations for this team.
-	//     Pass empty string to return all org-level invites.
-	//   - offset, limit: Pagination
+	// ListInvitations returns a paginated list of invitations for an org.
 	ListInvitations(ctx context.Context, orgID string, teamID string, offset, limit int) ([]Invitation, error)
 
 	// CountInvitations returns the total number of invitations matching filters.

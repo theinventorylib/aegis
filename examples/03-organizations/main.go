@@ -52,7 +52,7 @@ func main() {
 	r := routers.NewChiRouter(mux)
 
 	// 3. Create organizations plugin
-	orgPlugin := organizations.New(nil, nil, plugins.DialectPostgres)
+	orgPlugin := organizations.New(nil, plugins.DialectPostgres)
 
 	cfg := config.Default().WithDB(db).WithRouter(r).WithSecret([]byte("your-32-byte-secret-key-here!!!!"))
 	a, err := aegis.New(context.Background(), cfg)

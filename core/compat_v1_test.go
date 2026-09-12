@@ -41,6 +41,8 @@ var (
 	_ = AuthRateLimitConfig
 	_ = DefaultPasswordHasherConfig
 	_ = DefaultPasswordPolicyConfig
+	_ = SetCustomIDGenerator
+	_ = EmailRegexPattern
 	_ = (*AuthService).GetAuthConfig
 
 	// Sanitizers / utilities.

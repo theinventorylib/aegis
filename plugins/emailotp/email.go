@@ -411,17 +411,17 @@ func (p *Plugin) SendOTP(ctx context.Context, emailAddress, purpose string) erro
 	return nil
 }
 
-// VerifyOTP verifies an OTP code for the given email address. The code is
-// bound to the email address and purpose it was issued for, and is consumed
-// on success (single use).
+// VerifyOTPForPurpose verifies an OTP code for the given email address. The
+// code is bound to the email address and purpose it was issued for, and is
+// consumed on success (single use).
 //
 // Example:
 //
-//	valid, err := plugin.VerifyOTP(ctx, "user@example.com", "email_verification", "123456")
+//	valid, err := plugin.VerifyOTPForPurpose(ctx, "user@example.com", "email_verification", "123456")
 //	if valid {
 //	  // Mark email as verified
 //	}
-func (p *Plugin) VerifyOTP(ctx context.Context, emailAddress, purpose, code string) (bool, error) {
+func (p *Plugin) VerifyOTPForPurpose(ctx context.Context, emailAddress, purpose, code string) (bool, error) {
 	// Sanitize email
 	emailAddress = core.SanitizeEmail(emailAddress)
 	// Mirror SendOTP's default so programmatic callers passing "" verify.
@@ -447,6 +447,13 @@ func (p *Plugin) VerifyOTP(ctx context.Context, emailAddress, purpose, code stri
 	}
 
 	return true, nil
+}
+
+// VerifyOTP verifies an OTP code for the email_verification purpose.
+//
+// Deprecated: use VerifyOTPForPurpose to pass an explicit purpose.
+func (p *Plugin) VerifyOTP(ctx context.Context, emailAddress, code string) (bool, error) {
+	return p.VerifyOTPForPurpose(ctx, emailAddress, "email_verification", code)
 }
 
 // GetUserByEmail retrieves a user by email address

@@ -238,6 +238,18 @@ func CleanDatabase(t testing.TB, db *sql.DB) {
 	_, _ = db.ExecContext(ctx, "SET session_replication_role = 'origin';")
 }
 
+// RunMigrations is a test-setup placeholder retained for v1 compatibility.
+//
+// Deprecated: it does nothing beyond logging. Run the real migrations with the
+// CLI (`aegis migrate export`) or your application's migration step.
+func RunMigrations(t testing.TB, db *sql.DB, _ string) {
+	t.Helper()
+	if db == nil {
+		return
+	}
+	t.Log("Migrations would be run here in a full integration test setup")
+}
+
 // GenerateTestEmail generates a unique test email address.
 //
 // This is useful for tests that need unique email addresses to avoid

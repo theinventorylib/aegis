@@ -16,6 +16,12 @@ import (
 	"github.com/theinventorylib/aegis/auth"
 )
 
+// EmailRegexPattern is the RFC 5322 (simplified) email validation pattern.
+//
+// Deprecated: email validation uses ozzo-validation's is.Email; this constant
+// is kept for v1 compatibility.
+const EmailRegexPattern = `^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Service constructors
 // ═══════════════════════════════════════════════════════════════════════════
