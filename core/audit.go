@@ -126,6 +126,20 @@ type AuditLogger interface {
 // Useful for testing or when audit logging is not required.
 type NoOpAuditLogger struct{}
 
+// logAuthEvent writes an audit event, absorbing failures into the
+// structured logger instead of failing the operation. Audit-write failures
+// must never break auth flows, but they should not vanish silently either.
+// Single owner of that policy; use this instead of calling LogAuthEvent
+// directly from services.
+func logAuthEvent(ctx context.Context, logger Logger, l AuditLogger, event AuditEventType, userID string, success bool, details map[string]any) {
+	if err := l.LogAuthEvent(ctx, event, userID, success, details); err != nil {
+		if logger != nil {
+			logger.Error("audit: failed to write event",
+				"event", string(event), "user_id", userID, "error", err)
+		}
+	}
+}
+
 // LogEvent implements AuditLogger.
 func (n *NoOpAuditLogger) LogEvent(_ context.Context, _ *AuditEvent) error {
 	return nil
@@ -134,72 +148,4 @@ func (n *NoOpAuditLogger) LogEvent(_ context.Context, _ *AuditEvent) error {
 // LogAuthEvent implements AuditLogger.
 func (n *NoOpAuditLogger) LogAuthEvent(_ context.Context, _ AuditEventType, _ string, _ bool, _ map[string]any) error {
 	return nil
-}
-
-// LoggerAuditLogger implements AuditLogger using a structured logger interface.
-// This adapter allows using any logger (zap, logrus, slog) that implements
-// the Info/Error/Debug methods.
-type LoggerAuditLogger struct {
-	logger interface {
-		Info(msg string, keysAndValues ...any)
-		Error(msg string, keysAndValues ...any)
-		Debug(msg string, keysAndValues ...any)
-	}
-}
-
-// NewLoggerAuditLogger creates an audit logger that writes to a structured logger.
-func NewLoggerAuditLogger(logger interface {
-	Info(msg string, keysAndValues ...any)
-	Error(msg string, keysAndValues ...any)
-	Debug(msg string, keysAndValues ...any)
-}) *LoggerAuditLogger {
-	return &LoggerAuditLogger{logger: logger}
-}
-
-// LogEvent implements AuditLogger.
-func (l *LoggerAuditLogger) LogEvent(_ context.Context, event *AuditEvent) error {
-	if l.logger == nil {
-		return nil
-	}
-
-	fields := []any{
-		"event_type", event.EventType,
-		"user_id", event.UserID,
-		"ip_address", event.IPAddress,
-		"user_agent", event.UserAgent,
-		"resource", event.Resource,
-		"action", event.Action,
-		"success", event.Success,
-		"timestamp", event.Timestamp,
-	}
-
-	if event.Error != "" {
-		fields = append(fields, "error", event.Error)
-	}
-
-	if len(event.Details) > 0 {
-		for k, v := range event.Details {
-			fields = append(fields, k, v)
-		}
-	}
-
-	l.logger.Info("audit event", fields...)
-	return nil
-}
-
-// LogAuthEvent implements AuditLogger.
-// IP address and user agent are extracted from the request context.
-func (l *LoggerAuditLogger) LogAuthEvent(ctx context.Context, eventType AuditEventType, userID string, success bool, details map[string]any) error {
-	event := &AuditEvent{
-		ID:        GenerateID(),
-		EventType: eventType,
-		UserID:    userID,
-		IPAddress: GetIPAddress(ctx),
-		UserAgent: GetUserAgent(ctx),
-		Details:   details,
-		Timestamp: time.Now(),
-		Success:   success,
-	}
-
-	return l.LogEvent(ctx, event)
 }

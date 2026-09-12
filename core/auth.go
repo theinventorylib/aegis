@@ -15,6 +15,8 @@
 package core
 
 import (
+	"context"
+
 	"github.com/theinventorylib/aegis/auth"
 )
 
@@ -61,6 +63,32 @@ type AuthService struct {
 	accountStore      auth.AccountStore
 	sessionStore      auth.SessionStore
 	verificationStore auth.VerificationStore
+
+	// emailVerificationCheck, when set by an email plugin, reports whether a
+	// user's email is verified. Consulted only when
+	// authConfig.RequireEmailVerification is true.
+	emailVerificationCheck func(ctx context.Context, user auth.User) (bool, error)
+}
+
+// SetEmailVerificationCheck wires the email-verification checker used when
+// AuthConfig.RequireEmailVerification is enabled. Email plugins call this
+// during Init. Passing nil disables the check.
+func (as *AuthService) SetEmailVerificationCheck(fn func(ctx context.Context, user auth.User) (bool, error)) {
+	as.emailVerificationCheck = fn
+}
+
+// ValidatePassword checks password against the configured password policy.
+// Exposed so plugins and applications that create credentials outside
+// UserService enforce the same policy.
+func (as *AuthService) ValidatePassword(password string) error {
+	return validatePassword(password, as.authConfig.PasswordPolicy)
+}
+
+// SetEmailVerificationResetter wires the callback invoked when a user's email
+// changes, so the email plugin can clear its verification flag. Email plugins
+// call this during Init. Passing nil disables the reset.
+func (as *AuthService) SetEmailVerificationResetter(fn func(ctx context.Context, userID, email string) error) {
+	as.User.setEmailVerificationReset(fn)
 }
 
 // NewAuthService creates a new AuthService with all sub-services initialized.
@@ -80,13 +108,13 @@ type AuthService struct {
 // will never return a partially-configured service.
 func NewAuthService(authConfig *AuthConfig, authConn *auth.Auth, hashConfig *PasswordHasherConfig, auditLogger AuditLogger, loginAttemptTracker *LoginAttemptTracker, logger Logger) *AuthService {
 	if hashConfig == nil {
-		hashConfig = DefaultPasswordHasherConfig()
+		hashConfig = defaultPasswordHasherConfig()
 	}
 	if authConfig == nil {
 		authConfig = DefaultAuthConfig()
 	}
 	if authConfig.PasswordPolicy == nil {
-		authConfig.PasswordPolicy = DefaultPasswordPolicyConfig()
+		authConfig.PasswordPolicy = defaultPasswordPolicyConfig()
 	}
 	if auditLogger == nil {
 		auditLogger = &NoOpAuditLogger{}
@@ -107,19 +135,15 @@ func NewAuthService(authConfig *AuthConfig, authConn *auth.Auth, hashConfig *Pas
 	}
 
 	// Initialize sub-services
-	as.Account = NewAccountService(as.accountStore, as.sessionStore, hashConfig, authConfig, auditLogger, authConn.Transactor(), logger)
-	as.User = NewUserService(as.userStore, as.accountStore, as.sessionStore, hashConfig, authConfig, auditLogger)
-	as.Verification = NewVerificationService(as.verificationStore, auditLogger)
-	as.Session = NewSessionService(as.userStore, as.sessionStore, nil, auditLogger, logger)
+	as.Account = newAccountService(as.accountStore, as.sessionStore, hashConfig, authConfig, auditLogger, authConn.Transactor(), logger)
+	as.User = newUserService(as.userStore, as.accountStore, as.sessionStore, hashConfig, authConfig, auditLogger, authConn.Transactor(), logger)
+	as.Verification = newVerificationService(as.verificationStore, auditLogger)
+	as.Session = newSessionService(as.userStore, as.sessionStore, nil, auditLogger, logger)
+	as.Account.setSessionInvalidator(as.Session.purgeUserSessionCache)
+	as.User.setSessionCachePurger(as.Session.purgeUserSessionCache)
 	as.EmailPassword = NewEmailPasswordHandlers(as)
 
 	return as
-}
-
-// GetAuthConfig returns the authentication configuration used by this service.
-// This includes session settings, password policy, and user field filtering.
-func (as *AuthService) GetAuthConfig() *AuthConfig {
-	return as.authConfig
 }
 
 // GetUserFieldsConfig returns the user fields configuration which controls

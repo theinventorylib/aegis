@@ -14,7 +14,7 @@ func TestGenerateULID_Uniqueness(t *testing.T) {
 	ids := make(map[string]bool)
 
 	// When - Generate many IDs
-	for i := 0; i < count; i++ {
+	for range count {
 		id := GenerateULID()
 		ids[id] = true
 	}
@@ -28,10 +28,10 @@ func TestGenerateULID_Uniqueness(t *testing.T) {
 // TC-ID-002: ULID Sortability
 func TestGenerateULID_Sortable(t *testing.T) {
 	// Given
-	var ids []string
+	var ids = make([]string, 0, 10)
 
 	// When - Generate IDs over time
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		ids = append(ids, GenerateULID())
 		time.Sleep(1 * time.Millisecond)
 	}
@@ -51,7 +51,7 @@ func TestGenerateUUID_Uniqueness(t *testing.T) {
 	ids := make(map[string]bool)
 
 	// When - Generate many UUIDs
-	for i := 0; i < count; i++ {
+	for range count {
 		id := GenerateUUID()
 		ids[id] = true
 	}
@@ -85,12 +85,10 @@ func TestIDGeneration_ThreadSafe(t *testing.T) {
 	ids := make(chan string, 1000)
 
 	// When - Generate IDs concurrently
-	for i := 0; i < 1000; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 1000 {
+		wg.Go(func() {
 			ids <- GenerateULID()
-		}()
+		})
 	}
 	wg.Wait()
 	close(ids)
@@ -142,7 +140,7 @@ func TestGenerateRandomSuffix_Uniqueness(t *testing.T) {
 	suffixes := make(map[string]bool)
 
 	// When
-	for i := 0; i < count; i++ {
+	for range count {
 		suffix := GenerateRandomSuffix(length)
 		suffixes[suffix] = true
 	}
@@ -184,12 +182,10 @@ func TestGenerateUUID_Concurrent(t *testing.T) {
 	uuids := make(chan string, 500)
 
 	// When - Generate UUIDs concurrently
-	for i := 0; i < 500; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 500 {
+		wg.Go(func() {
 			uuids <- GenerateUUID()
-		}()
+		})
 	}
 	wg.Wait()
 	close(uuids)
@@ -307,7 +303,7 @@ func TestIDGeneration_HighVolume(t *testing.T) {
 
 	// When
 	start := time.Now()
-	for i := 0; i < count; i++ {
+	for range count {
 		ids[GenerateULID()] = true
 	}
 	duration := time.Since(start)
@@ -333,7 +329,7 @@ func TestIDGeneration_MixedConcurrent(t *testing.T) {
 	uuids := make(chan string, 500)
 
 	// When - Generate both types concurrently
-	for i := 0; i < 500; i++ {
+	for range 500 {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
@@ -391,7 +387,7 @@ func TestGenerateSecureToken_Uniqueness(t *testing.T) {
 	tokens := make(map[string]bool)
 
 	// When
-	for i := 0; i < count; i++ {
+	for range count {
 		token := GenerateSecureToken()
 		tokens[token] = true
 	}
@@ -435,8 +431,8 @@ func TestConstantTimeCompare_Timing(t *testing.T) {
 
 	// Test with matching strings
 	iterations := 1000
-	var matchDurations []time.Duration
-	for i := 0; i < iterations; i++ {
+	var matchDurations = make([]time.Duration, 0, iterations)
+	for range iterations {
 		start := time.Now()
 		ConstantTimeCompare(secret, secret)
 		matchDurations = append(matchDurations, time.Since(start))
@@ -444,8 +440,8 @@ func TestConstantTimeCompare_Timing(t *testing.T) {
 
 	// Test with non-matching strings (but same length)
 	different := "xxxx_xx_x_xxxx_xxxx_xxxxxx_xxxxx_xxxx_xxxxxx_xx_xxxxxxxxxx_xx_xxxxxxxxx_xxxx"
-	var mismatchDurations []time.Duration
-	for i := 0; i < iterations; i++ {
+	var mismatchDurations = make([]time.Duration, 0, iterations)
+	for range iterations {
 		start := time.Now()
 		ConstantTimeCompare(secret, different)
 		mismatchDurations = append(mismatchDurations, time.Since(start))
@@ -453,7 +449,7 @@ func TestConstantTimeCompare_Timing(t *testing.T) {
 
 	// Calculate averages
 	var matchTotal, mismatchTotal time.Duration
-	for i := 0; i < iterations; i++ {
+	for i := range iterations {
 		matchTotal += matchDurations[i]
 		mismatchTotal += mismatchDurations[i]
 	}

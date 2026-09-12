@@ -269,29 +269,32 @@ type InvitationResponse struct {
 	UpdatedAt      string  `json:"updatedAt"`
 }
 
-// ── Plugin-level validation (includes custom roles from Config) ──────────
+// ── Plugin-level validation (uses the resolved role registry) ────────────
 
-// orgMemberRoles returns the valid org-level assignable roles (built-in + custom).
+// orgMemberRoles returns the assignable org-level roles (all configured roles
+// except owner, which cannot be assigned through the member endpoints).
 func (p *Plugin) orgMemberRoles() []any {
-	roles := make([]any, 0, 2+len(p.config.CustomOrgRoles))
-	roles = append(roles, orgtypes.RoleAdmin, orgtypes.RoleMember)
-	for _, r := range p.config.CustomOrgRoles {
-		roles = append(roles, r)
+	roles := make([]any, 0, len(p.orgRoles))
+	for role := range p.orgRoles {
+		if role == orgtypes.RoleOwner {
+			continue
+		}
+		roles = append(roles, role)
 	}
 	return roles
 }
 
-// teamMemberRoles returns the valid team-level assignable roles (built-in + custom).
+// teamMemberRoles returns the assignable team-level roles.
 func (p *Plugin) teamMemberRoles() []any {
-	roles := make([]any, 0, 2+len(p.config.CustomTeamRoles))
-	roles = append(roles, orgtypes.RoleTeamLead, orgtypes.RoleMember)
-	for _, r := range p.config.CustomTeamRoles {
-		roles = append(roles, r)
+	roles := make([]any, 0, len(p.teamRoles))
+	for role := range p.teamRoles {
+		roles = append(roles, role)
 	}
 	return roles
 }
 
-// ValidateAddMember validates an AddOrganizationMemberRequest, including custom org roles.
+// ValidateAddMember validates an AddOrganizationMemberRequest against the
+// configured org roles.
 func (p *Plugin) ValidateAddMember(req AddOrganizationMemberRequest) error {
 	return validation.ValidateStruct(&req,
 		validation.Field(&req.UserID, validation.Required),
@@ -299,14 +302,16 @@ func (p *Plugin) ValidateAddMember(req AddOrganizationMemberRequest) error {
 	)
 }
 
-// ValidateUpdateMemberRole validates an UpdateMemberRoleRequest, including custom org roles.
+// ValidateUpdateMemberRole validates an UpdateMemberRoleRequest against the
+// configured org roles.
 func (p *Plugin) ValidateUpdateMemberRole(req UpdateMemberRoleRequest) error {
 	return validation.ValidateStruct(&req,
 		validation.Field(&req.Role, validation.Required, validation.In(p.orgMemberRoles()...)),
 	)
 }
 
-// ValidateAddTeamMember validates an AddTeamMemberRequest, including custom team roles.
+// ValidateAddTeamMember validates an AddTeamMemberRequest against the
+// configured team roles.
 func (p *Plugin) ValidateAddTeamMember(req AddTeamMemberRequest) error {
 	return validation.ValidateStruct(&req,
 		validation.Field(&req.UserID, validation.Required),
@@ -314,18 +319,25 @@ func (p *Plugin) ValidateAddTeamMember(req AddTeamMemberRequest) error {
 	)
 }
 
-// ValidateUpdateTeamMemberRole validates an UpdateTeamMemberRoleRequest, including custom team roles.
+// ValidateUpdateTeamMemberRole validates an UpdateTeamMemberRoleRequest against
+// the configured team roles.
 func (p *Plugin) ValidateUpdateTeamMemberRole(req UpdateTeamMemberRoleRequest) error {
 	return validation.ValidateStruct(&req,
 		validation.Field(&req.Role, validation.Required, validation.In(p.teamMemberRoles()...)),
 	)
 }
 
-// ValidateCreateInvitation validates a CreateInvitationRequest, including custom org roles.
+// ValidateCreateInvitation validates a CreateInvitationRequest. The role is
+// validated against team roles when the invitation targets a team, and against
+// org roles otherwise.
 func (p *Plugin) ValidateCreateInvitation(req CreateInvitationRequest) error {
+	roles := p.orgMemberRoles()
+	if req.TeamID != nil && *req.TeamID != "" {
+		roles = p.teamMemberRoles()
+	}
 	return validation.ValidateStruct(&req,
 		validation.Field(&req.Email, validation.Required, validation.Length(1, 255)),
-		validation.Field(&req.Role, validation.Required, validation.In(p.orgMemberRoles()...)),
+		validation.Field(&req.Role, validation.Required, validation.In(roles...)),
 		validation.Field(&req.TeamID, validation.When(req.TeamID != nil && *req.TeamID != "", validation.Length(1, 255))),
 	)
 }

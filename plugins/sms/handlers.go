@@ -1,7 +1,6 @@
 package sms
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/theinventorylib/aegis/core"
@@ -71,7 +70,7 @@ func (h *Handlers) LoginWithPhoneHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var req smstypes.LoginWithPhoneRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
@@ -178,7 +177,7 @@ func (h *Handlers) RegisterWithPhoneHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	var req smstypes.RegisterWithPhoneRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
@@ -273,7 +272,7 @@ func (h *Handlers) RegisterWithPhoneHandler(w http.ResponseWriter, r *http.Reque
 //	}
 func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
 	var req smstypes.SendOTPRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
@@ -341,7 +340,7 @@ func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
 //	}
 func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 	var req smstypes.VerifyOTPRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
@@ -352,6 +351,9 @@ func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 	// Sanitize inputs
 	req.PhoneNumber = core.SanitizePhoneNumber(req.PhoneNumber)
 	req.Code = core.SanitizeString(req.Code, nil)
+	if req.Purpose == "" {
+		req.Purpose = "phone_verification"
+	}
 
 	// Validate phone number format
 	if err := ValidatePhoneNumber(req.PhoneNumber); err != nil {
@@ -362,7 +364,7 @@ func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	valid, err := h.plugin.VerifyOTP(r.Context(), req.PhoneNumber, req.Code)
+	valid, err := h.plugin.VerifyOTP(r.Context(), req.PhoneNumber, req.Purpose, req.Code)
 	if err != nil || !valid {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,

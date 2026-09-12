@@ -113,10 +113,7 @@ func (m *mockUserStore) List(_ context.Context, offset, limit int) ([]User, erro
 	if offset >= len(users) {
 		return []User{}, nil
 	}
-	end := offset + limit
-	if end > len(users) {
-		end = len(users)
-	}
+	end := min(offset+limit, len(users))
 	return users[offset:end], nil
 }
 
@@ -390,7 +387,7 @@ func TestUserStore_List(t *testing.T) {
 	store := newMockUserStore()
 	ctx := context.Background()
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		user := User{ID: string(rune('a' + i)), Email: string(rune('a'+i)) + "@example.com"}
 		_, _ = store.Create(ctx, user)
 	}
@@ -408,7 +405,7 @@ func TestUserStore_Count(t *testing.T) {
 	store := newMockUserStore()
 	ctx := context.Background()
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		user := User{ID: string(rune('a' + i)), Email: string(rune('a'+i)) + "@example.com"}
 		_, _ = store.Create(ctx, user)
 	}
@@ -427,7 +424,7 @@ func TestUserStore_ConcurrentAccess(t *testing.T) {
 	ctx := context.Background()
 	var wg sync.WaitGroup
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()

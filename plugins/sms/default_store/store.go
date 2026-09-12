@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
 	"github.com/theinventorylib/aegis/plugins"
 	smstypes "github.com/theinventorylib/aegis/plugins/sms/types"
 )
@@ -88,15 +87,13 @@ func buildUser(row smsUserRow) *smstypes.User {
 		p = &row.PhoneNumber.String
 	}
 	return &smstypes.User{
-		User: auth.User{
-			ID:        row.ID,
-			Avatar:    nullStringToString(row.Avatar),
-			Name:      row.Name,
-			Email:     nullStringToString(row.Email),
-			CreatedAt: parseTime(row.CreatedAt),
-			UpdatedAt: parseTime(row.UpdatedAt),
-			Disabled:  row.Disabled,
-		},
+		ID:            row.ID,
+		Avatar:        nullStringToString(row.Avatar),
+		Name:          row.Name,
+		Email:         nullStringToString(row.Email),
+		CreatedAt:     parseTime(row.CreatedAt),
+		UpdatedAt:     parseTime(row.UpdatedAt),
+		Disabled:      row.Disabled,
 		Phone:         p,
 		PhoneVerified: row.PhoneVerified,
 	}

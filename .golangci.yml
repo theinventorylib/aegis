@@ -95,6 +95,13 @@ linters:
         linters:
           - errcheck
         text: 'auditLogger\.LogAuthEvent'
+
+      # Exclude errcheck for deliberately fire-and-forget lockout/attempt calls
+      # and the timing-equalizer dummy hash in email_password.go
+      - path: 'core/email_password\.go'
+        linters:
+          - errcheck
+        source: '(RecordFailedAttempt|VerifyPassword|ClearAttempts)'
       
       # Exclude duplication in route metadata registration
       # - path: 'plugins/organizations/organizations\.go'

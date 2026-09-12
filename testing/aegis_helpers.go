@@ -57,7 +57,7 @@ func SetupTestAegis(t testing.TB, testCfg *TestConfig) *aegis.Aegis {
 	baseCfg := config.Default().
 		WithDB(db).
 		WithRouter(router).
-		WithSecret([]byte("test-secret-key-32-bytes-long!!")).
+		WithSecret([]byte("test-secret-key-32-bytes-long!!!")).
 		WithAPIOnlyMode(true) // Skip CSRF for API tests
 
 	// Add Redis if available (parse from config)
@@ -116,7 +116,7 @@ func SetupTestAegisWithConfig(t testing.TB, testCfg *TestConfig, configModifier 
 	baseCfg := config.Default().
 		WithDB(db).
 		WithRouter(router).
-		WithSecret([]byte("test-secret-key-32-bytes-long!!")).
+		WithSecret([]byte("test-secret-key-32-bytes-long!!!")).
 		WithAPIOnlyMode(true)
 
 	if redisClient != nil {

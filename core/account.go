@@ -49,9 +49,15 @@ type AccountService struct {
 	// logger surfaces non-fatal operational errors (e.g. audit log
 	// failures). Defaults to a no-op when not provided.
 	logger Logger
+
+	// invalidateSessions, when set, purges the session caches for a user
+	// before the DB session purge. Required with Redis session caching:
+	// the SQL delete alone leaves revoked sessions valid in the cache
+	// until their cached TTL expires. Wired by AuthService.
+	invalidateSessions func(ctx context.Context, userID string) error
 }
 
-// NewAccountService creates a new account service with the specified dependencies.
+// newAccountService creates a new account service with the specified dependencies.
 //
 // transactor is optional: when non-nil it enables fully atomic password
 // updates (account write + session purge in one DB transaction). When
@@ -59,7 +65,7 @@ type AccountService struct {
 // surfaces session-purge errors instead of swallowing them, so the
 // caller can decide whether to retry. logger may be nil; a no-op logger
 // is substituted in that case.
-func NewAccountService(accountStore auth.AccountStore, sessionStore auth.SessionStore, hashConfig *PasswordHasherConfig, authConfig *AuthConfig, auditLogger AuditLogger, transactor auth.Transactor, logger Logger) *AccountService {
+func newAccountService(accountStore auth.AccountStore, sessionStore auth.SessionStore, hashConfig *PasswordHasherConfig, authConfig *AuthConfig, auditLogger AuditLogger, transactor auth.Transactor, logger Logger) *AccountService {
 	if logger == nil {
 		logger = noopLogger{}
 	}
@@ -72,6 +78,14 @@ func NewAccountService(accountStore auth.AccountStore, sessionStore auth.Session
 		transactor:   transactor,
 		logger:       logger,
 	}
+}
+
+// setSessionInvalidator wires the cache-purge hook used before the DB session
+// purge (password change). It must only touch the cache — the DB rows are
+// still present when it runs. Called by NewAuthService during setup; not
+// exported so the ordering invariant cannot be broken from outside.
+func (s *AccountService) setSessionInvalidator(f func(ctx context.Context, userID string) error) {
+	s.invalidateSessions = f
 }
 
 // CreateAccount creates a new account
@@ -110,6 +124,10 @@ func (s *AccountService) CreateAccount(ctx context.Context, account auth.Account
 //     account in the dangerous half-rotated state where the password
 //     changed but old sessions remain valid.
 func (s *AccountService) UpdatePassword(ctx context.Context, userID, newPassword string) error {
+	if err := validatePassword(newPassword, s.authConfig.PasswordPolicy); err != nil {
+		return err
+	}
+
 	accounts, err := s.accountStore.GetByUserID(ctx, userID)
 	if err != nil {
 		return err
@@ -137,6 +155,19 @@ func (s *AccountService) UpdatePassword(ctx context.Context, userID, newPassword
 	passwordAccount.PasswordHash = hashed
 	passwordAccount.UpdatedAt = time.Now()
 
+	// Purge the session caches (Redis) *before* the DB rows are deleted:
+	// the purge discovers the per-session cache keys by walking the store,
+	// so the rows must still exist. Redis cannot join the DB transaction,
+	// so a failure here is logged and the password update still proceeds;
+	// any session left cached is still revoked from the DB and will fail
+	// validation once its cache entry expires.
+	if s.invalidateSessions != nil {
+		if err := s.invalidateSessions(ctx, userID); err != nil {
+			s.logger.Error("account: failed to invalidate cached sessions before password update",
+				"user_id", userID, "error", err)
+		}
+	}
+
 	if s.transactor != nil {
 		if err := s.updatePasswordTx(ctx, *passwordAccount, userID); err != nil {
 			return err
@@ -147,9 +178,7 @@ func (s *AccountService) UpdatePassword(ctx context.Context, userID, newPassword
 		}
 	}
 
-	if auditErr := s.auditLogger.LogAuthEvent(ctx, AuditEventPasswordChanged, userID, true, nil); auditErr != nil {
-		s.logger.Error("account: failed to write password-change audit event", "user_id", userID, "error", auditErr)
-	}
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventPasswordChanged, userID, true, nil)
 	return nil
 }
 
@@ -195,7 +224,7 @@ func (s *AccountService) updatePasswordSequential(ctx context.Context, account a
 			s.logger.Error("account: failed to roll back password after session-purge failure",
 				"user_id", userID, "session_purge_error", err, "restore_error", restoreErr)
 		}
-		_ = s.auditLogger.LogAuthEvent(ctx, "session_deletion_failed", userID, false, map[string]any{
+		logAuthEvent(ctx, s.logger, s.auditLogger, "session_deletion_failed", userID, false, map[string]any{
 			"error":  err.Error(),
 			"reason": "password_change",
 		})
@@ -212,6 +241,12 @@ func (s *AccountService) GetAccountByID(ctx context.Context, id string) (auth.Ac
 // GetAccountsByUserID retrieves all accounts for a user
 func (s *AccountService) GetAccountsByUserID(ctx context.Context, userID string) ([]auth.Account, error) {
 	return s.accountStore.GetByUserID(ctx, userID)
+}
+
+// GetAccountByProvider retrieves an account by provider name and provider
+// account ID (e.g. ("credentials", username)).
+func (s *AccountService) GetAccountByProvider(ctx context.Context, provider, providerAccountID string) (auth.Account, error) {
+	return s.accountStore.GetByProvider(ctx, provider, providerAccountID)
 }
 
 // GetPasswordAccount retrieves the password account for a user

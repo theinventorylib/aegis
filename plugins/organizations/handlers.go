@@ -1,9 +1,6 @@
 package organizations
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -47,7 +44,7 @@ func (p *Plugin) validateOrgAccess(w http.ResponseWriter, r *http.Request) (orgI
 		return "", false
 	}
 
-	if !p.IsOrganizationMember(r.Context(), user.ID, orgID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermOrgView) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 		return "", false
 	}
@@ -98,7 +95,7 @@ func (p *Plugin) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 
 	var req CreateOrganizationRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -230,14 +227,14 @@ func (p *Plugin) UpdateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermOrgManage) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req UpdateOrganizationRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -276,7 +273,7 @@ func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !p.IsOwner(r.Context(), user.ID, orgID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermOrgDelete) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Owner role required")
 		return
 	}
@@ -308,14 +305,14 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermMemberManage) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req AddOrganizationMemberRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -385,14 +382,22 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if !p.IsOwner(r.Context(), user.ID, orgID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermMemberAssignRoles) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Owner role required")
+		return
+	}
+
+	// Ownership must not be demotable: an admin (who also grants
+	// PermMemberAssignRoles) could otherwise seize the organization by
+	// changing the owner's role. Ownership transfer needs its own flow.
+	if p.IsOwner(r.Context(), userID, orgID) {
+		core.WriteJSONError(w, http.StatusBadRequest, "Cannot change the owner's role")
 		return
 	}
 
 	var req UpdateMemberRoleRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -437,7 +442,7 @@ func (p *Plugin) RemoveOrganizationMemberHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermMemberManage) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
@@ -474,14 +479,14 @@ func (p *Plugin) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermTeamManage) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req CreateTeamRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -552,7 +557,7 @@ func (p *Plugin) GetTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !p.IsOrganizationMember(r.Context(), user.ID, team.OrganizationID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, team.OrganizationID, PermTeamView) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 		return
 	}
@@ -584,14 +589,14 @@ func (p *Plugin) UpdateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, team.OrganizationID, PermTeamManage) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req UpdateTeamRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -636,7 +641,7 @@ func (p *Plugin) DeleteTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, team.OrganizationID, PermTeamManage) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
@@ -674,14 +679,14 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
+	if !p.canManageTeamMembers(r.Context(), user.ID, teamID, team.OrganizationID) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req AddTeamMemberRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -732,7 +737,7 @@ func (p *Plugin) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !p.IsOrganizationMember(r.Context(), user.ID, team.OrganizationID) {
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, team.OrganizationID, PermTeamView) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
 		return
 	}
@@ -776,14 +781,14 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
+	if !p.canManageTeamMembers(r.Context(), user.ID, teamID, team.OrganizationID) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req UpdateTeamMemberRoleRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -829,7 +834,7 @@ func (p *Plugin) RemoveTeamMemberHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, team.OrganizationID) {
+	if !p.canManageTeamMembers(r.Context(), user.ID, teamID, team.OrganizationID) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
@@ -895,14 +900,14 @@ func (p *Plugin) CreateInvitationHandler(w http.ResponseWriter, r *http.Request)
 		teamID = &tid
 	}
 
-	// Verify permission: admin or owner of the org
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	// Verify permission: manage invitations
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermInvitationManage) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
 
 	var req CreateInvitationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -913,14 +918,17 @@ func (p *Plugin) CreateInvitationHandler(w http.ResponseWriter, r *http.Request)
 		req.TeamID = &s
 	}
 
+	// Path-based teamID wins for /teams/:teamId routes; reflect it on the
+	// request so role validation uses the team role set.
+	if teamID != nil {
+		req.TeamID = teamID
+	} else if req.TeamID != nil {
+		teamID = req.TeamID
+	}
+
 	if err := p.ValidateCreateInvitation(req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
-	}
-
-	// Use path-based teamID over body-based (path wins for /teams/:teamId routes)
-	if teamID == nil && req.TeamID != nil {
-		teamID = req.TeamID
 	}
 
 	inv, rawToken, err := p.CreateInvitation(r.Context(), orgID, teamID, req.Email, req.Role, user.ID, req.ExpiresIn)
@@ -975,8 +983,8 @@ func (p *Plugin) ListInvitationsHandler(w http.ResponseWriter, r *http.Request) 
 		teamID = tid
 	}
 
-	// Verify permission: admin or owner
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	// Verify permission: manage invitations
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermInvitationManage) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
@@ -1022,8 +1030,8 @@ func (p *Plugin) CancelInvitationHandler(w http.ResponseWriter, r *http.Request)
 		orgID = team.OrganizationID
 	}
 
-	// Verify permission: admin or owner
-	if !p.IsOwnerOrAdmin(r.Context(), user.ID, orgID) {
+	// Verify permission: manage invitations
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermInvitationManage) {
 		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - Admin role required")
 		return
 	}
@@ -1051,7 +1059,7 @@ func (p *Plugin) CancelInvitationHandler(w http.ResponseWriter, r *http.Request)
 // The caller must provide the user ID of the accepting user in the request body.
 func (p *Plugin) AcceptInvitationHandler(w http.ResponseWriter, r *http.Request) {
 	var req AcceptInvitationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -1064,8 +1072,7 @@ func (p *Plugin) AcceptInvitationHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Hash the token for lookup
-	sum := sha256.Sum256([]byte(req.Token))
-	tokenHash := base64.RawURLEncoding.EncodeToString(sum[:])
+	tokenHash := hashTokenForLookup(req.Token)
 
 	// Get the authenticated user (or require user ID in body)
 	user, err := core.GetUser(r.Context())
@@ -1092,7 +1099,7 @@ func (p *Plugin) AcceptInvitationHandler(w http.ResponseWriter, r *http.Request)
 // This endpoint is NOT authenticated — the token is the credential.
 func (p *Plugin) DeclineInvitationHandler(w http.ResponseWriter, r *http.Request) {
 	var req DeclineInvitationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -1105,8 +1112,7 @@ func (p *Plugin) DeclineInvitationHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Hash the token for lookup
-	sum := sha256.Sum256([]byte(req.Token))
-	tokenHash := base64.RawURLEncoding.EncodeToString(sum[:])
+	tokenHash := hashTokenForLookup(req.Token)
 
 	inv, err := p.DeclineInvitation(r.Context(), tokenHash)
 	if err != nil {

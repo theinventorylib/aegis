@@ -331,6 +331,27 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 	// Create AuthService
 	aegis.auth = core.NewAuthService(cfg.CoreAuth, authConn, hashConfig, auditLogger, loginAttemptTracker, coreLogger)
 
+	// Apply the session configuration (expiry and cookie settings always;
+	// the Redis cache only when configured) — NewAuthService has no access
+	// to the top-level config.
+	sessionCfg := core.DefaultSessionConfig()
+	sessionCfg.SessionExpiry = cfg.SessionExpiry
+	sessionCfg.RefreshExpiry = cfg.RefreshExpiry
+	sessionCfg.CookieSettings.Name = cfg.CookieName
+	sessionCfg.CookieSettings.Domain = cfg.CookieDomain
+	sessionCfg.CookieSettings.Secure = cfg.CookieSecure
+	sessionCfg.CookieSettings.HTTPOnly = cfg.CookieHTTPOnly
+	sessionCfg.CookieSettings.SameSite = cfg.CookieSameSite
+	if cfg.Redis != nil {
+		sessionCfg.Redis = &core.RedisConfig{
+			Host:     cfg.Redis.Host,
+			Port:     cfg.Redis.Port,
+			Password: cfg.Redis.Password,
+			DB:       cfg.Redis.DB,
+		}
+	}
+	aegis.auth.Session.Configure(sessionCfg)
+
 	// Enable Bearer token authentication if configured
 	// Bearer auth is auto-enabled in API mode unless explicitly disabled
 	if cfg.IsBearerAuthEnabled() {

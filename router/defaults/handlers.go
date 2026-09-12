@@ -1,7 +1,6 @@
 package defaults
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -32,9 +31,10 @@ func NewHandlers(auth *core.AuthService) *Handlers {
 func (h *Handlers) loginHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email    string `json:"email"`
+		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
@@ -42,10 +42,15 @@ func (h *Handlers) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sanitize inputs
+	// Sanitize inputs; email or username may be supplied.
 	req.Email = core.SanitizeEmail(req.Email)
+	req.Username = core.SanitizeUsername(req.Username, 0)
+	identifier := req.Email
+	if identifier == "" {
+		identifier = req.Username
+	}
 
-	result, err := h.auth.EmailPassword.Login(r.Context(), req.Email, req.Password)
+	result, err := h.auth.EmailPassword.Login(r.Context(), identifier, req.Password)
 	if err != nil {
 		status := http.StatusUnauthorized
 		msg := err.Error()
@@ -54,6 +59,9 @@ func (h *Handlers) loginHandler(w http.ResponseWriter, r *http.Request) {
 			if ok && ae.Code == core.AuthErrorCodeRateLimit {
 				status = http.StatusTooManyRequests
 			}
+		}
+		if errors.Is(err, core.ErrEmailNotVerified) {
+			status = http.StatusForbidden
 		}
 		core.WriteJSON(w, status, &core.Response{
 			Success: false,
@@ -86,9 +94,10 @@ func (h *Handlers) registerHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name     string `json:"name"`
 		Email    string `json:"email"`
+		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
@@ -99,6 +108,7 @@ func (h *Handlers) registerHandler(w http.ResponseWriter, r *http.Request) {
 	// Sanitize inputs
 	req.Name = core.SanitizeString(req.Name, nil)
 	req.Email = core.SanitizeEmail(req.Email)
+	req.Username = core.SanitizeUsername(req.Username, 0)
 
 	if req.Name == "" {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
@@ -108,11 +118,25 @@ func (h *Handlers) registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.auth.EmailPassword.Register(r.Context(), req.Name, req.Email, req.Password)
+	result, err := h.auth.EmailPassword.RegisterWithUsername(r.Context(), req.Name, req.Email, req.Username, req.Password)
 	if err != nil {
-		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
+		status := http.StatusBadRequest
+		switch {
+		case errors.Is(err, core.ErrEmailAlreadyExists), errors.Is(err, core.ErrUsernameTaken):
+			status = http.StatusConflict
+		}
+		core.WriteJSON(w, status, &core.Response{
 			Success: false,
 			Error:   err.Error(),
+		})
+		return
+	}
+
+	// Email verification required: account created, but no session yet.
+	if result.VerificationRequired {
+		core.WriteJSON(w, http.StatusCreated, &core.Response{
+			Success: true,
+			Message: "Registration successful. Verify your email to continue.",
 		})
 		return
 	}
@@ -174,7 +198,7 @@ func (h *Handlers) refreshSessionHandler(w http.ResponseWriter, r *http.Request)
 		RefreshToken string `json:"refreshToken"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",

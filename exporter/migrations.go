@@ -285,7 +285,8 @@ func (e *Exporter) generateReadme() error {
 	}
 	sort.Strings(pluginNames)
 
-	content := fmt.Sprintf(`# Aegis Migrations
+	var content strings.Builder
+	fmt.Fprintf(&content, `# Aegis Migrations
 
 These migrations were exported from Aegis authentication library.
 
@@ -329,22 +330,22 @@ migrate -path %s -database "%s://localhost/mydb" up
 	)
 
 	if len(e.plugins) > 0 {
-		content += "| Plugin | Version | Description |\n"
-		content += "|--------|---------|-------------|\n"
+		content.WriteString("| Plugin | Version | Description |\n")
+		content.WriteString("|--------|---------|-------------|\n")
 		for _, p := range e.plugins {
-			content += fmt.Sprintf("| %s | %s | %s |\n", p.Name(), p.Version(), p.Description())
+			fmt.Fprintf(&content, "| %s | %s | %s |\n", p.Name(), p.Version(), p.Description())
 		}
 	} else {
-		content += "No plugins included in this export.\n"
+		content.WriteString("No plugins included in this export.\n")
 	}
 
-	content += `
+	content.WriteString(`
 ## Migration Sources
 
 The original migrations are available at:
 - Auth: github.com/theinventorylib/aegis/auth/migrations/[dialect]/
 - Plugins: github.com/theinventorylib/aegis/plugins/[name]/migrations/[dialect]/
-`
+`)
 
-	return os.WriteFile(filepath.Join(e.outputDir, "README.md"), []byte(content), 0600)
+	return os.WriteFile(filepath.Join(e.outputDir, "README.md"), []byte(content.String()), 0600)
 }

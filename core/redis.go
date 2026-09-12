@@ -9,27 +9,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// KeyManager defines a general-purpose key-value storage interface.
-//
-// This interface is used by plugins for storing temporary data:
-//   - OAuth state tokens (OAuth plugin)
-//   - CSRF tokens (CSRF protection)
-//   - Email verification codes (EmailOTP plugin)
-//   - SMS verification codes (SMS plugin)
-//   - JWT refresh token blacklists (JWT plugin)
-//
-// Implementations:
-//   - StaticKeyManager: In-memory storage (development/testing)
-//   - RedisKeyManager: Redis-backed storage (production)
-//
-// Unlike SessionService which uses Redis for session caching, KeyManager is
-// a general-purpose abstraction that plugins can use for any temporary data.
-//
-// Example (OAuth state storage):
-//
-//	keyManager.Set(ctx, "oauth:state:"+state, []byte(redirectURL), 10*time.Minute)
-//	redirectURL, _ := keyManager.Get(ctx, "oauth:state:"+state)
-//	keyManager.Delete(ctx, "oauth:state:"+state)
+// KeyManager defines a general-purpose key-value storage interface used by
+// plugins for temporary data (OAuth state tokens, CSRF tokens, verification
+// codes, JWT blacklists). Implementations: StaticKeyManager (in-memory,
+// development/testing) and RedisKeyManager (production).
 type KeyManager interface {
 	// Get retrieves a value by key
 	// Returns error if key doesn't exist or retrieval fails
@@ -43,36 +26,15 @@ type KeyManager interface {
 	Delete(ctx context.Context, key string) error
 }
 
-// StaticKeyManager provides in-memory key-value storage.
-//
-// WARNING: This is NOT suitable for production use because:
-//   - Data is lost on server restart
-//   - Not shared across multiple server instances
-//   - No persistence or durability
-//
-// Use this for:
-//   - Local development and testing
-//   - Single-server deployments with non-critical data
-//   - Unit tests that need fast in-memory storage
-//
-// For production, use RedisKeyManager instead.
-//
-// Note: Unlike Redis, expiry is NOT supported - all entries persist until
-// manually deleted or the server restarts.
+// StaticKeyManager provides in-memory key-value storage for development and
+// testing: data is lost on restart, is not shared across instances, and
+// expiry is NOT supported. Use RedisKeyManager in production.
 type StaticKeyManager struct {
 	mu      sync.RWMutex
 	storage map[string][]byte
 }
 
 // NewStaticKeyManager creates a new in-memory key manager.
-//
-// This manager stores all data in a Go map with no persistence or expiry.
-// Data is lost when the server stops.
-//
-// Example:
-//
-//	keyManager, _ := core.NewStaticKeyManager()
-//	keyManager.Set(ctx, "key", []byte("value"), 0)
 func NewStaticKeyManager() (*StaticKeyManager, error) {
 	return &StaticKeyManager{
 		storage: make(map[string][]byte),

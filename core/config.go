@@ -10,7 +10,7 @@ type AuthConfig struct {
 	EnableEmailPassword bool
 
 	// PasswordPolicy defines password strength requirements for signup/change.
-	// If nil, uses DefaultPasswordPolicyConfig (8+ chars, mixed case, digit required).
+	// If nil, uses defaultPasswordPolicyConfig (8+ chars, mixed case, digit required).
 	PasswordPolicy *PasswordPolicyConfig
 
 	// InvalidateSessionsOnPasswordChange, when true, logs users out from all
@@ -18,6 +18,14 @@ type AuthConfig struct {
 	// prevents attackers from maintaining access after a password is reset.
 	// Recommended: true
 	InvalidateSessionsOnPasswordChange bool
+
+	// RequireEmailVerification, when true, withholds the auto-login session on
+	// registration and refuses login until the email is verified. Verification
+	// requires an email plugin (e.g. email-otp) to register a checker via
+	// AuthService.SetEmailVerificationCheck; without one, registration still
+	// withholds the session and no user can log in, so only enable this when a
+	// checker is wired.
+	RequireEmailVerification bool
 
 	// UserFields controls which plugin extension fields are included in user
 	// API responses. If nil, all extension fields are included.
@@ -182,7 +190,7 @@ type CookieSettings struct {
 func DefaultAuthConfig() *AuthConfig {
 	return &AuthConfig{
 		EnableEmailPassword:                true, // Enabled by default
-		PasswordPolicy:                     DefaultPasswordPolicyConfig(),
+		PasswordPolicy:                     defaultPasswordPolicyConfig(),
 		InvalidateSessionsOnPasswordChange: true, // Security best practice
 		UserFields:                         nil,  // Include all extension fields by default
 	}
@@ -196,8 +204,8 @@ func DefaultUserFieldsConfig() *UserFieldsConfig {
 	}
 }
 
-// DefaultPasswordHasherConfig returns default password hashing configuration.
-func DefaultPasswordHasherConfig() *PasswordHasherConfig {
+// defaultPasswordHasherConfig returns default password hashing configuration.
+func defaultPasswordHasherConfig() *PasswordHasherConfig {
 	return &PasswordHasherConfig{
 		Argon2Time:      DefaultArgon2Time,
 		Argon2Memory:    DefaultArgon2Memory,
@@ -206,8 +214,8 @@ func DefaultPasswordHasherConfig() *PasswordHasherConfig {
 	}
 }
 
-// DefaultPasswordPolicyConfig returns default password policy configuration
-func DefaultPasswordPolicyConfig() *PasswordPolicyConfig {
+// defaultPasswordPolicyConfig returns default password policy configuration
+func defaultPasswordPolicyConfig() *PasswordPolicyConfig {
 	return &PasswordPolicyConfig{
 		MinLength:      DefaultPasswordMinLength,
 		RequireUpper:   true,

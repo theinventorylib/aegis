@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/theinventorylib/aegis/auth"
 )
 
 // Rate limiting in Aegis uses a sliding window algorithm to prevent abuse.
@@ -76,7 +76,76 @@ type RateLimitConfig struct {
 // with an in-memory fallback for single-instance deployments. The sliding window
 // algorithm prevents bursty traffic from overwhelming the system.
 //
-// The limiter is safe for concurrent use and should be shared across HTTP handlers.
+// expiryHolder lets expiringStore know when an entry may be dropped.
+type expiryHolder interface{ expiry() time.Time }
+
+// expiringStore is a mutex-guarded map with per-entry expiry plus a periodic
+// cleanup goroutine for single-instance (no Redis) mode. Shared by
+// RateLimiter and LoginAttemptTracker, which previously duplicated this
+// machinery verbatim.
+type expiringStore[V expiryHolder] struct {
+	mu       sync.RWMutex
+	entries  map[string]V
+	ticker   *time.Ticker
+	stopCh   chan struct{}
+	stopOnce sync.Once
+}
+
+// newExpiringStore creates the store and starts the cleanup goroutine.
+func newExpiringStore[V expiryHolder]() *expiringStore[V] {
+	s := &expiringStore[V]{entries: make(map[string]V), stopCh: make(chan struct{})}
+	s.ticker = time.NewTicker(time.Minute)
+	go s.cleanupExpired()
+	return s
+}
+
+// stop halts the cleanup goroutine. Safe to call multiple times and on a
+// nil store (which exists when Redis mode skips the in-memory fallback).
+func (s *expiringStore[V]) stop() {
+	if s == nil {
+		return
+	}
+	s.stopOnce.Do(func() {
+		if s.ticker != nil {
+			close(s.stopCh)
+		}
+	})
+}
+
+func (s *expiringStore[V]) cleanupExpired() {
+	for {
+		select {
+		case <-s.ticker.C:
+			s.mu.Lock()
+			now := time.Now()
+			for k, v := range s.entries {
+				if now.After(v.expiry()) {
+					delete(s.entries, k)
+				}
+			}
+			s.mu.Unlock()
+		case <-s.stopCh:
+			s.ticker.Stop()
+			return
+		}
+	}
+}
+
+// update runs fn with the write lock held (read-modify-write).
+func (s *expiringStore[V]) update(fn func(m map[string]V)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fn(s.entries)
+}
+
+// view runs fn with the read lock held.
+func (s *expiringStore[V]) view(fn func(m map[string]V)) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	fn(s.entries)
+}
+
+// RateLimiter is safe for concurrent use and should be shared across HTTP handlers.
 type RateLimiter struct {
 	// config holds rate limiting settings
 	config *RateLimitConfig
@@ -96,12 +165,7 @@ type RateLimiter struct {
 	trustedProxyNets []*net.IPNet
 
 	// In-memory fallback for when Redis is not available.
-	// Used only in single-instance deployments.
-	memoryStore     map[string]*rateLimitEntry
-	memoryStoreMu   sync.RWMutex
-	cleanupTicker   *time.Ticker
-	cleanupStopChan chan struct{}
-	stopOnce        sync.Once
+	memory *expiringStore[rateLimitEntry]
 }
 
 // rateLimitEntry tracks request counts in the in-memory store.
@@ -112,6 +176,8 @@ type rateLimitEntry struct {
 	// expiresAt is when this window ends and the counter resets
 	expiresAt time.Time
 }
+
+func (e rateLimitEntry) expiry() time.Time { return e.expiresAt }
 
 // LoginAttemptTracker tracks failed login attempts for account lockout protection.
 //
@@ -135,11 +201,7 @@ type LoginAttemptTracker struct {
 	keyPrefix string
 
 	// In-memory fallback for single-instance deployments
-	memoryStore     map[string]*loginAttemptEntry
-	memoryStoreMu   sync.RWMutex
-	cleanupTicker   *time.Ticker
-	cleanupStopChan chan struct{}
-	stopOnce        sync.Once
+	memory *expiringStore[loginAttemptEntry]
 }
 
 // loginAttemptEntry tracks login attempts in the in-memory store.
@@ -153,6 +215,8 @@ type loginAttemptEntry struct {
 	// expiresAt is when this entry should be cleaned up
 	expiresAt time.Time
 }
+
+func (e loginAttemptEntry) expiry() time.Time { return e.expiresAt }
 
 // LoginAttemptConfig configures login attempt tracking behavior.
 type LoginAttemptConfig struct {
@@ -176,20 +240,6 @@ func DefaultRateLimitConfig() *RateLimitConfig {
 		RequestsPerWindow: DefaultRateLimitRequests,
 		WindowDuration:    DefaultRateLimitWindow,
 		KeyPrefix:         DefaultRateLimitKeyPrefix,
-		ByIP:              true,
-		ByUser:            false,
-		ExcludePaths:      []string{},
-	}
-}
-
-// AuthRateLimitConfig returns stricter limits for authentication endpoints.
-// Authentication endpoints (login, signup) should have tighter limits to
-// prevent brute force attacks and credential stuffing.
-func AuthRateLimitConfig() *RateLimitConfig {
-	return &RateLimitConfig{
-		RequestsPerWindow: AuthRateLimitRequests,
-		WindowDuration:    DefaultRateLimitWindow,
-		KeyPrefix:         AuthRateLimitKeyPrefix,
 		ByIP:              true,
 		ByUser:            false,
 		ExcludePaths:      []string{},
@@ -226,46 +276,19 @@ func NewRateLimiter(config *RateLimitConfig, redisClient *redis.Client, auditLog
 		auditLogger:      auditLogger,
 		logger:           logger,
 		trustedProxyNets: parseTrustedProxies(config.TrustedProxies, logger),
-		memoryStore:      make(map[string]*rateLimitEntry),
-		cleanupStopChan:  make(chan struct{}),
 	}
 
 	// Start cleanup goroutine for in-memory store
 	if redisClient == nil {
-		rl.cleanupTicker = time.NewTicker(time.Minute)
-		go rl.cleanupExpired()
+		rl.memory = newExpiringStore[rateLimitEntry]()
 	}
 
 	return rl
 }
 
-// cleanupExpired removes expired entries from in-memory store
-func (rl *RateLimiter) cleanupExpired() {
-	for {
-		select {
-		case <-rl.cleanupTicker.C:
-			rl.memoryStoreMu.Lock()
-			now := time.Now()
-			for key, entry := range rl.memoryStore {
-				if now.After(entry.expiresAt) {
-					delete(rl.memoryStore, key)
-				}
-			}
-			rl.memoryStoreMu.Unlock()
-		case <-rl.cleanupStopChan:
-			rl.cleanupTicker.Stop()
-			return
-		}
-	}
-}
-
 // Stop stops the rate limiter cleanup goroutine. Safe to call multiple times.
 func (rl *RateLimiter) Stop() {
-	rl.stopOnce.Do(func() {
-		if rl.cleanupTicker != nil {
-			close(rl.cleanupStopChan)
-		}
-	})
+	rl.memory.stop()
 }
 
 // Allow checks if a request should be allowed
@@ -286,7 +309,19 @@ func (rl *RateLimiter) Allow(ctx context.Context, key string) (bool, int, error)
 func (rl *RateLimiter) allowRedis(ctx context.Context, key string) (bool, int, error) {
 	redisKey := rl.config.KeyPrefix + key
 
-	// Use Redis INCR with expiry for atomic counter
+	// Initialize the counter with its window TTL atomically (SET NX EX).
+	// INCR alone + conditional EXPIRE is not atomic: if the process dies
+	// between INCR and EXPIRE the key persists without a TTL and the
+	// client is rate-limited forever after crossing the limit.
+	window := rl.config.WindowDuration
+	created, err := rl.redisClient.SetNX(ctx, redisKey, 0, window).Result()
+	if err != nil {
+		if rl.config.FailClosed {
+			return false, 0, err
+		}
+		return true, 0, err
+	}
+
 	count, err := rl.redisClient.Incr(ctx, redisKey).Result()
 	if err != nil {
 		if rl.config.FailClosed {
@@ -295,44 +330,45 @@ func (rl *RateLimiter) allowRedis(ctx context.Context, key string) (bool, int, e
 		return true, 0, err
 	}
 
-	// Set expiry on first request in window
-	if count == 1 {
-		rl.redisClient.Expire(ctx, redisKey, rl.config.WindowDuration)
+	// Safety net: if the key vanished between SetNX and INCR (race with
+	// expiry), the INCR re-created it without a TTL — re-apply it.
+	if !created {
+		ttl, err := rl.redisClient.TTL(ctx, redisKey).Result()
+		if err == nil && ttl < 0 {
+			rl.redisClient.Expire(ctx, redisKey, window)
+		}
 	}
 
-	remaining := rl.config.RequestsPerWindow - int(count)
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := max(rl.config.RequestsPerWindow-int(count), 0)
 
 	return int(count) <= rl.config.RequestsPerWindow, remaining, nil
 }
 
 // allowMemory uses in-memory store for single-instance rate limiting
 func (rl *RateLimiter) allowMemory(key string) (bool, int, error) {
-	rl.memoryStoreMu.Lock()
-	defer rl.memoryStoreMu.Unlock()
+	var allowed bool
+	var remaining int
+	rl.memory.update(func(m map[string]rateLimitEntry) {
+		now := time.Now()
+		fullKey := rl.config.KeyPrefix + key
 
-	now := time.Now()
-	fullKey := rl.config.KeyPrefix + key
-
-	entry, exists := rl.memoryStore[fullKey]
-	if !exists || now.After(entry.expiresAt) {
-		// New window
-		rl.memoryStore[fullKey] = &rateLimitEntry{
-			count:     1,
-			expiresAt: now.Add(rl.config.WindowDuration),
+		entry, exists := m[fullKey]
+		if !exists || now.After(entry.expiresAt) {
+			// New window
+			m[fullKey] = rateLimitEntry{
+				count:     1,
+				expiresAt: now.Add(rl.config.WindowDuration),
+			}
+			allowed, remaining = true, rl.config.RequestsPerWindow-1
+			return
 		}
-		return true, rl.config.RequestsPerWindow - 1, nil
-	}
 
-	entry.count++
-	remaining := rl.config.RequestsPerWindow - entry.count
-	if remaining < 0 {
-		remaining = 0
-	}
-
-	return entry.count <= rl.config.RequestsPerWindow, remaining, nil
+		entry.count++
+		m[fullKey] = entry
+		remaining = max(rl.config.RequestsPerWindow-entry.count, 0)
+		allowed = entry.count <= rl.config.RequestsPerWindow
+	})
+	return allowed, remaining, nil
 }
 
 // parseTrustedProxies converts a list of CIDR strings into *net.IPNet values.
@@ -369,15 +405,6 @@ func parseTrustedProxies(cidrs []string, logger Logger) []*net.IPNet {
 	return out
 }
 
-// remoteAddrIP extracts the IP portion of r.RemoteAddr (which is "ip:port").
-func remoteAddrIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
-
 // isTrustedProxy reports whether ipStr is within any of the configured
 // trustedProxyNets. Returns false for an empty allowlist (the secure default).
 func isTrustedProxy(ipStr string, trusted []*net.IPNet) bool {
@@ -404,19 +431,29 @@ func isTrustedProxy(ipStr string, trusted []*net.IPNet) bool {
 // spoofing their IP for rate-limit / audit purposes by sending forged
 // proxy headers.
 func clientIPFromRequest(r *http.Request, trusted []*net.IPNet) string {
-	remote := remoteAddrIP(r)
+	remote := GetClientIP(r)
 
 	if !isTrustedProxy(remote, trusted) {
 		return remote
 	}
 
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// X-Forwarded-For: "client, proxy1, proxy2" — take the leftmost.
-		if idx := strings.Index(xff, ","); idx != -1 {
-			xff = xff[:idx]
-		}
-		if ip := strings.TrimSpace(xff); ip != "" {
-			return ip
+		// X-Forwarded-For: "client, proxy1, proxy2". Each proxy APPENDS the
+		// address it received from, so the leftmost entry is fully
+		// client-controlled (spoofable when the client's own proxy chain is
+		// trusted). Walk from the right: the rightmost value is what the
+		// trusted peer saw; keep skipping left while entries are trusted
+		// proxies, and return the first untrusted hop.
+		parts := strings.Split(xff, ",")
+		for i, part := range slices.Backward(parts) {
+			candidate := strings.TrimSpace(part)
+			if candidate == "" {
+				continue
+			}
+			if i > 0 && isTrustedProxy(candidate, trusted) {
+				continue
+			}
+			return candidate
 		}
 	}
 	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
@@ -436,26 +473,17 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if path is excluded
-			for _, path := range limiter.config.ExcludePaths {
-				if r.URL.Path == path {
-					next.ServeHTTP(w, r)
-					return
-				}
+			if slices.Contains(limiter.config.ExcludePaths, r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			// Build rate limit key
 			var key string
 			if limiter.config.ByUser {
 				// Try to get user from context
-				user, err := GetUser(r.Context())
-				if err == nil && user != nil {
-					uid := ""
-					if ua, ok := any(user).(UserModel); ok {
-						uid = ua.GetID()
-					} else if ua2, ok := any(user).(*auth.User); ok {
-						uid = ua2.ID
-					}
-					if uid != "" {
+				if user, err := GetUser(r.Context()); err == nil && user != nil {
+					if uid := UserIDOf(user); uid != "" {
 						key = "user:" + uid
 					}
 				}
@@ -514,17 +542,14 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 				}
 				_ = limiter.auditLogger.LogAuthEvent(r.Context(), AuditEventRateLimitHit, "", false, map[string]any{
 					"key_type":  keyType,
-					"key_hash":  HashShort(keyVal),
+					"key_hash":  hashShort(keyVal),
 					"path":      safePath,
 					"method":    r.Method,
 					"remaining": remaining,
 				})
 
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(limiter.config.WindowDuration.Seconds())))
-				WriteJSON(w, http.StatusTooManyRequests, &Response{
-					Success: false,
-					Error:   "Rate limit exceeded. Please try again later.",
-				})
+				WriteJSONError(w, http.StatusTooManyRequests, "Rate limit exceeded. Please try again later.")
 				return
 			}
 
@@ -554,45 +579,19 @@ func NewLoginAttemptTracker(config *LoginAttemptConfig, redisClient *redis.Clien
 		lockoutDuration: config.LockoutDuration,
 		attemptWindow:   config.AttemptWindow,
 		keyPrefix:       RedisLoginAttemptsPrefix,
-		memoryStore:     make(map[string]*loginAttemptEntry),
-		cleanupStopChan: make(chan struct{}),
 	}
 
 	// Start cleanup for in-memory store
 	if redisClient == nil {
-		lat.cleanupTicker = time.NewTicker(time.Minute)
-		go lat.cleanupExpired()
+		lat.memory = newExpiringStore[loginAttemptEntry]()
 	}
 
 	return lat
 }
 
-func (lat *LoginAttemptTracker) cleanupExpired() {
-	for {
-		select {
-		case <-lat.cleanupTicker.C:
-			lat.memoryStoreMu.Lock()
-			now := time.Now()
-			for key, entry := range lat.memoryStore {
-				if now.After(entry.expiresAt) {
-					delete(lat.memoryStore, key)
-				}
-			}
-			lat.memoryStoreMu.Unlock()
-		case <-lat.cleanupStopChan:
-			lat.cleanupTicker.Stop()
-			return
-		}
-	}
-}
-
 // Stop stops the tracker cleanup goroutine. Safe to call multiple times.
 func (lat *LoginAttemptTracker) Stop() {
-	lat.stopOnce.Do(func() {
-		if lat.cleanupTicker != nil {
-			close(lat.cleanupStopChan)
-		}
-	})
+	lat.memory.stop()
 }
 
 // RecordFailedAttempt records a failed login attempt
@@ -637,34 +636,43 @@ func (lat *LoginAttemptTracker) recordFailedAttemptRedis(ctx context.Context, id
 }
 
 func (lat *LoginAttemptTracker) recordFailedAttemptMemory(identifier string) (int, bool, error) {
-	lat.memoryStoreMu.Lock()
-	defer lat.memoryStoreMu.Unlock()
+	var attempts int
+	var lockedOut bool
 
-	now := time.Now()
-	entry, exists := lat.memoryStore[identifier]
+	lat.memory.update(func(m map[string]loginAttemptEntry) {
+		now := time.Now()
+		entry, exists := m[identifier]
 
-	// Check if locked out
-	if exists && !entry.lockedAt.IsZero() && now.Before(entry.lockedAt.Add(lat.lockoutDuration)) {
-		return lat.maxAttempts, true, nil
-	}
-
-	// New or expired entry
-	if !exists || now.After(entry.expiresAt) {
-		lat.memoryStore[identifier] = &loginAttemptEntry{
-			attempts:  1,
-			expiresAt: now.Add(lat.attemptWindow),
+		// Check if locked out
+		if exists && !entry.lockedAt.IsZero() && now.Before(entry.lockedAt.Add(lat.lockoutDuration)) {
+			attempts, lockedOut = lat.maxAttempts, true
+			return
 		}
-		return 1, false, nil
-	}
 
-	entry.attempts++
-	if entry.attempts >= lat.maxAttempts {
-		entry.lockedAt = now
-		entry.expiresAt = now.Add(lat.lockoutDuration)
-		return entry.attempts, true, nil
-	}
+		// New or expired entry
+		if !exists || now.After(entry.expiresAt) {
+			m[identifier] = loginAttemptEntry{
+				attempts:  1,
+				expiresAt: now.Add(lat.attemptWindow),
+			}
+			attempts = 1
+			return
+		}
 
-	return entry.attempts, false, nil
+		entry.attempts++
+		if entry.attempts >= lat.maxAttempts {
+			entry.lockedAt = now
+			entry.expiresAt = now.Add(lat.lockoutDuration)
+			m[identifier] = entry
+			attempts, lockedOut = entry.attempts, true
+			return
+		}
+
+		m[identifier] = entry
+		attempts = entry.attempts
+	})
+
+	return attempts, lockedOut, nil
 }
 
 // IsLockedOut checks if an identifier is locked out
@@ -691,20 +699,17 @@ func (lat *LoginAttemptTracker) isLockedOutRedis(ctx context.Context, identifier
 }
 
 func (lat *LoginAttemptTracker) isLockedOutMemory(identifier string) (bool, time.Duration, error) {
-	lat.memoryStoreMu.RLock()
-	defer lat.memoryStoreMu.RUnlock()
-
-	entry, exists := lat.memoryStore[identifier]
-	if !exists || entry.lockedAt.IsZero() {
-		return false, 0, nil
-	}
-
-	remaining := time.Until(entry.lockedAt.Add(lat.lockoutDuration))
-	if remaining > 0 {
-		return true, remaining, nil
-	}
-
-	return false, 0, nil
+	var locked bool
+	var remaining time.Duration
+	lat.memory.view(func(m map[string]loginAttemptEntry) {
+		entry, exists := m[identifier]
+		if !exists || entry.lockedAt.IsZero() {
+			return
+		}
+		remaining = time.Until(entry.lockedAt.Add(lat.lockoutDuration))
+		locked = remaining > 0
+	})
+	return locked, remaining, nil
 }
 
 // ClearAttempts clears failed attempts for an identifier (on successful login)
@@ -716,8 +721,6 @@ func (lat *LoginAttemptTracker) ClearAttempts(ctx context.Context, identifier st
 		return nil
 	}
 
-	lat.memoryStoreMu.Lock()
-	delete(lat.memoryStore, identifier)
-	lat.memoryStoreMu.Unlock()
+	lat.memory.update(func(m map[string]loginAttemptEntry) { delete(m, identifier) })
 	return nil
 }

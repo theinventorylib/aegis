@@ -158,7 +158,7 @@ func idsHandler(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Data: IDListResponse{
-			Strategy: core.GetIDStrategy(),
+			Strategy: string(core.GetIDStrategy()),
 			IDs:      ids,
 			Length:   len(ids[0]),
 		},
@@ -186,7 +186,7 @@ func strategyHandler(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Data: StrategyResponse{
-			CurrentStrategy:     core.GetIDStrategy(),
+			CurrentStrategy:     string(core.GetIDStrategy()),
 			AvailableStrategies: strategies,
 		},
 	})

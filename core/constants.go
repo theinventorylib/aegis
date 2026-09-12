@@ -28,6 +28,15 @@ const (
 	AuthRateLimitKeyPrefix = "aegis:ratelimit:auth:"
 )
 
+// Default pagination limits for list endpoints.
+const (
+	// DefaultPaginationLimit is the default number of items per page
+	DefaultPaginationLimit = 20
+
+	// MaxPaginationLimit is the maximum allowed items per page
+	MaxPaginationLimit = 100
+)
+
 // Default login attempt tracking constants prevent brute force attacks.
 // After exceeding max attempts, accounts are temporarily locked.
 const (
@@ -167,6 +176,3 @@ const (
 	// SpecialRange4End is the end of fourth special character range
 	SpecialRange4End = '~'
 )
-
-// EmailRegexPattern is the regex pattern for email validation (RFC 5322 simplified)
-const EmailRegexPattern = `^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`

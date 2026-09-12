@@ -17,6 +17,16 @@ import (
 // existing data.
 const EncryptionPrefix = "enc:v1:"
 
+// randomBytes reads n cryptographically secure random bytes. Single owner of
+// the crypto/rand pattern used for tokens, salts and nonces.
+func randomBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		return nil, fmt.Errorf("crypto: random bytes: %w", err)
+	}
+	return b, nil
+}
+
 // SealWithKey encrypts plaintext using AES-256-GCM with the supplied 32-byte
 // key (typically obtained via DeriveSecret with a purpose-specific label).
 //
@@ -38,8 +48,8 @@ func SealWithKey(key []byte, plaintext string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("crypto: gcm: %w", err)
 	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+	nonce, err := randomBytes(gcm.NonceSize())
+	if err != nil {
 		return "", fmt.Errorf("crypto: nonce: %w", err)
 	}
 	ct := gcm.Seal(nil, nonce, []byte(plaintext), nil)

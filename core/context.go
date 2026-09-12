@@ -3,23 +3,16 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"sync"
 
 	"github.com/theinventorylib/aegis/auth"
 )
 
-// =============================================================================
-// Context Key Types
-// =============================================================================
-//
-// Each context key has its own unexported empty-struct type. This is the
-// strongest possible guarantee against collisions: even if some other
-// package happens to define a key with the same string value, Go's type
-// system makes the keys distinct because the underlying types differ.
-// (See https://pkg.go.dev/context#WithValue: "The provided key must be
-// comparable and should not be of type string or any other built-in
-// type to avoid collisions between packages using context.")
+// Context keys are per-type empty structs (never raw strings) so Go's type
+// system guarantees no collisions between packages using context.
+// Access goes exclusively through the With*/Get* helpers below.
 
 type userContextKeyType struct{}
 type enrichedUserKeyType struct{}
@@ -30,8 +23,6 @@ type pathParamFuncKeyType struct{}
 type pluginDataKeyType struct{}
 type contextInitializedKeyType struct{}
 
-// Sentinel values used as context keys. These are package-private; all
-// access goes through the With*/Get* helpers below.
 var (
 	userContextKey        = userContextKeyType{}
 	enrichedUserKey       = enrichedUserKeyType{}
@@ -43,58 +34,21 @@ var (
 	contextInitializedKey = contextInitializedKeyType{}
 )
 
-// =============================================================================
-// Enriched User - Extended User with Plugin Data
-// =============================================================================
-
 // EnrichedUser wraps the core auth.User with plugin-specific extensions.
 //
-// This is a key extensibility mechanism in Aegis that allows plugins to augment
-// the base user model with additional fields without modifying the core schema.
-// Plugin data is stored in the Extensions map and automatically merged into
-// JSON responses.
-//
-// Common use cases:
-//   - Admin plugin adds: "role", "permissions"
-//   - Organizations plugin adds: "organizations", "currentOrg"
-//   - JWT plugin adds: "claims", "tokenExp"
-//   - Email verification plugin adds: "emailVerified"
-//
-// Extension keys should be simple field names (not nested paths). The MarshalJSON
-// implementation flattens extensions as top-level fields in API responses.
-//
-// Example plugin usage:
-//
-//	enriched := core.GetEnrichedUser(ctx)
-//	enriched.Set("role", "admin")
-//	enriched.Set("emailVerified", true)
-//	enriched.Set("organizations", []string{"org1", "org2"})
-//
-// Example API response:
-//
-//	{
-//	  "id": "01HXYZ...",
-//	  "email": "user@example.com",
-//	  "name": "John Doe",
-//	  "role": "admin",               // From extension
-//	  "emailVerified": true,          // From extension
-//	  "organizations": ["org1", "org2"] // From extension
-//	}
-//
-// Thread safety: All methods are safe for concurrent use via internal mutex.
+// Plugins augment the base user with extra fields (stored in Extensions) that
+// are flattened as top-level fields in JSON responses — e.g. the admin plugin
+// adds "role", the organizations plugin adds "organizations". Keys are simple
+// field names; all methods are safe for concurrent use via an internal mutex.
 type EnrichedUser struct {
 	*auth.User
 
-	// Extensions holds additional fields from plugins.
-	// Keys are simple field names: "role", "verified", "organizations", etc.
-	// These are flattened into the JSON response as top-level fields.
-	Extensions map[string]any `json:"-"` // Excluded from default marshal, handled in MarshalJSON
+	Extensions map[string]any `json:"-"` // flattened into responses by MarshalJSON
 
 	mu sync.RWMutex
 }
 
 // NewEnrichedUser creates an EnrichedUser wrapping a core User.
-// The Extensions map is initialized empty, ready for plugins to populate.
 func NewEnrichedUser(user *auth.User) *EnrichedUser {
 	return &EnrichedUser{
 		User:       user,
@@ -102,13 +56,8 @@ func NewEnrichedUser(user *auth.User) *EnrichedUser {
 	}
 }
 
-// Set adds or updates an extension field.
-//
-// This is typically called by plugins during request processing to add their
-// data to the user context. Key should be a simple field name that will become
-// a top-level field in JSON responses.
-//
-// Thread-safe for concurrent plugin access.
+// Set adds or updates an extension field. Key becomes a top-level field in
+// JSON responses.
 func (eu *EnrichedUser) Set(key string, value any) {
 	eu.mu.Lock()
 	defer eu.mu.Unlock()
@@ -121,7 +70,7 @@ func (eu *EnrichedUser) Set(key string, value any) {
 // Get retrieves an extension value by key.
 // Returns nil if the key doesn't exist.
 //
-// For type-safe access, prefer the typed getters (GetString, GetBool, etc.).
+// For type-safe access, prefer the typed getters (GetBool, GetAs, etc.).
 func (eu *EnrichedUser) Get(key string) any {
 	eu.mu.RLock()
 	defer eu.mu.RUnlock()
@@ -131,44 +80,47 @@ func (eu *EnrichedUser) Get(key string) any {
 	return eu.Extensions[key]
 }
 
+// GetAs retrieves an extension value asserting it to T. This is the
+// type-safe primitive behind GetString/GetBool/GetStringSlice/GetMap;
+// prefer it for any extension type without a dedicated getter.
+//
+// Returns the zero value of T and false when the key is missing or the
+// value is not a T. (Requires Go 1.27 generic methods.)
+func (eu *EnrichedUser) GetAs[T any](key string) (T, bool) {
+	var zero T
+	v := eu.Get(key)
+	if t, ok := v.(T); ok {
+		return t, true
+	}
+	return zero, false
+}
+
 // GetString retrieves a string extension value.
 // Returns empty string if the key doesn't exist or value is not a string.
 func (eu *EnrichedUser) GetString(key string) string {
-	v := eu.Get(key)
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return ""
+	s, _ := eu.GetAs[string](key)
+	return s
 }
 
 // GetBool retrieves a bool extension value.
 // Returns false if the key doesn't exist or value is not a bool.
 func (eu *EnrichedUser) GetBool(key string) bool {
-	v := eu.Get(key)
-	if b, ok := v.(bool); ok {
-		return b
-	}
-	return false
+	b, _ := eu.GetAs[bool](key)
+	return b
 }
 
 // GetStringSlice retrieves a string slice extension value.
 // Returns nil if the key doesn't exist or value is not a []string.
 func (eu *EnrichedUser) GetStringSlice(key string) []string {
-	v := eu.Get(key)
-	if ss, ok := v.([]string); ok {
-		return ss
-	}
-	return nil
+	ss, _ := eu.GetAs[[]string](key)
+	return ss
 }
 
 // GetMap retrieves a map extension value.
 // Returns nil if the key doesn't exist or value is not a map.
 func (eu *EnrichedUser) GetMap(key string) map[string]any {
-	v := eu.Get(key)
-	if m, ok := v.(map[string]any); ok {
-		return m
-	}
-	return nil
+	m, _ := eu.GetAs[map[string]any](key)
+	return m
 }
 
 // Has checks if an extension key exists.
@@ -195,14 +147,10 @@ func (eu *EnrichedUser) Keys() []string {
 	return keys
 }
 
-// MarshalJSON implements json.Marshaler for API responses.
-// Extensions are flattened as top-level fields in the JSON output.
-func (eu *EnrichedUser) MarshalJSON() ([]byte, error) {
-	eu.mu.RLock()
-	defer eu.mu.RUnlock()
-
-	// Create a map with core user fields
-	result := map[string]any{
+// baseMap builds the core user field map (id/email/name/avatar/timestamps
+// plus metadata). Caller must hold eu.mu (read) — both marshaling paths use it.
+func (eu *EnrichedUser) baseMap() map[string]any {
+	m := map[string]any{
 		"id":        eu.ID,
 		"email":     eu.Email,
 		"name":      eu.Name,
@@ -211,17 +159,20 @@ func (eu *EnrichedUser) MarshalJSON() ([]byte, error) {
 		"createdAt": eu.CreatedAt,
 		"updatedAt": eu.UpdatedAt,
 	}
-
-	// Add metadata if present
 	if len(eu.Metadata) > 0 {
-		result["metadata"] = eu.Metadata
+		m["metadata"] = eu.Metadata
 	}
+	return m
+}
 
-	// Flatten extensions as top-level fields
-	for key, value := range eu.Extensions {
-		result[key] = value
-	}
+// MarshalJSON implements json.Marshaler for API responses.
+// Extensions are flattened as top-level fields in the JSON output.
+func (eu *EnrichedUser) MarshalJSON() ([]byte, error) {
+	eu.mu.RLock()
+	defer eu.mu.RUnlock()
 
+	result := eu.baseMap()
+	maps.Copy(result, eu.Extensions)
 	return json.Marshal(result)
 }
 
@@ -238,19 +189,7 @@ func (eu *EnrichedUser) ToAPIResponseFiltered(config *UserFieldsConfig) map[stri
 	eu.mu.RLock()
 	defer eu.mu.RUnlock()
 
-	resp := map[string]any{
-		"id":        eu.ID,
-		"email":     eu.Email,
-		"name":      eu.Name,
-		"avatar":    eu.Avatar,
-		"disabled":  eu.Disabled,
-		"createdAt": eu.CreatedAt,
-		"updatedAt": eu.UpdatedAt,
-	}
-
-	if len(eu.Metadata) > 0 {
-		resp["metadata"] = eu.Metadata
-	}
+	resp := eu.baseMap()
 
 	// Build allowed fields set if config specifies fields
 	var allowedFields map[string]bool
@@ -296,10 +235,6 @@ func sessionToMap(session *auth.Session) map[string]any {
 	return m
 }
 
-// =============================================================================
-// Session With User Response
-// =============================================================================
-
 // SessionWithUser combines session and enriched user data for API responses.
 // This is returned by session validation endpoints.
 // The user data includes all extension fields flattened.
@@ -330,10 +265,6 @@ func (swu *SessionWithUser) ToAPIResponseFiltered(config *UserFieldsConfig) map[
 	return resp
 }
 
-// =============================================================================
-// Request Metadata
-// =============================================================================
-
 // RequestMeta contains metadata about the current request.
 // This is useful for audit logging, rate limiting, and plugin access.
 type RequestMeta struct {
@@ -349,10 +280,6 @@ type RequestMeta struct {
 	Path string
 }
 
-// =============================================================================
-// Plugin Data Store
-// =============================================================================
-
 // PluginData is a thread-safe store for plugin-specific context data.
 // Plugins can store and retrieve their own data without key collisions.
 type PluginData struct {
@@ -360,8 +287,8 @@ type PluginData struct {
 	data map[string]any
 }
 
-// NewPluginData creates a new plugin data store
-func NewPluginData() *PluginData {
+// newPluginData creates a new plugin data store
+func newPluginData() *PluginData {
 	return &PluginData{
 		data: make(map[string]any),
 	}
@@ -383,22 +310,28 @@ func (pd *PluginData) Get(key string) any {
 	return pd.data[key]
 }
 
+// GetAs retrieves a value asserting it to T (generic-method twin of
+// EnrichedUser.GetAs). Returns the zero value of T and false when the key
+// is missing or the value is not a T.
+func (pd *PluginData) GetAs[T any](key string) (T, bool) {
+	var zero T
+	v := pd.Get(key)
+	if t, ok := v.(T); ok {
+		return t, true
+	}
+	return zero, false
+}
+
 // GetString retrieves a string value, returning empty string if not found or wrong type.
 func (pd *PluginData) GetString(key string) string {
-	v := pd.Get(key)
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return ""
+	s, _ := pd.GetAs[string](key)
+	return s
 }
 
 // GetBool retrieves a bool value, returning false if not found or wrong type.
 func (pd *PluginData) GetBool(key string) bool {
-	v := pd.Get(key)
-	if b, ok := v.(bool); ok {
-		return b
-	}
-	return false
+	b, _ := pd.GetAs[bool](key)
+	return b
 }
 
 // Has checks if a key exists in the plugin data store.
@@ -427,17 +360,9 @@ func (pd *PluginData) Keys() []string {
 	return keys
 }
 
-// =============================================================================
-// Path Parameter Function
-// =============================================================================
-
 // PathParamFunc is a function type for extracting path parameters from requests.
 // This allows different routers to provide their own implementation.
 type PathParamFunc func(r *http.Request, name string) string
-
-// =============================================================================
-// Context Setters (With* functions)
-// =============================================================================
 
 // WithUser adds a user to the context.
 // This is typically called by AuthMiddleware after validating a session.
@@ -486,10 +411,6 @@ func WithContextInitialized(ctx context.Context) context.Context {
 	return context.WithValue(ctx, contextInitializedKey, true)
 }
 
-// =============================================================================
-// Context Getters (Get* functions)
-// =============================================================================
-
 // GetUser extracts the user from the context.
 // Returns an error if no user is present (not authenticated).
 func GetUser(ctx context.Context) (*auth.User, error) {
@@ -509,26 +430,6 @@ func GetEnrichedUser(ctx context.Context) *EnrichedUser {
 	return eu
 }
 
-// MustGetEnrichedUser extracts the enriched user, panicking if not found.
-// Use only in handlers where authentication is guaranteed.
-func MustGetEnrichedUser(ctx context.Context) *EnrichedUser {
-	eu := GetEnrichedUser(ctx)
-	if eu == nil {
-		panic("MustGetEnrichedUser called without enriched user in context")
-	}
-	return eu
-}
-
-// MustGetUser extracts the user from context, panicking if not found.
-// Use this only in handlers where authentication is guaranteed by middleware.
-func MustGetUser(ctx context.Context) *auth.User {
-	user, err := GetUser(ctx)
-	if err != nil {
-		panic("MustGetUser called without authenticated user in context")
-	}
-	return user
-}
-
 // GetSession extracts the session from the context.
 // Returns nil if no session is present.
 // This acts as a per-request cache - once a session is stored in context,
@@ -545,9 +446,9 @@ func HasSession(ctx context.Context) bool {
 	return GetSession(ctx) != nil
 }
 
-// IsContextInitialized checks if AegisContextMiddleware has been run.
+// isContextInitialized checks if AegisContextMiddleware has been run.
 // This is used internally to ensure proper middleware chain ordering.
-func IsContextInitialized(ctx context.Context) bool {
+func isContextInitialized(ctx context.Context) bool {
 	initialized, err := ctx.Value(contextInitializedKey).(bool)
 	_ = err
 	return initialized
@@ -597,10 +498,6 @@ func SetPluginValue(ctx context.Context, key string, value any) {
 	}
 }
 
-// =============================================================================
-// Authentication Helpers
-// =============================================================================
-
 // Authenticated checks if the context has an authenticated user.
 func Authenticated(ctx context.Context) bool {
 	user, err := GetUser(ctx)
@@ -619,10 +516,6 @@ func GetUserID(ctx context.Context) string {
 	}
 	return user.ID
 }
-
-// =============================================================================
-// User Extension Helpers (for plugins to enrich user data)
-// =============================================================================
 
 // ExtendUser adds data to the enriched user in context.
 // If no enriched user exists, this is a no-op.
@@ -667,10 +560,6 @@ func GetUserExtensionBool(ctx context.Context, key string) bool {
 	return eu.GetBool(key)
 }
 
-// =============================================================================
-// Request Helpers
-// =============================================================================
-
 // GetPathParam extracts a path parameter from the request using the router's
 // path param function stored in context. Falls back to Go 1.22+ PathValue.
 func GetPathParam(r *http.Request, name string) string {
@@ -706,63 +595,4 @@ func GetUserAgent(ctx context.Context) string {
 		return meta.UserAgent
 	}
 	return ""
-}
-
-// =============================================================================
-// Context Builder (for testing and programmatic use)
-// =============================================================================
-
-// AegisContext is a builder for creating Aegis-enriched contexts.
-// Useful for testing and programmatic context creation.
-type AegisContext struct {
-	ctx context.Context
-}
-
-// NewAegisContext creates a new context builder from an existing context.
-func NewAegisContext(ctx context.Context) *AegisContext {
-	return &AegisContext{ctx: ctx}
-}
-
-// WithUser adds a user to the context.
-func (ac *AegisContext) WithUser(user *auth.User) *AegisContext {
-	ac.ctx = WithUser(ac.ctx, user)
-	// Also create enriched user
-	ac.ctx = WithEnrichedUser(ac.ctx, NewEnrichedUser(user))
-	return ac
-}
-
-// WithSession adds a session to the context.
-func (ac *AegisContext) WithSession(session *auth.Session) *AegisContext {
-	ac.ctx = WithSession(ac.ctx, session)
-	return ac
-}
-
-// WithRequestID adds a request ID to the context.
-func (ac *AegisContext) WithRequestID(id string) *AegisContext {
-	ac.ctx = WithRequestID(ac.ctx, id)
-	return ac
-}
-
-// WithRequestMeta adds request metadata to the context.
-func (ac *AegisContext) WithRequestMeta(meta *RequestMeta) *AegisContext {
-	ac.ctx = WithRequestMeta(ac.ctx, meta)
-	return ac
-}
-
-// WithPluginData adds plugin data to the context.
-func (ac *AegisContext) WithPluginData() *AegisContext {
-	ac.ctx = WithPluginData(ac.ctx, NewPluginData())
-	return ac
-}
-
-// WithExtension adds a user extension to the context.
-// Requires WithUser to be called first.
-func (ac *AegisContext) WithExtension(key string, value any) *AegisContext {
-	ExtendUser(ac.ctx, key, value)
-	return ac
-}
-
-// Context returns the built context.
-func (ac *AegisContext) Context() context.Context {
-	return ac.ctx
 }

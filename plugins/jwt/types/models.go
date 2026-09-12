@@ -155,10 +155,10 @@ type Claims struct {
 	JTI string `json:"jti,omitempty"`
 
 	// ExpiresAt is when the token expires (derived from the exp claim)
-	ExpiresAt time.Time `json:"exp,omitempty"`
+	ExpiresAt time.Time `json:"exp"`
 
 	// IssuedAt is when the token was issued (derived from the iat claim)
-	IssuedAt time.Time `json:"iat,omitempty"`
+	IssuedAt time.Time `json:"iat"`
 }
 
 // AccessToken represents a single access token response.

@@ -49,8 +49,8 @@ var (
 // migration's Up SQL. It splits on semicolons so an unparseable
 // statement does not poison the rest of the migration.
 func scanMigration(up string) (tables []string, columns []string) {
-	stmts := strings.Split(up, ";")
-	for _, stmt := range stmts {
+	stmts := strings.SplitSeq(up, ";")
+	for stmt := range stmts {
 		if m := reCreateTable.FindStringSubmatch(stmt); m != nil {
 			tables = append(tables, strings.ToLower(m[1]))
 		}

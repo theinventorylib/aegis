@@ -21,7 +21,7 @@ func (p *postgresQuerier) createUser(ctx context.Context, id string, avatar sql.
 	return p.q.CreateUser(ctx, sqlcpostgres.CreateUserParams{
 		ID: id, Avatar: avatar, Name: name, Email: email,
 		CreatedAt: createdAt, UpdatedAt: updatedAt,
-		Disabled: boolToInt[int32](disabled), Role: role,
+		Disabled: boolToInt[int32](disabled), Role: fromNullString(role),
 	})
 }
 
@@ -33,7 +33,7 @@ func (p *postgresQuerier) getUserByEmail(ctx context.Context, email sql.NullStri
 	return adminUserRow{
 		ID: u.ID, Avatar: u.Avatar, Name: u.Name, Email: u.Email,
 		CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
-		Disabled: u.Disabled != 0, Role: u.Role, Banned: u.Banned != 0,
+		Disabled: u.Disabled != 0, Role: toNullString(u.Role), Banned: u.Banned != 0,
 		BanReason: u.BanReason, BanExpiry: u.BanExpiry, BanCounter: int(u.BanCounter),
 	}, nil
 }
@@ -46,7 +46,7 @@ func (p *postgresQuerier) getUserByID(ctx context.Context, id string) (adminUser
 	return adminUserRow{
 		ID: u.ID, Avatar: u.Avatar, Name: u.Name, Email: u.Email,
 		CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
-		Disabled: u.Disabled != 0, Role: u.Role, Banned: u.Banned != 0,
+		Disabled: u.Disabled != 0, Role: toNullString(u.Role), Banned: u.Banned != 0,
 		BanReason: u.BanReason, BanExpiry: u.BanExpiry, BanCounter: int(u.BanCounter),
 	}, nil
 }
@@ -72,7 +72,7 @@ func (p *postgresQuerier) listUsers(ctx context.Context, offset, limit int32) ([
 		out[i] = adminUserRow{
 			ID: u.ID, Avatar: u.Avatar, Name: u.Name, Email: u.Email,
 			CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
-			Disabled: u.Disabled != 0, Role: u.Role, Banned: u.Banned != 0,
+			Disabled: u.Disabled != 0, Role: toNullString(u.Role), Banned: u.Banned != 0,
 			BanReason: u.BanReason, BanExpiry: u.BanExpiry, BanCounter: int(u.BanCounter),
 		}
 	}
@@ -102,7 +102,7 @@ func (p *postgresQuerier) getUserRaw(ctx context.Context, id string) (adminRawRo
 func (p *postgresQuerier) countUsers(ctx context.Context) (int64, error) { return p.q.CountUsers(ctx) }
 
 func (p *postgresQuerier) updateUserRole(ctx context.Context, id string, role sql.NullString, updatedAt string) error {
-	return p.q.UpdateUserRole(ctx, sqlcpostgres.UpdateUserRoleParams{ID: id, Role: role, UpdatedAt: updatedAt})
+	return p.q.UpdateUserRole(ctx, sqlcpostgres.UpdateUserRoleParams{ID: id, Role: fromNullString(role), UpdatedAt: updatedAt})
 }
 
 func (p *postgresQuerier) getRole(ctx context.Context, id string) (string, error) {

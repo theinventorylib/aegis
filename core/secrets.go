@@ -41,6 +41,12 @@ import (
 //	oauthSecret := core.DeriveSecret(masterSecret, "oauth-state", 32)
 //	jwtSecret := core.DeriveSecret(masterSecret, "jwt-signing", 32)
 func DeriveSecret(masterSecret []byte, purpose string, length int) []byte {
+	// An empty purpose would alias the raw HKDF output across all purposes
+	// sharing it — refuse rather than silently derive an un-scoped key.
+	if purpose == "" || len(masterSecret) == 0 {
+		return nil
+	}
+
 	// Use HKDF to derive a purpose-specific key
 	// Info contains the purpose to ensure different purposes yield different keys
 	// Derive a non-nil salt from the master secret so different master secrets
@@ -49,9 +55,13 @@ func DeriveSecret(masterSecret []byte, purpose string, length int) []byte {
 	hkdfReader := hkdf.New(sha256.New, masterSecret, salt[:], []byte(purpose))
 
 	derived := make([]byte, length)
-	// HKDF.Read always succeeds for reasonable output lengths
-	_, err := hkdfReader.Read(derived)
-	_ = err
+	// HKDF only fails when the requested length exceeds the 255×hash-size
+	// output cap; all call sites request 32 bytes. On failure return nil so
+	// callers' existing nil/empty checks fail loudly instead of using a
+	// partially zero-filled key.
+	if _, err := hkdfReader.Read(derived); err != nil {
+		return nil
+	}
 
 	return derived
 }

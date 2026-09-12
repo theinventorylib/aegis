@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/theinventorylib/aegis/auth"
 )
@@ -43,7 +44,7 @@ func AegisContextMiddleware() func(http.Handler) http.Handler {
 			ctx := r.Context()
 
 			// Skip if already initialized (avoid double initialization)
-			if IsContextInitialized(ctx) {
+			if isContextInitialized(ctx) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -63,7 +64,7 @@ func AegisContextMiddleware() func(http.Handler) http.Handler {
 			ctx = WithRequestMeta(ctx, meta)
 
 			// Initialize plugin data store
-			ctx = WithPluginData(ctx, NewPluginData())
+			ctx = WithPluginData(ctx, newPluginData())
 
 			// Mark context as initialized
 			ctx = WithContextInitialized(ctx)
@@ -115,7 +116,7 @@ func AuthMiddleware(sessionService *SessionService) func(http.Handler) http.Hand
 			ctx := r.Context()
 
 			// Ensure context is initialized (idempotent - skips if already done)
-			if !IsContextInitialized(ctx) {
+			if !isContextInitialized(ctx) {
 				// Wrap the rest of the handler in context middleware
 				contextMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					handleAuth(sessionService, cookieManager, next, w, r)
@@ -160,13 +161,7 @@ func handleAuth(sessionService *SessionService, cookieManager *CookieManager, ne
 	} else if sessionService.IsBearerAuthEnabled() {
 		// Only check Authorization header if bearer auth is explicitly enabled
 		// This is enabled via config.WithBearerAuth(true) or config.WithAPIOnlyMode(true)
-		token := r.Header.Get("Authorization")
-		if token != "" {
-			// Remove "Bearer " prefix if present
-			if len(token) > 7 && token[:7] == "Bearer " {
-				token = token[7:]
-			}
-
+		if token := bearerToken(r); token != "" {
 			var (
 				user    *auth.User
 				session *auth.Session
@@ -218,6 +213,17 @@ func RequireAuthMiddleware(_ *SessionService) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// bearerToken extracts the token from an Authorization header, trimming the
+// "Bearer " prefix case-insensitively. Returns "" when absent or not a
+// bearer token. Single owner of the parsing shared with CSRF middleware.
+func bearerToken(r *http.Request) string {
+	h := r.Header.Get("Authorization")
+	if len(h) > 7 && strings.EqualFold(h[:7], "Bearer ") {
+		return h[7:]
+	}
+	return ""
 }
 
 // GetClientIP extracts the client IP address from the request.

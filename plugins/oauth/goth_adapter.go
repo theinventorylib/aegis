@@ -2,9 +2,9 @@ package oauth
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/markbates/goth"
-	"github.com/theinventorylib/aegis/auth"
 	core "github.com/theinventorylib/aegis/core"
 	oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
 )
@@ -97,6 +97,40 @@ func (g *GothAdapter) Exchange(_ string) (*oauthtypes.User, error) {
 	return nil, fmt.Errorf("use gothic.CompleteUserAuth for full Goth integration")
 }
 
+// providersAttestingVerifiedEmail lists providers whose Goth implementation
+// only returns verified email addresses, even though it does not surface an
+// OIDC-style email_verified flag in RawData. A provider belongs here only if
+// the provider itself guarantees verification before returning the address:
+//   - github: authorizing an OAuth app requires a verified account email,
+//     Goth's profile email is selected from verified addresses, and
+//     getPrivateMail returns only a primary + verified address.
+//
+// Adding an entry widens which accounts can be auto-linked, so the same
+// guarantee must hold.
+var providersAttestingVerifiedEmail = map[string]bool{
+	"github": true,
+}
+
+// providerVerifiedEmail reports whether the provider verified the email
+// address. Goth surfaces verification as RawData["email_verified"] (OIDC
+// style; may be bool, string, or number). Providers that do not surface the
+// flag default to unverified so an attacker can't register a victim's email
+// at such a provider and get auto-linked to the victim's account — except
+// for providers in providersAttestingVerifiedEmail, which only return
+// verified addresses. New-user creation is unaffected; only linking to an
+// existing email is gated.
+func providerVerifiedEmail(u goth.User) bool {
+	switch v := u.RawData["email_verified"].(type) {
+	case bool:
+		return v
+	case string:
+		return v == "true" || v == "True" || v == "1"
+	case float64:
+		return v != 0
+	}
+	return providersAttestingVerifiedEmail[strings.ToLower(u.Provider)] && u.Email != ""
+}
+
 // GothUserToUser converts goth.User to Aegis's User model.
 //
 // This helper function transforms Goth's OAuth user representation into
@@ -116,12 +150,10 @@ func (g *GothAdapter) Exchange(_ string) (*oauthtypes.User, error) {
 //   - *User: Aegis user model
 func GothUserToUser(gothUser goth.User) *oauthtypes.User {
 	return &oauthtypes.User{
-		User: auth.User{
-			ID:     core.SanitizeString(gothUser.UserID, nil),
-			Email:  core.SanitizeEmail(gothUser.Email),
-			Name:   core.SanitizeString(gothUser.Name, nil),
-			Avatar: core.SanitizeURL(gothUser.AvatarURL),
-		},
+		ID:           core.SanitizeString(gothUser.UserID, nil),
+		Email:        core.SanitizeEmail(gothUser.Email),
+		Name:         core.SanitizeString(gothUser.Name, nil),
+		Avatar:       core.SanitizeURL(gothUser.AvatarURL),
 		AccessToken:  gothUser.AccessToken,
 		RefreshToken: gothUser.RefreshToken,
 		ExpiresAt:    gothUser.ExpiresAt,

@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/theinventorylib/aegis/plugins"
@@ -141,10 +142,8 @@ func (s *DefaultOrganizationStore) HasOrgRole(ctx context.Context, userID, orgID
 		}
 		return false, err
 	}
-	for _, role := range roles {
-		if m.Role == role {
-			return true, nil
-		}
+	if slices.Contains(roles, m.Role) {
+		return true, nil
 	}
 	return false, nil
 }
@@ -158,32 +157,48 @@ func (s *DefaultOrganizationStore) HasTeamRole(ctx context.Context, userID, team
 		}
 		return false, err
 	}
-	for _, role := range roles {
-		if m.Role == role {
-			return true, nil
-		}
+	if slices.Contains(roles, m.Role) {
+		return true, nil
 	}
 	return false, nil
 }
 
 // CanAccessTeam checks whether a user can access a team.
+//
+// Access requires being a member of the parent organization AND a member of the
+// team, with any role in each — custom roles are not second-class here.
 func (s *DefaultOrganizationStore) CanAccessTeam(ctx context.Context, userID, teamID string) (bool, error) {
 	t, err := s.q.getTeam(ctx, teamID)
 	if err != nil {
 		return false, err
 	}
-	orgOk, err := s.HasOrgRole(ctx, userID, t.OrganizationID, orgtypes.RoleOwner, orgtypes.RoleAdmin, orgtypes.RoleMember)
-	if err != nil || !orgOk {
+	if _, err := s.q.getMember(ctx, userID, t.OrganizationID); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
 		return false, err
 	}
-	return s.HasTeamRole(ctx, userID, teamID, orgtypes.RoleTeamLead, orgtypes.RoleMember)
+	if _, err := s.q.getTeamMember(ctx, teamID, userID); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // IsOrganizationMember reports whether the user is a member of the organization.
 //
-// Deprecated: Use HasOrgRole instead.
+// Deprecated: Use HasOrgRole instead. Returns true for any role.
 func (s *DefaultOrganizationStore) IsOrganizationMember(ctx context.Context, userID, orgID string) (bool, error) {
-	return s.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner, orgtypes.RoleAdmin, orgtypes.RoleMember)
+	_, err := s.q.getMember(ctx, userID, orgID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // IsOwnerOrAdmin reports whether the user has the owner or admin role in the organization.

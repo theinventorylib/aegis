@@ -25,7 +25,7 @@ func GetSchemaRequirements(dialect plugins.Dialect) []plugins.SchemaRequirement 
 	d := string(dialect)
 	switch dialect {
 	case plugins.DialectPostgres, plugins.DialectMySQL, plugins.DialectSQLite:
-		notNull := core.BoolPtr(false)
+		notNull := new(false)
 		return []plugins.SchemaRequirement{
 			plugins.ValidateTableExistsForDialect(d, "organization"),
 			plugins.ValidateTableExistsForDialect(d, "members"),

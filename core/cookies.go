@@ -5,31 +5,9 @@ import (
 	"time"
 )
 
-// CookieManager provides centralized cookie management for Aegis sessions.
-//
-// This manager encapsulates cookie security best practices:
-//   - HTTPOnly: Prevents JavaScript access (XSS protection)
-//   - Secure: Requires HTTPS in production (prevents MITM attacks)
-//   - SameSite: Prevents CSRF attacks (Lax, Strict, or None)
-//   - Configurable domain: Supports subdomain sharing
-//   - Configurable path: Limits cookie scope
-//
-// The CookieManager is created by SessionService and uses settings from
-// SessionConfig.CookieSettings. All session cookies are managed through
-// this abstraction for consistency.
-//
-// Cookie Security Best Practices:
-//   - Always enable HTTPOnly (prevents XSS from stealing cookies)
-//   - Always enable Secure in production (requires HTTPS)
-//   - Use SameSite=Lax for general APIs, Strict for sensitive operations
-//   - Use SameSite=None only when needed for cross-site requests (requires Secure=true)
-//
-// Example:
-//
-//	cm := core.NewCookieManager(sessionConfig)
-//	cm.SetSessionCookie(w, sessionToken) // Sets with configured security
-//	token, err := cm.GetSessionCookie(r) // Reads session cookie
-//	cm.ClearSessionCookie(w) // Deletes the session cookie
+// CookieManager provides centralized cookie management for Aegis sessions,
+// applying SessionConfig.CookieSettings security defaults (HTTPOnly, Secure,
+// SameSite, Domain, Path) to every cookie operation.
 type CookieManager struct {
 	config *SessionConfig
 }
@@ -73,11 +51,7 @@ type CookieOptions struct {
 }
 
 // NewCookieManager creates a new CookieManager with the given configuration.
-//
-// If cfg is nil, uses DefaultSessionConfig() with secure defaults.
-//
-// The CookieManager will use the settings from cfg.CookieSettings for all
-// cookie operations (HTTPOnly, Secure, SameSite, Domain, Path, Name).
+// If cfg is nil, uses DefaultSessionConfig().
 func NewCookieManager(cfg *SessionConfig) *CookieManager {
 	if cfg == nil {
 		cfg = DefaultSessionConfig()
@@ -94,28 +68,12 @@ func (cm *CookieManager) parseSameSiteFromConfig() http.SameSite {
 }
 
 // GetConfig returns the underlying SessionConfig used by this CookieManager.
-// Useful for inspecting current cookie settings.
 func (cm *CookieManager) GetConfig() *SessionConfig {
 	return cm.config
 }
 
-// SetCookie sets a cookie with the configured security defaults.
-//
-// This is a convenience method that applies CookieSettings from the config:
-//   - Domain from config.CookieSettings.Domain
-//   - Secure from config.CookieSettings.Secure
-//   - HTTPOnly from config.CookieSettings.HTTPOnly
-//   - SameSite from config.CookieSettings.SameSite
-//   - Path is always "/" (DefaultCookiePath)
-//
-// Parameters:
-//   - name: Cookie name
-//   - value: Cookie value
-//   - maxAge: Cookie lifetime (0 for session cookies, negative to delete)
-//
-// Example:
-//
-//	cm.SetCookie(w, "custom_data", "value", 24*time.Hour)
+// SetCookie sets a cookie with the configured security defaults (Domain,
+// Secure, HTTPOnly, SameSite from config; Path always "/").
 func (cm *CookieManager) SetCookie(w http.ResponseWriter, name, value string, maxAge time.Duration) {
 	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure, HttpOnly, and SameSite are sourced from caller-supplied config
 		Name:     name,

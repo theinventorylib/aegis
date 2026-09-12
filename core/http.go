@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+
+	jsonv2 "encoding/json/v2"
 )
 
 // Response represents a standard JSON API response structure.
@@ -97,8 +99,8 @@ func ParsePagination(r *http.Request) PaginationParams {
 
 	limitRaw, err := strconv.ParseInt(r.URL.Query().Get("limit"), 10, 32)
 	limit := int32(limitRaw)
-	if err != nil || limit < 1 || limit > 100 {
-		limit = 20
+	if err != nil || limit < 1 || limit > MaxPaginationLimit {
+		limit = DefaultPaginationLimit
 	}
 
 	offset := (page - 1) * limit
@@ -139,4 +141,18 @@ func WriteJSON(w http.ResponseWriter, statusCode int, data any) {
 //	// Output: {"success": false, "error": "Invalid request"}
 func WriteJSONError(w http.ResponseWriter, statusCode int, message string) {
 	WriteJSON(w, statusCode, &Response{Success: false, Error: message})
+}
+
+// ReadJSON parses a JSON request body into dst using encoding/json/v2.
+//
+// v2 defaults reject duplicate object names and invalid UTF-8 — both are
+// malformed input that the v1 Decoder silently accepted. Case-insensitive
+// name matching is enabled to preserve v1 client compatibility.
+//
+// Example:
+//
+//	var req LoginRequest
+//	if err := core.ReadJSON(r, &req); err != nil { ... }
+func ReadJSON(r *http.Request, dst any) error {
+	return jsonv2.UnmarshalRead(r.Body, dst, jsonv2.MatchCaseInsensitiveNames(true))
 }

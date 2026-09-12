@@ -1,18 +1,12 @@
 package core
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"regexp"
 	"strings"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/go-ozzo/ozzo-validation/v4/is"
 )
-
-// Email validation using RFC 5322 simplified pattern
-var _ = regexp.MustCompile(EmailRegexPattern)
 
 // ValidateEmail validates an email address format.
 //
@@ -48,7 +42,7 @@ func ValidateEmail(email string) error {
 	return nil
 }
 
-// ValidatePassword validates password strength based on a configurable policy.
+// validatePassword validates password strength based on a configurable policy.
 //
 // The validation checks are controlled by the PasswordPolicyConfig:
 //   - MinLength: Minimum character count (default: 8)
@@ -58,7 +52,7 @@ func ValidateEmail(email string) error {
 //   - RequireDigit: At least one numeric digit 0-9
 //   - RequireSpecial: At least one special character (!@#$%^&*, etc.)
 //
-// If policy is nil, DefaultPasswordPolicyConfig is used (8+ chars, mixed case,
+// If policy is nil, defaultPasswordPolicyConfig is used (8+ chars, mixed case,
 // digit required, special chars optional).
 //
 // Modern best practices (NIST/OWASP 2024):
@@ -77,16 +71,16 @@ func ValidateEmail(email string) error {
 //		MinLength:      12,
 //		RequireSpecial: true,
 //	}
-//	if err := core.ValidatePassword(password, policy); err != nil {
+//	if err := core.validatePassword(password, policy); err != nil {
 //		return fmt.Errorf("weak password: %w", err)
 //	}
-func ValidatePassword(password string, policy *PasswordPolicyConfig) error {
+func validatePassword(password string, policy *PasswordPolicyConfig) error {
 	if password == "" {
 		return fmt.Errorf("password is required")
 	}
 
 	if policy == nil {
-		policy = DefaultPasswordPolicyConfig()
+		policy = defaultPasswordPolicyConfig()
 	}
 
 	if len(password) < policy.MinLength {
@@ -134,7 +128,7 @@ func ValidatePassword(password string, policy *PasswordPolicyConfig) error {
 	return nil
 }
 
-// ValidatePasswordSimple validates password with basic length requirement only.
+// validatePasswordSimple validates password with basic length requirement only.
 //
 // This is a simplified validator that only checks minimum length, without
 // requiring character diversity (uppercase, lowercase, digits, symbols).
@@ -144,7 +138,7 @@ func ValidatePassword(password string, policy *PasswordPolicyConfig) error {
 //   - Users find strict policies too frustrating
 //   - You rely on other security measures (MFA, breach detection, etc.)
 //
-// For production systems with sensitive data, prefer ValidatePassword with
+// For production systems with sensitive data, prefer validatePassword with
 // a proper PasswordPolicyConfig.
 //
 // Parameters:
@@ -153,10 +147,10 @@ func ValidatePassword(password string, policy *PasswordPolicyConfig) error {
 //
 // Example:
 //
-//	if err := core.ValidatePasswordSimple(password, 8); err != nil {
+//	if err := core.validatePasswordSimple(password, 8); err != nil {
 //		return err
 //	}
-func ValidatePasswordSimple(password string, minLength int) error {
+func validatePasswordSimple(password string, minLength int) error {
 	if password == "" {
 		return fmt.Errorf("password is required")
 	}
@@ -170,62 +164,4 @@ func ValidatePasswordSimple(password string, minLength int) error {
 	}
 
 	return nil
-}
-
-// BindAndValidate decodes a JSON request body and validates it.
-// T must implement a Validate() error method.
-// This helper ensures consistent validation across all handlers.
-//
-// Example usage:
-//
-//	req, err := core.BindAndValidate[CreateOrganizationRequest](r)
-//	if err != nil {
-//	    core.WriteValidationError(w, err)
-//	    return
-//	}
-func BindAndValidate[T interface{ Validate() error }](r *http.Request) (T, error) {
-	var req T
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return req, fmt.Errorf("invalid JSON: %w", err)
-	}
-	if err := req.Validate(); err != nil {
-		return req, err
-	}
-	return req, nil
-}
-
-// ValidateMiddleware creates a middleware that automatically validates request bodies.
-// T must implement a Validate() error method.
-// The validated request is passed to the handler, eliminating the need for manual validation.
-//
-// Example usage:
-//
-//	router.POST("/organizations", ValidateMiddleware(p.CreateOrganizationHandler))
-//
-//	func (p *Plugin) CreateOrganizationHandler(
-//	    w http.ResponseWriter,
-//	    r *http.Request,
-//	    req CreateOrganizationRequest,  // Already validated!
-//	) {
-//	    // Use req directly - validation is guaranteed
-//	}
-func ValidateMiddleware[T interface{ Validate() error }](
-	handler func(w http.ResponseWriter, r *http.Request, req T),
-) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		req, err := BindAndValidate[T](r)
-		if err != nil {
-			if vErrs := GetValidationErrors(err); vErrs != nil {
-				WriteJSON(w, http.StatusBadRequest, &Response{
-					Success: false,
-					Error:   "validation failed",
-					Data:    vErrs,
-				})
-				return
-			}
-			WriteJSONError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		handler(w, r, req)
-	}
 }

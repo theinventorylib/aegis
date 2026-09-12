@@ -31,7 +31,7 @@ func GetSchemaRequirements(dialect plugins.Dialect) []plugins.SchemaRequirement 
 		// it as TEXT. We therefore only spec nullability (NOT NULL) and
 		// leave the type unconstrained, since SQLite type affinity does
 		// not match information_schema's data_type strings 1:1.
-		notNull := core.BoolPtr(false)
+		notNull := new(false)
 		return []plugins.SchemaRequirement{
 			plugins.ValidateColumnSpecForDialect(d, "user", "role", core.ColumnSpec{Nullable: notNull}),
 			plugins.ValidateColumnSpecForDialect(d, "user", "banned", core.ColumnSpec{Nullable: notNull}),

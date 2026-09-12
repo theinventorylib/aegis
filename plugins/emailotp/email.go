@@ -39,7 +39,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"regexp"
 	"time"
 
 	"github.com/theinventorylib/aegis/auth"
@@ -53,25 +52,10 @@ import (
 	"github.com/theinventorylib/aegis/router"
 )
 
-// ValidateEmail validates an email address format using RFC 5322 regex.
-//
-// Parameters:
-//   - email: Email address to validate
-//
-// Returns:
-//   - error: If email is empty or has invalid format
+// ValidateEmail validates an email address format. Delegates to
+// core.ValidateEmail instead of maintaining a second regex here.
 func ValidateEmail(email string) error {
-	email = core.SanitizeEmail(email)
-	if email == "" {
-		return fmt.Errorf("email is required")
-	}
-
-	// Basic regex validation for obvious invalid formats
-	if !regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`).MatchString(email) {
-		return fmt.Errorf("invalid email format")
-	}
-
-	return nil
+	return core.ValidateEmail(email)
 }
 
 // Plugin provides email-based OTP verification and authentication.
@@ -216,6 +200,25 @@ func (p *Plugin) Init(ctx context.Context, a plugins.Aegis) error {
 		return fmt.Errorf("emailotp plugin: schema validation failed: %w", err)
 	}
 
+	// Register the email-verification checker so core can gate login when
+	// AuthConfig.RequireEmailVerification is enabled.
+	authService.SetEmailVerificationCheck(func(ctx context.Context, user auth.User) (bool, error) {
+		if user.Email == "" {
+			return false, nil
+		}
+		u, err := p.store.GetUserByEmail(ctx, user.Email)
+		if err != nil {
+			return false, err
+		}
+		return u.EmailVerified, nil
+	})
+
+	// Clear the verification flag when a user's email changes so a previously
+	// verified address cannot make the new one look verified.
+	authService.SetEmailVerificationResetter(func(ctx context.Context, userID, email string) error {
+		return p.store.UpdateUserEmail(ctx, userID, email, false)
+	})
+
 	return nil
 }
 
@@ -259,6 +262,23 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			200: openapi.RefResponse("OTP verified successfully", "Success"),
 			400: openapi.RefResponse("Invalid request or incorrect OTP", "Error"),
 			401: openapi.RefResponse("OTP expired or not found", "Error"),
+		},
+	})
+
+	// Public route for the registration verification flow: unverified users
+	// cannot authenticate, so sending the verification code must not require a
+	// session. Rate limit this at the gateway/router.
+	emailGroup.POST("/send-verification", handlers.SendVerificationOTPHandler)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/send-verification",
+		Summary:     "Send email verification code",
+		Description: "Send an email verification OTP to an address without prior authentication",
+		Tags:        []string{"Email OTP"},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Verification code sent", "Success"),
+			400: openapi.RefResponse("Invalid request", "Error"),
+			500: openapi.RefResponse("Failed to send email", "Error"),
 		},
 	})
 }
@@ -343,6 +363,11 @@ func (p *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error 
 func (p *Plugin) SendOTP(ctx context.Context, emailAddress, purpose string) error {
 	// Sanitize email
 	emailAddress = core.SanitizeEmail(emailAddress)
+	// Default the purpose so OTPs are always stored with a concrete type;
+	// VerifyOTP compares against the same default.
+	if purpose == "" {
+		purpose = "email_verification"
+	}
 
 	// Generate OTP code using shared utility
 	code, err := core.GenerateOTPCode(p.otpLength)
@@ -386,34 +411,23 @@ func (p *Plugin) SendOTP(ctx context.Context, emailAddress, purpose string) erro
 	return nil
 }
 
-// VerifyOTP verifies an OTP code for an email address.
-//
-// Verification Process:
-//  1. Check if provider supports OTP verification (rare)
-//  2. Fall back to core verification service (standard)
-//  3. Validate code and check expiry
-//  4. Return success/failure
-//
-// Parameters:
-//   - ctx: Request context
-//   - emailAddress: Email address to verify
-//   - code: OTP code to verify (e.g., "123456")
-//
-// Returns:
-//   - bool: true if OTP is valid and not expired
-//   - error: If verification fails
-//
-// VerifyOTP verifies an OTP code for the given email address.
+// VerifyOTP verifies an OTP code for the given email address. The code is
+// bound to the email address and purpose it was issued for, and is consumed
+// on success (single use).
 //
 // Example:
 //
-//	valid, err := plugin.VerifyOTP(ctx, "user@example.com", "123456")
+//	valid, err := plugin.VerifyOTP(ctx, "user@example.com", "email_verification", "123456")
 //	if valid {
 //	  // Mark email as verified
 //	}
-func (p *Plugin) VerifyOTP(ctx context.Context, emailAddress, code string) (bool, error) {
+func (p *Plugin) VerifyOTP(ctx context.Context, emailAddress, purpose, code string) (bool, error) {
 	// Sanitize email
 	emailAddress = core.SanitizeEmail(emailAddress)
+	// Mirror SendOTP's default so programmatic callers passing "" verify.
+	if purpose == "" {
+		purpose = "email_verification"
+	}
 	// Check if provider supports OTP operations
 	if p.provider != nil {
 		// Use provider's OTP verification
@@ -425,8 +439,9 @@ func (p *Plugin) VerifyOTP(ctx context.Context, emailAddress, code string) (bool
 		return false, fmt.Errorf("verification service not configured")
 	}
 
-	// Validate the verification using the core service
-	_, err := p.verificationService.ValidateVerification(ctx, code)
+	// Validate the verification scoped to this email and purpose; the token
+	// is deleted on success so it cannot be replayed.
+	_, err := p.verificationService.ValidateVerificationFor(ctx, emailAddress, purpose, code)
 	if err != nil {
 		return false, err
 	}
@@ -485,12 +500,18 @@ func (p *Plugin) CreateUserWithEmailAndPassword(ctx context.Context, name, email
 	name = core.SanitizeString(name, nil)
 	email = core.SanitizeEmail(email)
 
+	// Enforce the same email format and password policy as core signup.
+	if err := core.ValidateEmail(email); err != nil {
+		return nil, err
+	}
+	if err := p.aegis.GetAuthService().ValidatePassword(password); err != nil {
+		return nil, err
+	}
+
 	user := emailotptypes.User{
-		User: auth.User{
-			ID:    core.GenerateID(),
-			Name:  name,
-			Email: email,
-		},
+		ID:            core.GenerateID(),
+		Name:          name,
+		Email:         email,
 		EmailVerified: false,
 	}
 

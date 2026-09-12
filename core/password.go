@@ -1,7 +1,6 @@
 package core
 
 import (
-	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
@@ -81,9 +80,9 @@ func HashPassword(password string, time, memory uint32, threads uint8, keyLen ui
 		keyLen = defaultKeyLength
 	}
 
-	// Generate a random salt
-	salt := make([]byte, saltLength)
-	if _, err := rand.Read(salt); err != nil {
+	// Generate the hash
+	salt, err := randomBytes(saltLength)
+	if err != nil {
 		return "", NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate salt", err)
 	}
 
@@ -157,7 +156,7 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 	var threads uint8
 
 	// Extract m (memory), t (time), and p (parallelism) from comma-separated pairs
-	for _, kv := range strings.Split(params, ",") {
+	for kv := range strings.SplitSeq(params, ",") {
 		kvParts := strings.SplitN(kv, "=", 2)
 		if len(kvParts) != 2 {
 			return false, ValidationError{Field: "hash", Message: "invalid params in hash"}

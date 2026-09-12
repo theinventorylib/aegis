@@ -58,6 +58,59 @@ func (p *Plugin) RequireOrgRole(roles ...string) func(http.Handler) http.Handler
 	})
 }
 
+// RequireOrgPermission creates middleware that requires the authenticated
+// user's organization role to grant perm on the organization identified by the
+// ":id" path parameter.
+//
+// Prefer this over RequireOrgRole so custom roles are honored: authority comes
+// from the permission a role grants, not its name.
+//
+// Example:
+//
+//	r.PUT("/organizations/:id",
+//	    requireAuth(plugin.RequireOrgPermission(PermOrgManage)(handler)),
+//	)
+func (p *Plugin) RequireOrgPermission(perm Permission) func(http.Handler) http.Handler {
+	return p.requireOrganizationRole(func(ctx context.Context, userID, orgID string) (bool, error) {
+		return p.HasOrgPermission(ctx, userID, orgID, perm)
+	})
+}
+
+// RequireTeamPermission creates middleware that requires the authenticated
+// user to be able to access the team (via CanAccessTeam) and to have a team
+// role that grants perm.
+func (p *Plugin) RequireTeamPermission(perm Permission) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, err := core.GetUser(r.Context())
+			if err != nil {
+				core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+				return
+			}
+
+			teamID := core.GetSanitizedPathParam(r, "teamId")
+			if teamID == "" {
+				core.WriteJSONError(w, http.StatusBadRequest, "Team ID required")
+				return
+			}
+
+			canAccess, err := p.store.CanAccessTeam(r.Context(), user.ID, teamID)
+			if err != nil || !canAccess {
+				core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+				return
+			}
+
+			hasPerm, err := p.HasTeamPermission(r.Context(), user.ID, teamID, perm)
+			if err != nil || !hasPerm {
+				core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // RequireTeamRole creates middleware that requires the authenticated user to have
 // at least one of the specified team-level roles on the team identified by the
 // ":teamId" path parameter.

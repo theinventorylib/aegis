@@ -1,8 +1,5 @@
 // This example demonstrates how to use the sanitization module in Aegis
 // to clean and validate user inputs before processing them.
-//
-// It shows how to use the sanitization module to clean and validate user inputs
-// before processing them.
 package main
 
 import (
@@ -11,9 +8,6 @@ import (
 
 	"github.com/theinventorylib/aegis/core"
 )
-
-// This example demonstrates how to use the sanitization module in Aegis
-// to clean and validate user inputs before processing them.
 
 func main() {
 	fmt.Println("=== Aegis Sanitization Examples ===")
@@ -48,50 +42,43 @@ func main() {
 	fmt.Printf("   Dangerous URL Input: %q\n", dangerousURL)
 	fmt.Printf("   Dangerous URL Output: %q (blocked)\n\n", core.SanitizeURL(dangerousURL))
 
-	// Example 5: Sanitize filenames
-	fmt.Println("5. Sanitizing Filenames:")
-	filename := "../../etc/passwd"
-	sanitizedFilename := core.SanitizeFilename(filename)
-	fmt.Printf("   Input:  %q\n", filename)
-	fmt.Printf("   Output: %q\n\n", sanitizedFilename)
-
-	// Example 6: Sanitize HTML content
-	fmt.Println("6. Sanitizing HTML Content:")
+	// Example 5: Strip HTML from user content. SanitizeString removes tags
+	// (and script bodies) when StripHTML is set, the default.
+	fmt.Println("5. Stripping HTML Content:")
 	htmlContent := "<script>alert('xss')</script><p>Hello World</p>"
-	sanitizedHTML := core.SanitizeHTML(htmlContent)
+	sanitizedHTML := core.SanitizeString(htmlContent, nil)
 	fmt.Printf("   Input:  %q\n", htmlContent)
 	fmt.Printf("   Output: %q\n\n", sanitizedHTML)
 
-	// Example 7: Sanitize multiline text
-	fmt.Println("7. Sanitizing Multiline Text:")
+	// Example 6: Sanitize multiline text
+	fmt.Println("6. Sanitizing Multiline Text:")
 	multilineText := "Line 1\r\nLine 2<script>alert('xss')</script>\nLine 3"
 	sanitizedMultiline := core.SanitizeMultiline(multilineText, 0)
 	fmt.Printf("   Input:  %q\n", multilineText)
 	fmt.Printf("   Output: %q\n\n", sanitizedMultiline)
 
-	// Example 8: Custom sanitization configuration
-	fmt.Println("8. Custom Sanitization Configuration:")
+	// Example 7: Custom sanitization configuration
+	fmt.Println("7. Custom Sanitization Configuration:")
 	customConfig := &core.SanitizationConfig{
-		MaxLength:           20,
-		AllowUnicode:        false,
-		StripHTML:           true,
-		NormalizeWhitespace: true,
-		TrimWhitespace:      true,
+		MaxLength:      20,
+		AllowUnicode:   false,
+		StripHTML:      true,
+		TrimWhitespace: true,
 	}
 	longText := "This is a very long text with 世界 Unicode characters"
 	sanitizedCustom := core.SanitizeString(longText, customConfig)
 	fmt.Printf("   Input:  %q\n", longText)
 	fmt.Printf("   Output: %q (limited to 20 chars, no Unicode)\n\n", sanitizedCustom)
 
-	// Example 9: Phone number sanitization
-	fmt.Println("9. Sanitizing Phone Numbers:")
+	// Example 8: Phone number sanitization
+	fmt.Println("8. Sanitizing Phone Numbers:")
 	phone := "+1 (555) 123-4567"
 	sanitizedPhone := core.SanitizePhoneNumber(phone)
 	fmt.Printf("   Input:  %q\n", phone)
 	fmt.Printf("   Output: %q\n\n", sanitizedPhone)
 
-	// Example 10: Practical user registration flow
-	fmt.Println("10. Practical User Registration Flow:")
+	// Example 9: Practical user registration flow
+	fmt.Println("9. Practical User Registration Flow:")
 	registerUser("  Alice  ", "  Alice@EXAMPLE.com  ", "alice_123!@#")
 }
 

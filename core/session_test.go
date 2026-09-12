@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,11 +18,11 @@ func TestNewSessionService(t *testing.T) {
 	config := DefaultSessionConfig()
 
 	// When
-	service := NewSessionService(mockUserStore, mockSessionStore, config, nil, nil)
+	service := newSessionService(mockUserStore, mockSessionStore, config, nil, nil)
 
 	// Then
 	if service == nil {
-		t.Fatal("NewSessionService should return a non-nil service")
+		t.Fatal("newSessionService should return a non-nil service")
 	}
 }
 
@@ -32,11 +33,11 @@ func TestNewSessionService_DefaultConfig(t *testing.T) {
 	mockSessionStore := &mockSessionStore{}
 
 	// When - nil config should use defaults
-	service := NewSessionService(mockUserStore, mockSessionStore, nil, nil, nil)
+	service := newSessionService(mockUserStore, mockSessionStore, nil, nil, nil)
 
 	// Then
 	if service == nil {
-		t.Fatal("NewSessionService should return a non-nil service with nil config")
+		t.Fatal("newSessionService should return a non-nil service with nil config")
 	}
 	if service.GetConfig() == nil {
 		t.Error("Service should have a default config")
@@ -49,7 +50,7 @@ func TestSessionService_CookieManager(t *testing.T) {
 	mockUserStore := &mockUserStore{}
 	mockSessionStore := &mockSessionStore{}
 	config := DefaultSessionConfig()
-	service := NewSessionService(mockUserStore, mockSessionStore, config, nil, nil)
+	service := newSessionService(mockUserStore, mockSessionStore, config, nil, nil)
 
 	// When
 	cookieManager := service.GetCookieManager()
@@ -84,7 +85,7 @@ func TestDefaultSessionConfig(t *testing.T) {
 func TestGenerateRandomToken(t *testing.T) {
 	// Generate tokens multiple times
 	tokens := make(map[string]bool)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		token := GenerateSecureToken()
 		if token == "" {
 			t.Error("Generated token should not be empty")
@@ -116,12 +117,10 @@ func TestGenerateRandomToken_Concurrent(t *testing.T) {
 	tokens := make(chan string, 500)
 
 	// When - Generate tokens concurrently
-	for i := 0; i < 500; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 500 {
+		wg.Go(func() {
 			tokens <- GenerateSecureToken()
-		}()
+		})
 	}
 	wg.Wait()
 	close(tokens)
@@ -177,7 +176,7 @@ func TestSessionService_BearerAuth(t *testing.T) {
 	mockUserStore := &mockUserStore{}
 	mockSessionStore := &mockSessionStore{}
 	config := DefaultSessionConfig()
-	service := NewSessionService(mockUserStore, mockSessionStore, config, nil, nil)
+	service := newSessionService(mockUserStore, mockSessionStore, config, nil, nil)
 
 	// Initially disabled
 	if service.IsBearerAuthEnabled() {
@@ -197,7 +196,7 @@ func TestSessionService_BearerAuth(t *testing.T) {
 func TestSessionIDGeneration(t *testing.T) {
 	// Generate multiple session IDs
 	ids := make(map[string]bool)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id := GenerateID()
 		if id == "" {
 			t.Error("Generated ID should not be empty")
@@ -384,7 +383,14 @@ func (m *mockSessionStore) GetByUserID(_ context.Context, userID string, offset,
 			sessions = append(sessions, session)
 		}
 	}
-	// Note: Proper in-memory offset and limit logic skipped here for simplicity in tests
+	// Apply offset/limit like the real store so paging walks terminate.
+	if offset >= len(sessions) {
+		return nil, nil
+	}
+	sessions = sessions[offset:]
+	if limit > 0 && limit < len(sessions) {
+		sessions = sessions[:limit]
+	}
 	return sessions, nil
 }
 
@@ -453,4 +459,101 @@ func (m *mockSessionStore) CleanupExpired(_ context.Context) error {
 		}
 	}
 	return nil
+}
+
+func TestForEachUserSession(t *testing.T) {
+	store := &mockSessionStore{}
+	for i := range 3 {
+		_ = store.Create(context.Background(), auth.Session{ID: GenerateID(), UserID: "u1", Token: GenerateID()})
+		_ = i
+	}
+	svc := newSessionService(&mockUserStore{}, store, nil, nil, nil)
+
+	var seen []string
+	err := svc.forEachUserSession(context.Background(), "u1", func(s *auth.Session) error {
+		seen = append(seen, s.ID)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("forEachUserSession: %v", err)
+	}
+	if len(seen) != 3 {
+		t.Fatalf("expected 3 sessions, saw %d", len(seen))
+	}
+
+	// errStopPage halts the walk without erroring.
+	seen = nil
+	err = svc.forEachUserSession(context.Background(), "u1", func(s *auth.Session) error {
+		seen = append(seen, s.ID)
+		return errStopPage
+	})
+	if err != nil {
+		t.Fatalf("errStopPage must not surface: %v", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("expected early stop after 1 session, saw %d", len(seen))
+	}
+}
+
+func TestMigrateHashSessionTokensForUser_TerminatesWhenAlreadyHashed(t *testing.T) {
+	store := &mockSessionStore{}
+	hashed := strings.Repeat("a", 64)
+	if err := store.Create(context.Background(), auth.Session{
+		ID: "s1", UserID: "u1", Token: hashed, RefreshToken: hashed,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc := newSessionService(&mockUserStore{}, store, nil, nil, nil)
+
+	// Must return immediately (previously looped forever once all rows hashed).
+	migrated, err := svc.MigrateHashSessionTokensForUser(context.Background(), "u1")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if migrated != 0 {
+		t.Errorf("migrated = %d, want 0", migrated)
+	}
+}
+
+func TestMigrateHashSessionTokensForUser_MigratesPlaintext(t *testing.T) {
+	store := &mockSessionStore{}
+	if err := store.Create(context.Background(), auth.Session{
+		ID: "s1", UserID: "u1", Token: "plaintext-token", RefreshToken: "plaintext-refresh",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc := newSessionService(&mockUserStore{}, store, nil, nil, nil)
+
+	migrated, err := svc.MigrateHashSessionTokensForUser(context.Background(), "u1")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if migrated != 1 {
+		t.Errorf("migrated = %d, want 1", migrated)
+	}
+	rows, _ := store.GetByUserID(context.Background(), "u1", 0, 10)
+	if len(rows) != 1 || !isHashedToken(rows[0].Token) || !isHashedToken(rows[0].RefreshToken) {
+		t.Errorf("row not hashed after migration: %+v", rows)
+	}
+}
+
+func TestMigrateHashSessionTokensForUser_MigratesAllPages(t *testing.T) {
+	store := &mockSessionStore{}
+	const n = 150 // more than sessionPageSize
+	for range n {
+		if err := store.Create(context.Background(), auth.Session{
+			ID: GenerateID(), UserID: "u1", Token: GenerateRandomSuffix(20), RefreshToken: GenerateRandomSuffix(20),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc := newSessionService(&mockUserStore{}, store, nil, nil, nil)
+
+	migrated, err := svc.MigrateHashSessionTokensForUser(context.Background(), "u1")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if migrated != n {
+		t.Errorf("migrated = %d, want %d", migrated, n)
+	}
 }

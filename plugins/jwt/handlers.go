@@ -102,7 +102,7 @@ func (h *Handler) handleGetAccessToken(w http.ResponseWriter, r *http.Request) {
 // handleRefreshToken generates a new access token using a refresh token.
 func (h *Handler) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	var req RefreshTokenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
@@ -110,8 +110,10 @@ func (h *Handler) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sanitize inputs
-	req.RefreshToken = core.SanitizeString(req.RefreshToken, nil)
+	// Trim whitespace only — the token is parsed, never stored or rendered,
+	// and JWTs routinely exceed the default SanitizeString length limit
+	// (which would silently truncate them and break refresh).
+	req.RefreshToken = strings.TrimSpace(req.RefreshToken)
 
 	// Use plugin RefreshTokens
 	tokenPair, err := h.plugin.RefreshTokens(req.RefreshToken)
@@ -130,7 +132,9 @@ func (h *Handler) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleLogout invalidates the current access token.
+// handleLogout invalidates the current token. JWTs are blacklisted; opaque
+// session tokens (from the session cookie) are deleted via the session
+// service, since they are not JWTs and cannot be parsed/blacklisted.
 func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	// Get current user from context
 	user, err := core.GetUser(r.Context())
@@ -150,7 +154,12 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	} else {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader != "" {
-			token = strings.TrimPrefix(authHeader, "Bearer ")
+			// Scheme is case-insensitive per RFC 7235; accept "bearer".
+			if len(authHeader) > 7 && strings.EqualFold(authHeader[:7], "Bearer ") {
+				token = authHeader[7:]
+			} else {
+				token = authHeader
+			}
 		}
 	}
 
@@ -162,13 +171,24 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use plugin Logout
-	if err := h.plugin.Logout(token); err != nil {
-		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
-			Success: false,
-			Error:   "Failed to logout",
-		})
-		return
+	// A JWT has the compact JWS form (header.payload.signature); opaque
+	// session tokens do not. Route each kind to its own invalidation path.
+	if strings.Count(token, ".") == 2 {
+		if err := h.plugin.Logout(token); err != nil {
+			core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+				Success: false,
+				Error:   "Failed to logout",
+			})
+			return
+		}
+	} else {
+		if err := h.plugin.sessionService.DeleteSession(r.Context(), token); err != nil {
+			core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+				Success: false,
+				Error:   "Failed to logout",
+			})
+			return
+		}
 	}
 
 	core.WriteJSON(w, http.StatusOK, &core.Response{
@@ -202,6 +222,11 @@ func (h *Handler) handleJWKS(w http.ResponseWriter, r *http.Request) {
 
 	set := jwk.NewSet()
 	for _, dbKey := range keys {
+		// Only expose access-token signing keys. Refresh keys are stored
+		// under a distinct "use" tag and must never be published.
+		if dbKey.Use != useSigAccess {
+			continue
+		}
 		key, err := jwk.ParseKey(dbKey.KeyData)
 		if err != nil {
 			continue

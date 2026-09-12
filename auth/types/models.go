@@ -102,7 +102,7 @@ type Account struct {
 	RefreshToken string `json:"-"`
 
 	// ExpiresAt indicates when the access token expires (OAuth providers only)
-	ExpiresAt time.Time `json:"expiresAt,omitempty"`
+	ExpiresAt time.Time `json:"expiresAt"`
 
 	// CreatedAt is when this account was created
 	CreatedAt time.Time `json:"createdAt"`

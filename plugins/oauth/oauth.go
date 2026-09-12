@@ -630,16 +630,15 @@ func (p *Plugin) BeginAuth(w http.ResponseWriter, r *http.Request, providerName 
 //   - State cookie is cleared after validation (one-time use)
 //   - Access tokens stored in database (not cookies)
 func (p *Plugin) CompleteAuth(ctx context.Context, w http.ResponseWriter, r *http.Request) (*oauthtypes.User, *auth.Session, error) {
-	// Get provider name from query or path
-	providerName := r.URL.Query().Get("provider")
-	if providerName == "" {
-		// Try to get from stored state
-		stateData, err := p.stateStore.GetState(r)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get provider: %w", err)
-		}
-		providerName = stateData.Provider
+	// Validate state from callback. The signed state cookie is the trusted
+	// artifact: the provider identity always comes from it, never from the
+	// (client-controlled) query string or path.
+	callbackState := r.URL.Query().Get("state")
+	stateData, err := p.stateStore.ValidateState(r, callbackState)
+	if err != nil {
+		return nil, nil, fmt.Errorf("state validation failed: %w", err)
 	}
+	providerName := stateData.Provider
 
 	// Sanitize provider name
 	providerName = core.SanitizeString(providerName, nil)
@@ -647,13 +646,6 @@ func (p *Plugin) CompleteAuth(ctx context.Context, w http.ResponseWriter, r *htt
 	provider, err := goth.GetProvider(providerName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("provider %s not found: %w", providerName, err)
-	}
-
-	// Validate state from callback
-	callbackState := r.URL.Query().Get("state")
-	stateData, err := p.stateStore.ValidateState(r, callbackState)
-	if err != nil {
-		return nil, nil, fmt.Errorf("state validation failed: %w", err)
 	}
 
 	// Clear the state cookie
@@ -691,7 +683,7 @@ func (p *Plugin) CompleteAuth(ctx context.Context, w http.ResponseWriter, r *htt
 	oauthUser := GothUserToUser(gothUser)
 
 	// Get or create Aegis user
-	user, err := p.getOrCreateUser(ctx, gothUser.Provider, oauthUser)
+	user, err := p.getOrCreateUser(ctx, gothUser.Provider, oauthUser, providerVerifiedEmail(gothUser))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get or create user: %w", err)
 	}
@@ -715,6 +707,9 @@ func (p *Plugin) GetStateStore() *StateStore {
 // This method implements the account matching logic:
 //  1. Check if OAuth connection exists → return linked user
 //  2. Check if user with same email exists → link OAuth to existing user
+//     (only when the provider verified the email — auto-linking on an
+//     unverified email would let an attacker take over an existing account
+//     by registering that email at the provider)
 //  3. No existing user → create new user and link OAuth
 //
 // Account Linking Strategy:
@@ -732,11 +727,12 @@ func (p *Plugin) GetStateStore() *StateStore {
 //   - ctx: Request context
 //   - provider: Provider name ("google", "github", etc.)
 //   - oauthUser: User data from OAuth provider
+//   - emailVerified: Whether the provider verified the email address
 //
 // Returns:
 //   - *User: Aegis user (existing or newly created)
 //   - error: Database query or insert error
-func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser *oauthtypes.User) (*oauthtypes.User, error) {
+func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser *oauthtypes.User, emailVerified bool) (*oauthtypes.User, error) {
 	// Check if OAuth connection already exists
 	connection, err := p.store.GetConnectionByProviderUserID(ctx, provider, oauthUser.ID)
 	if err == nil && connection != nil {
@@ -759,6 +755,11 @@ func (p *Plugin) getOrCreateUser(ctx context.Context, provider string, oauthUser
 			if err != nil {
 				return nil, fmt.Errorf("failed to create user: %w", err)
 			}
+		} else if !emailVerified {
+			// An account already owns this email and the provider did not
+			// verify it: refuse instead of linking (prevents account
+			// takeover via unverified-email providers).
+			return nil, fmt.Errorf("email not verified by provider; cannot link to existing account")
 		}
 		// User exists with this email, will link OAuth to existing account
 	} else {

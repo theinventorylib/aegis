@@ -78,13 +78,27 @@ import (
 
 // Config holds optional configuration for the organizations plugin.
 type Config struct {
-	// CustomOrgRoles extends the set of valid org-level roles beyond the
-	// built-ins (owner, admin, member). When set, schema validation accepts
-	// these roles in addition to the built-in set.
+	// OrgRoles overrides or extends the built-in organization roles
+	// (owner, admin, member). Each key is an assignable role; its
+	// Permissions determine what the role can do. A key that matches a
+	// built-in replaces that role's permissions; new keys add custom roles.
+	// The owner role is never assignable via the member-management endpoints.
+	OrgRoles map[string]RoleDefinition
+
+	// TeamRoles overrides or extends the built-in team roles (lead, member).
+	// Semantics are the same as OrgRoles.
+	TeamRoles map[string]RoleDefinition
+
+	// CustomOrgRoles extends the set of assignable org roles.
+	//
+	// Deprecated: use OrgRoles, which also assigns permissions. Roles listed
+	// here are granted the same read-only permissions as "member".
 	CustomOrgRoles []string
 
-	// CustomTeamRoles extends the set of valid team-level roles beyond the
-	// built-ins (lead, member).
+	// CustomTeamRoles extends the set of assignable team roles.
+	//
+	// Deprecated: use TeamRoles. Roles listed here are granted the same
+	// read-only permissions as a team "member".
 	CustomTeamRoles []string
 
 	// InvitationSubject is the subject line for invitation emails.
@@ -128,6 +142,8 @@ type Plugin struct {
 	aegis          plugins.Aegis
 	emailSender    func(ctx context.Context, to, subject, body string) error
 	config         Config
+	orgRoles       map[string]RoleDefinition
+	teamRoles      map[string]RoleDefinition
 }
 
 // New creates a new organizations plugin for multi-tenancy management.
@@ -156,6 +172,8 @@ func New(cfg *Config, store orgtypes.OrganizationStore, dialect ...plugins.Diale
 			InvitationBodyTemplate: "You have been invited.\n\nAccept your invitation here: %s",
 		},
 	}
+	var orgRoles, teamRoles map[string]RoleDefinition
+	var customOrg, customTeam []string
 	if cfg != nil {
 		if cfg.InvitationSubject != "" {
 			p.config.InvitationSubject = cfg.InvitationSubject
@@ -163,11 +181,28 @@ func New(cfg *Config, store orgtypes.OrganizationStore, dialect ...plugins.Diale
 		if cfg.InvitationBodyTemplate != "" {
 			p.config.InvitationBodyTemplate = cfg.InvitationBodyTemplate
 		}
-		if len(cfg.CustomOrgRoles) > 0 {
-			p.config.CustomOrgRoles = cfg.CustomOrgRoles
+		p.config.OrgRoles = cfg.OrgRoles
+		p.config.TeamRoles = cfg.TeamRoles
+		p.config.CustomOrgRoles = cfg.CustomOrgRoles
+		p.config.CustomTeamRoles = cfg.CustomTeamRoles
+		orgRoles = cfg.OrgRoles
+		teamRoles = cfg.TeamRoles
+		customOrg = cfg.CustomOrgRoles
+		customTeam = cfg.CustomTeamRoles
+	}
+	p.orgRoles = resolveRoles(defaultOrgRoles(), orgRoles)
+	p.teamRoles = resolveRoles(defaultTeamRoles(), teamRoles)
+
+	// Deprecated Custom*Roles: register the names as read-only roles so they
+	// stay assignable. OrgRoles/TeamRoles take precedence when both are set.
+	for _, role := range customOrg {
+		if _, exists := p.orgRoles[role]; !exists {
+			p.orgRoles[role] = RoleDefinition{Permissions: []Permission{PermOrgView, PermMemberView, PermTeamView}}
 		}
-		if len(cfg.CustomTeamRoles) > 0 {
-			p.config.CustomTeamRoles = cfg.CustomTeamRoles
+	}
+	for _, role := range customTeam {
+		if _, exists := p.teamRoles[role]; !exists {
+			p.teamRoles[role] = RoleDefinition{Permissions: []Permission{PermTeamView}}
 		}
 	}
 	return p
@@ -924,21 +959,13 @@ func (p *Plugin) CanAccessTeam(ctx context.Context, userID, teamID string) (bool
 
 // IsOrganizationMember checks if a user is a member of an organization.
 //
-// Deprecated: Use HasOrgRole instead.
+// Deprecated: Use HasOrgPermission or HasOrgRole instead.
 //
-// This method is used by middleware to enforce organization access control.
-// Returns true only if the user has any role (owner, admin, or member).
-//
-// Parameters:
-//   - ctx: Request context
-//   - userID: User ID to check
-//   - orgID: Organization ID
-//
-// Returns:
-//   - bool: true if user is a member with any role
+// Returns true for any membership regardless of role, so custom roles count as
+// members. A store error (including "not a member") returns false.
 func (p *Plugin) IsOrganizationMember(ctx context.Context, userID, orgID string) bool {
-	ok, err := p.HasOrgRole(ctx, userID, orgID, orgtypes.RoleOwner, orgtypes.RoleAdmin, orgtypes.RoleMember)
-	return err == nil && ok
+	_, err := p.store.GetMember(ctx, userID, orgID)
+	return err == nil
 }
 
 // IsOwnerOrAdmin checks if a user is an owner or admin of an organization.
@@ -1145,8 +1172,7 @@ func generateInvitationToken() (raw string, hash string, err error) {
 		return "", "", err
 	}
 	raw = base64.RawURLEncoding.EncodeToString(buf)
-	sum := sha256.Sum256([]byte(raw))
-	hash = base64.RawURLEncoding.EncodeToString(sum[:])
+	hash = hashTokenForLookup(raw)
 	return raw, hash, nil
 }
 
@@ -1258,8 +1284,16 @@ func (p *Plugin) AcceptInvitation(ctx context.Context, tokenHash, userID string)
 
 	now := time.Now()
 
+	// Team-level invitations carry a team role; the user joins the org as a
+	// base member and the team with the invited role. Org-level invitations
+	// carry the org role directly.
+	orgRole := inv.Role
+	if inv.TeamID != nil && *inv.TeamID != "" {
+		orgRole = orgtypes.RoleMember
+	}
+
 	// Create member record
-	if err := p.store.CreateMember(ctx, core.GenerateID(), userID, inv.OrganizationID, inv.Role, now, now); err != nil {
+	if err := p.store.CreateMember(ctx, core.GenerateID(), userID, inv.OrganizationID, orgRole, now, now); err != nil {
 		return nil, err
 	}
 
@@ -1322,8 +1356,7 @@ func (p *Plugin) DeclineInvitation(ctx context.Context, tokenHash string) (*orgt
 //   - *Invitation: Invitation details (TokenHash is empty)
 //   - error: If token is invalid, expired, or already processed
 func (p *Plugin) VerifyInvitation(ctx context.Context, rawToken string) (*orgtypes.Invitation, error) {
-	sum := sha256.Sum256([]byte(rawToken))
-	tokenHash := base64.RawURLEncoding.EncodeToString(sum[:])
+	tokenHash := hashTokenForLookup(rawToken)
 
 	inv, err := p.store.GetInvitationByTokenHash(ctx, tokenHash)
 	if err != nil {
@@ -1398,3 +1431,13 @@ var _ plugins.UserEnricher = (*Plugin)(nil)
 
 // Ensure Plugin implements Plugin
 var _ plugins.Plugin = (*Plugin)(nil)
+
+// hashTokenForLookup hashes a raw invitation token into the lookup form
+// stored in invitation.token_hash (sha256, base64url-encoded). This is the
+// scheme organizations has always used; changing it would invalidate
+// outstanding invitations, so keep it stable. Single owner of the pattern
+// previously duplicated in four call sites.
+func hashTokenForLookup(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}

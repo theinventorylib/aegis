@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/theinventorylib/aegis/core"
@@ -149,7 +148,7 @@ func (a *Plugin) updateRoleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req admintypes.UpdateRoleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
@@ -205,7 +204,7 @@ func (a *Plugin) banUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req admintypes.BanUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",

@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
 	"github.com/theinventorylib/aegis/plugins"
 	emailotptypes "github.com/theinventorylib/aegis/plugins/emailotp/types"
 )
@@ -84,15 +83,13 @@ func buildUser(r emailUserRow) *emailotptypes.User {
 		avatar = r.Avatar.String
 	}
 	return &emailotptypes.User{
-		User: auth.User{
-			ID:        r.ID,
-			Name:      r.Name,
-			Avatar:    avatar,
-			Disabled:  r.Disabled,
-			CreatedAt: parseTime(r.CreatedAt),
-			UpdatedAt: parseTime(r.UpdatedAt),
-			Email:     *ep,
-		},
+		ID:            r.ID,
+		Name:          r.Name,
+		Avatar:        avatar,
+		Disabled:      r.Disabled,
+		CreatedAt:     parseTime(r.CreatedAt),
+		UpdatedAt:     parseTime(r.UpdatedAt),
+		Email:         *ep,
 		EmailVerified: r.EmailVerified,
 	}
 }

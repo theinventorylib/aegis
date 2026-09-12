@@ -156,7 +156,7 @@ func exportCmd() {
 	// Parse plugin names
 	var pluginNames []string
 	if *pluginsStr != "" {
-		for _, name := range strings.Split(*pluginsStr, ",") {
+		for name := range strings.SplitSeq(*pluginsStr, ",") {
 			name = strings.TrimSpace(name)
 			if name != "" {
 				pluginNames = append(pluginNames, name)

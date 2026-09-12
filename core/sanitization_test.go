@@ -323,9 +323,9 @@ func TestSanitizeFilename(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := SanitizeFilename(tt.input)
+			result := sanitizeFilename(tt.input)
 			if result != tt.expected {
-				t.Errorf("SanitizeFilename() = %q, want %q", result, tt.expected)
+				t.Errorf("sanitizeFilename() = %q, want %q", result, tt.expected)
 			}
 		})
 	}
@@ -366,9 +366,9 @@ func TestSanitizeHTML(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := SanitizeHTML(tt.input)
+			result := sanitizeHTML(tt.input)
 			if result != tt.expected {
-				t.Errorf("SanitizeHTML() = %q, want %q", result, tt.expected)
+				t.Errorf("sanitizeHTML() = %q, want %q", result, tt.expected)
 			}
 		})
 	}
@@ -414,9 +414,9 @@ func TestSanitizeSQL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := SanitizeSQL(tt.input)
+			result := sanitizeSQL(tt.input)
 			if result != tt.expected {
-				t.Errorf("SanitizeSQL() = %q, want %q", result, tt.expected)
+				t.Errorf("sanitizeSQL() = %q, want %q", result, tt.expected)
 			}
 		})
 	}
@@ -567,9 +567,9 @@ func TestStripTags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := StripTags(tt.input)
+			result := stripTags(tt.input)
 			if result != tt.expected {
-				t.Errorf("StripTags() = %q, want %q", result, tt.expected)
+				t.Errorf("stripTags() = %q, want %q", result, tt.expected)
 			}
 		})
 	}
@@ -610,9 +610,9 @@ func TestNormalizeWhitespace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := NormalizeWhitespace(tt.input)
+			result := normalizeWhitespace(tt.input)
 			if result != tt.expected {
-				t.Errorf("NormalizeWhitespace() = %q, want %q", result, tt.expected)
+				t.Errorf("normalizeWhitespace() = %q, want %q", result, tt.expected)
 			}
 		})
 	}
@@ -663,6 +663,6 @@ func BenchmarkSanitizeUsername(b *testing.B) {
 func BenchmarkSanitizeHTML(b *testing.B) {
 	input := "<div><p>Hello <b>World</b></p></div>"
 	for i := 0; i < b.N; i++ {
-		SanitizeHTML(input)
+		sanitizeHTML(input)
 	}
 }

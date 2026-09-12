@@ -16,7 +16,7 @@ type User struct {
 	CreatedAt  string         `json:"created_at"`
 	UpdatedAt  string         `json:"updated_at"`
 	Disabled   int32          `json:"disabled"`
-	Role       sql.NullString `json:"role"`
+	Role       string         `json:"role"`
 	Banned     int32          `json:"banned"`
 	BanReason  sql.NullString `json:"ban_reason"`
 	BanExpiry  sql.NullString `json:"ban_expiry"`

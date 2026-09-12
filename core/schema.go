@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // SchemaValidator provides database schema validation for Aegis.
@@ -130,9 +131,9 @@ func (v *SchemaValidator) validateRequirement(ctx context.Context, req SchemaReq
 //
 // tableName must be a valid SQL identifier ([A-Za-z_][A-Za-z0-9_]*).
 // This panics on malformed identifiers to fail fast at startup —
-// see SanitizeSQLIdentifier for rationale.
+// see sanitizeSQLIdentifier for rationale.
 func ValidateTableExists(tableName string) SchemaRequirement {
-	tableName = SanitizeSQLIdentifier(tableName)
+	tableName = sanitizeSQLIdentifier(tableName)
 	return SchemaRequirement{
 		Name: fmt.Sprintf("Table '%s' exists", tableName),
 		Query: fmt.Sprintf(
@@ -154,8 +155,8 @@ func ValidateTableExists(tableName string) SchemaRequirement {
 // PostgreSQL and MySQL but not by SQLite. SQLite callers should use
 // ValidateColumnExistsForDialect with DialectSQLite (see schema_dialects.go).
 func ValidateColumnExists(tableName, columnName string) SchemaRequirement {
-	tableName = SanitizeSQLIdentifier(tableName)
-	columnName = SanitizeSQLIdentifier(columnName)
+	tableName = sanitizeSQLIdentifier(tableName)
+	columnName = sanitizeSQLIdentifier(columnName)
 	return SchemaRequirement{
 		Name: fmt.Sprintf("Column '%s.%s' exists", tableName, columnName),
 		Query: fmt.Sprintf(
@@ -184,9 +185,6 @@ type ColumnSpec struct {
 	Nullable *bool
 }
 
-// BoolPtr is a tiny convenience for building ColumnSpec.Nullable inline.
-func BoolPtr(b bool) *bool { return &b }
-
 // ValidateColumnSpec creates a requirement that checks not just the
 // existence of a column, but also (optionally) its data type and
 // nullability. It is the recommended replacement for
@@ -197,8 +195,8 @@ func BoolPtr(b bool) *bool { return &b }
 // rows, which the validator interprets as a failure with a descriptive
 // message.
 func ValidateColumnSpec(tableName, columnName string, spec ColumnSpec) SchemaRequirement {
-	tableName = SanitizeSQLIdentifier(tableName)
-	columnName = SanitizeSQLIdentifier(columnName)
+	tableName = sanitizeSQLIdentifier(tableName)
+	columnName = sanitizeSQLIdentifier(columnName)
 	conditions := []string{
 		fmt.Sprintf("table_name = '%s'", tableName),
 		fmt.Sprintf("column_name = '%s'", columnName),
@@ -232,25 +230,25 @@ func ValidateColumnSpec(tableName, columnName string, spec ColumnSpec) SchemaReq
 // joinAnd / joinComma are tiny local helpers to avoid pulling strings into
 // this file for two call sites.
 func joinAnd(parts []string) string {
-	out := ""
+	var out strings.Builder
 	for i, p := range parts {
 		if i > 0 {
-			out += " AND "
+			out.WriteString(" AND ")
 		}
-		out += p
+		out.WriteString(p)
 	}
-	return out
+	return out.String()
 }
 
 func joinComma(parts []string) string {
-	out := ""
+	var out strings.Builder
 	for i, p := range parts {
 		if i > 0 {
-			out += ", "
+			out.WriteString(", ")
 		}
-		out += p
+		out.WriteString(p)
 	}
-	return out
+	return out.String()
 }
 
 // SchemaRequirements returns the schema requirements for core Aegis tables.

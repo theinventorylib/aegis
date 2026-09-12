@@ -24,7 +24,7 @@ const (
 func ValidateTableExistsForDialect(dialect, tableName string) SchemaRequirement {
 	switch strings.ToLower(dialect) {
 	case SchemaDialectSQLite:
-		tableName = SanitizeSQLIdentifier(tableName)
+		tableName = sanitizeSQLIdentifier(tableName)
 		return SchemaRequirement{
 			Name:        fmt.Sprintf("Table '%s' exists", tableName),
 			Table:       tableName,
@@ -44,8 +44,8 @@ func ValidateTableExistsForDialect(dialect, tableName string) SchemaRequirement 
 func ValidateColumnExistsForDialect(dialect, tableName, columnName string) SchemaRequirement {
 	switch strings.ToLower(dialect) {
 	case SchemaDialectSQLite:
-		tableName = SanitizeSQLIdentifier(tableName)
-		columnName = SanitizeSQLIdentifier(columnName)
+		tableName = sanitizeSQLIdentifier(tableName)
+		columnName = sanitizeSQLIdentifier(columnName)
 		return SchemaRequirement{
 			Name:  fmt.Sprintf("Column '%s.%s' exists", tableName, columnName),
 			Table: tableName,
@@ -74,8 +74,8 @@ func ValidateColumnSpecForDialect(dialect, tableName, columnName string, spec Co
 		return ValidateColumnSpec(tableName, columnName, spec)
 	}
 
-	tableName = SanitizeSQLIdentifier(tableName)
-	columnName = SanitizeSQLIdentifier(columnName)
+	tableName = sanitizeSQLIdentifier(tableName)
+	columnName = sanitizeSQLIdentifier(columnName)
 
 	conditions := []string{fmt.Sprintf("name='%s'", columnName)}
 	descParts := []string{fmt.Sprintf("column '%s.%s'", tableName, columnName)}

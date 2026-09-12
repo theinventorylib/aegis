@@ -1,7 +1,6 @@
 package oauth
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -87,15 +86,23 @@ func (h *Handlers) callbackHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// logoutHandler clears OAuth state and session cookies.
-func (h *Handlers) logoutHandler(w http.ResponseWriter, _ *http.Request) {
+// logoutHandler clears OAuth state and session cookies and destroys the
+// server-side session so a stolen token cannot outlive logout.
+func (h *Handlers) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	// Clear OAuth state cookie if present
 	if h.plugin.stateStore != nil {
 		h.plugin.stateStore.ClearState(w)
 	}
 
-	// Clear session cookie using CookieManager
+	// Destroy the server-side session, then clear the cookie
 	if h.plugin.sessionService != nil {
+		if sessionToken, err := h.plugin.sessionService.GetCookieManager().GetSessionCookie(r); err == nil && sessionToken != "" {
+			if err := h.plugin.sessionService.DeleteSession(r.Context(), sessionToken); err != nil {
+				if h.plugin.logger != nil {
+					h.plugin.logger.Error("oauth: failed to delete session on logout", "error", err)
+				}
+			}
+		}
 		h.plugin.sessionService.GetCookieManager().ClearSessionCookie(w)
 	}
 
@@ -162,7 +169,7 @@ func (h *Handlers) linkAccountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req oauthtypes.LinkAccountRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",

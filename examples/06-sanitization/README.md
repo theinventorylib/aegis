@@ -6,10 +6,9 @@ This example demonstrates how to use Aegis's sanitization module to clean and va
 
 The sanitization module provides comprehensive input cleaning functions to prevent:
 - **XSS (Cross-Site Scripting)** attacks
-- **SQL Injection** attacks
-- **Directory Traversal** attacks
 - **Null Byte Injection**
 - **Control Character Injection**
+- **Dangerous URL schemes**
 
 ## Features Demonstrated
 
@@ -17,12 +16,11 @@ The sanitization module provides comprehensive input cleaning functions to preve
 2. **Email Sanitization** - Normalize email addresses to lowercase, remove whitespace
 3. **Username Sanitization** - Allow only safe characters, enforce naming conventions
 4. **URL Sanitization** - Block dangerous URL schemes (javascript:, data:, etc.)
-5. **Filename Sanitization** - Prevent directory traversal and dangerous characters
-6. **HTML Content Sanitization** - Escape HTML entities to prevent XSS
-7. **Multiline Text Sanitization** - Clean text areas while preserving formatting
-8. **Custom Configuration** - Configure sanitization behavior for specific use cases
-9. **Phone Number Sanitization** - Clean phone numbers to consistent format
-10. **Practical Integration** - Real-world user registration flow example
+5. **HTML Content Stripping** - Remove HTML tags and script bodies via `SanitizeString`
+6. **Multiline Text Sanitization** - Clean text areas while preserving formatting
+7. **Custom Configuration** - Configure sanitization behavior for specific use cases
+8. **Phone Number Sanitization** - Clean phone numbers to consistent format
+9. **Practical Integration** - Real-world user registration flow example
 
 ## Running the Example
 
@@ -51,11 +49,10 @@ username := core.SanitizeUsername(usernameInput, 50)
 
 ```go
 config := &core.SanitizationConfig{
-    MaxLength:           100,
-    AllowUnicode:        true,
-    StripHTML:           true,
-    NormalizeWhitespace: true,
-    TrimWhitespace:      true,
+    MaxLength:      100,
+    AllowUnicode:   true,
+    StripHTML:      true,
+    TrimWhitespace: true,
 }
 
 sanitized := core.SanitizeString(input, config)
@@ -94,7 +91,6 @@ user.Email = email
    - `SanitizeEmail()` for emails
    - `SanitizeUsername()` for usernames
    - `SanitizeURL()` for URLs
-   - `SanitizeFilename()` for file uploads
    - `SanitizeMultiline()` for text areas
 
 5. **Never Trust User Input** - Always sanitize, even from authenticated users
@@ -103,17 +99,12 @@ user.Email = email
 
 | Function | Purpose | Example |
 |----------|---------|---------|
-| `SanitizeString()` | General text cleaning | User names, descriptions |
+| `SanitizeString()` | General text cleaning + HTML stripping | User names, descriptions |
 | `SanitizeEmail()` | Email normalization | Email addresses |
 | `SanitizeUsername()` | Username cleaning | Login usernames |
 | `SanitizeURL()` | URL validation | Profile URLs, links |
-| `SanitizeFilename()` | File upload safety | Uploaded filenames |
-| `SanitizeHTML()` | HTML escaping | User-generated content |
-| `SanitizeSQL()` | SQL pattern removal | Defense-in-depth only |
 | `SanitizePhoneNumber()` | Phone formatting | Phone numbers |
 | `SanitizeMultiline()` | Text area cleaning | Comments, descriptions |
-| `StripTags()` | Quick HTML removal | Simple text extraction |
-| `NormalizeWhitespace()` | Whitespace cleanup | Text formatting |
 
 ## Common Patterns
 
@@ -125,15 +116,13 @@ func RegisterUser(name, email, username, password string) error {
     name = core.SanitizeString(name, nil)
     email = core.SanitizeEmail(email)
     username = core.SanitizeUsername(username, 50)
-    
+
     // Validate
     if err := core.ValidateEmail(email); err != nil {
         return err
     }
-    if err := core.ValidatePassword(password, nil); err != nil {
-        return err
-    }
-    
+    // Password strength is enforced by the auth service's password policy.
+
     // Create user...
     return nil
 }
@@ -141,16 +130,19 @@ func RegisterUser(name, email, username, password string) error {
 
 ### File Upload
 
+Aegis does not ship a filename sanitizer — use the standard library to strip
+path components, then reject anything empty:
+
 ```go
 func HandleFileUpload(filename string, content []byte) error {
-    // Sanitize filename to prevent directory traversal
-    safeFilename := core.SanitizeFilename(filename)
-    
+    // Take only the base name to prevent directory traversal.
+    safeFilename := filepath.Base(filename)
+
     // Ensure filename is not empty after sanitization
-    if safeFilename == "" {
+    if safeFilename == "" || safeFilename == "." || safeFilename == ".." {
         return errors.New("invalid filename")
     }
-    
+
     // Save file with sanitized name
     return os.WriteFile(safeFilename, content, 0644)
 }

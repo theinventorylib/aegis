@@ -11,7 +11,7 @@ const testSecurePassword = "SecureP@ssw0rd123"
 // TC-PWD-001: Argon2id Hashing
 func TestHashPassword(t *testing.T) {
 	// Given
-	password := benchSecurePassword
+	password := testSecurePassword
 
 	// When
 	hash, err := HashPassword(password, 0, 0, 0, 0) // Use defaults
@@ -87,9 +87,9 @@ func TestValidatePasswordStrength(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidatePassword(tt.password, DefaultPasswordPolicyConfig())
+			err := validatePassword(tt.password, defaultPasswordPolicyConfig())
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidatePassword() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("validatePassword() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -107,16 +107,16 @@ func TestVerifyPassword_TimingSafe(t *testing.T) {
 
 	// Measure time for correct password
 	iterations := 100
-	var correctDurations []time.Duration
-	for i := 0; i < iterations; i++ {
+	var correctDurations = make([]time.Duration, 0, iterations)
+	for range iterations {
 		start := time.Now()
 		_, _ = VerifyPassword(password, hash)
 		correctDurations = append(correctDurations, time.Since(start))
 	}
 
 	// Measure time for incorrect password
-	var incorrectDurations []time.Duration
-	for i := 0; i < iterations; i++ {
+	var incorrectDurations = make([]time.Duration, 0, iterations)
+	for range iterations {
 		start := time.Now()
 		_, _ = VerifyPassword("WrongPassword", hash)
 		incorrectDurations = append(incorrectDurations, time.Since(start))
@@ -124,7 +124,7 @@ func TestVerifyPassword_TimingSafe(t *testing.T) {
 
 	// Calculate average durations
 	var correctTotal, incorrectTotal time.Duration
-	for i := 0; i < iterations; i++ {
+	for i := range iterations {
 		correctTotal += correctDurations[i]
 		incorrectTotal += incorrectDurations[i]
 	}
@@ -143,7 +143,7 @@ func TestVerifyPassword_TimingSafe(t *testing.T) {
 // TC-PWD-006: Argon2id Parameters
 func TestArgon2idParameters(t *testing.T) {
 	// Verify OWASP-compliant Argon2id parameters
-	password := benchTestPassword
+	password := testSecurePassword
 	hash, err := HashPassword(password, 0, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to hash password: %v", err)
@@ -184,7 +184,7 @@ func TestHashPassword_UniqueSalts(t *testing.T) {
 
 	// When - Hash the same password multiple times
 	hashes := make(map[string]bool)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		hash, err := HashPassword(password, 0, 0, 0, 0)
 		if err != nil {
 			t.Fatalf("Failed to hash password: %v", err)

@@ -54,7 +54,7 @@ type CreateUserParams struct {
 	CreatedAt  string         `json:"created_at"`
 	UpdatedAt  string         `json:"updated_at"`
 	Disabled   int32          `json:"disabled"`
-	Role       sql.NullString `json:"role"`
+	Role       string         `json:"role"`
 	Banned     int32          `json:"banned"`
 	BanReason  sql.NullString `json:"ban_reason"`
 	BanExpiry  sql.NullString `json:"ban_expiry"`
@@ -224,7 +224,7 @@ const getUsersByRole = `-- name: GetUsersByRole :many
 SELECT id, avatar, name, email, created_at, updated_at, disabled, role, banned, ban_reason, ban_expiry, ban_counter FROM "user" WHERE role = $1 ORDER BY created_at DESC
 `
 
-func (q *Queries) GetUsersByRole(ctx context.Context, role sql.NullString) ([]User, error) {
+func (q *Queries) GetUsersByRole(ctx context.Context, role string) ([]User, error) {
 	rows, err := q.db.QueryContext(ctx, getUsersByRole, role)
 	if err != nil {
 		return nil, err
@@ -397,9 +397,9 @@ UPDATE "user" SET role = $2, updated_at = $3 WHERE id = $1
 `
 
 type UpdateUserRoleParams struct {
-	ID        string         `json:"id"`
-	Role      sql.NullString `json:"role"`
-	UpdatedAt string         `json:"updated_at"`
+	ID        string `json:"id"`
+	Role      string `json:"role"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error {

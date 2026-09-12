@@ -12,7 +12,7 @@ import (
 // out of a quoted literal in a Sprintf'd query.
 var sqlIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// SanitizeSQLIdentifier validates that name is a safe SQL identifier
+// sanitizeSQLIdentifier validates that name is a safe SQL identifier
 // (table or column name) and returns it unchanged. It panics if name
 // contains any character outside of [A-Za-z0-9_] or does not start with
 // a letter / underscore.
@@ -25,7 +25,7 @@ var sqlIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // input, so a panic on an invalid identifier is the correct
 // fail-fast behavior: it surfaces the bug at startup instead of
 // silently producing a malformed (or worse, injectable) query.
-func SanitizeSQLIdentifier(name string) string {
+func sanitizeSQLIdentifier(name string) string {
 	if !sqlIdentifierPattern.MatchString(name) {
 		panic(fmt.Sprintf("aegis: invalid SQL identifier %q: must match [A-Za-z_][A-Za-z0-9_]*", name))
 	}

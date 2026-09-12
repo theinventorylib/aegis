@@ -2,9 +2,9 @@ package core
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -12,6 +12,9 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/theinventorylib/aegis/auth"
 )
+
+// sessionPageSize is the page size used when walking a user's sessions.
+const sessionPageSize = 100
 
 // SessionService manages user session lifecycle including creation, validation,
 // refresh, and invalidation. It provides optional Redis-based caching for
@@ -61,18 +64,11 @@ type SessionService struct {
 	logger Logger
 }
 
-// NewSessionService creates a new session service with optional Redis caching.
+// newSessionService creates a new session service with optional Redis caching.
 //
-// Parameters:
-//   - userStore: Storage for user lookups during session validation
-//   - sessionStore: Storage for session persistence
-//   - cfg: Session configuration (expiry, Redis settings). Uses defaults if nil.
-//   - auditLogger: Logger for security events. Uses no-op if nil.
-//
-// If cfg.Redis is provided, a Redis client is created for session caching.
-// This significantly improves performance by avoiding database queries for
-// every authenticated request.
-func NewSessionService(userStore auth.UserStore, sessionStore auth.SessionStore, cfg *SessionConfig, auditLogger AuditLogger, logger Logger) *SessionService {
+// If cfg.Redis is provided, a Redis client is created for session caching,
+// avoiding a database query for every authenticated request.
+func newSessionService(userStore auth.UserStore, sessionStore auth.SessionStore, cfg *SessionConfig, auditLogger AuditLogger, logger Logger) *SessionService {
 	if cfg == nil {
 		cfg = DefaultSessionConfig()
 	}
@@ -83,24 +79,28 @@ func NewSessionService(userStore auth.UserStore, sessionStore auth.SessionStore,
 		logger = noopLogger{}
 	}
 
-	var redisClient *redis.Client
-	if cfg.Redis != nil {
-		redisClient = redis.NewClient(&redis.Options{
-			Addr:     fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
-			Password: cfg.Redis.Password,
-			DB:       cfg.Redis.DB,
-		})
-	}
-
 	return &SessionService{
 		userStore:     userStore,
 		sessionStore:  sessionStore,
 		config:        cfg,
 		cookieManager: NewCookieManager(cfg),
-		redisClient:   redisClient,
+		redisClient:   newRedisClient(cfg.Redis),
 		auditLogger:   auditLogger,
 		logger:        logger,
 	}
+}
+
+// newRedisClient builds a Redis client from session Redis config; nil config
+// means caching is disabled.
+func newRedisClient(cfg *RedisConfig) *redis.Client {
+	if cfg == nil {
+		return nil
+	}
+	return redis.NewClient(&redis.Options{
+		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Password: cfg.Password,
+		DB:       cfg.DB,
+	})
 }
 
 // CreateSession creates a new authenticated session for a user.
@@ -111,24 +111,24 @@ func NewSessionService(userStore auth.UserStore, sessionStore auth.SessionStore,
 // database and to Redis. A DB read alone therefore cannot impersonate the
 // user — an attacker would also need to compute a pre-image of the hash.
 //
-// Parameters:
-//   - ctx: Request context for cancellation. Must contain RequestMeta
-//     (populated by AegisContextMiddleware) for IP address and user agent.
-//   - user: The authenticated user to create a session for
-//
-// Returns the created session with populated Token and RefreshToken fields
-// containing the **raw** secrets. These should be sent to the client (HTTP-only
-// cookies or Authorization header) and then discarded server-side.
-//
-// Logs a successful login audit event upon session creation.
+// IP address and user agent are extracted from the request context
+// (populated by AegisContextMiddleware). Logs a successful login audit event.
 func (s *SessionService) CreateSession(ctx context.Context, user *auth.User) (*auth.Session, error) {
-	// Extract IP address and user agent from request context
-	// (populated by AegisContextMiddleware)
-	ipAddress := SanitizeString(GetIPAddress(ctx), nil)
-	userAgent := SanitizeString(GetUserAgent(ctx), nil)
-
 	uid := user.GetID()
+	session, err := s.newSessionRow(ctx, uid,
+		SanitizeString(GetIPAddress(ctx), nil),
+		SanitizeString(GetUserAgent(ctx), nil))
+	if err != nil {
+		return nil, err
+	}
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventLoginSuccess, uid, true, nil)
+	return session, nil
+}
 
+// newSessionRow generates raw tokens, persists only their SHA-256 hashes at
+// rest, caches the session, and returns it carrying the raw tokens for the
+// caller to hand to the client. Shared by CreateSession and RefreshSession.
+func (s *SessionService) newSessionRow(ctx context.Context, userID, ipAddress, userAgent string) (*auth.Session, error) {
 	rawToken, err := generateRandomToken()
 	if err != nil {
 		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate access token", err)
@@ -137,29 +137,21 @@ func (s *SessionService) CreateSession(ctx context.Context, user *auth.User) (*a
 	if err != nil {
 		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate refresh token", err)
 	}
-	expiresAt := time.Now().Add(s.config.SessionExpiry)
 
-	// Persist hashes — never the raw tokens — at rest.
 	persisted := auth.Session{
 		ID:           GenerateID(),
-		UserID:       uid,
-		Token:        HashTokenHex(rawToken),
-		RefreshToken: HashTokenHex(rawRefreshToken),
-		ExpiresAt:    expiresAt,
+		UserID:       userID,
+		Token:        hashTokenHex(rawToken),
+		RefreshToken: hashTokenHex(rawRefreshToken),
+		ExpiresAt:    time.Now().Add(s.config.SessionExpiry),
 		CreatedAt:    time.Now(),
 		IPAddress:    ipAddress,
 		UserAgent:    userAgent,
 	}
-
 	if err := s.sessionStore.Create(ctx, persisted); err != nil {
 		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to create session", err)
 	}
-
-	if s.redisClient != nil {
-		s.cacheSession(ctx, &persisted)
-	}
-
-	_ = s.auditLogger.LogAuthEvent(ctx, AuditEventLoginSuccess, uid, true, nil)
+	s.cacheSession(ctx, &persisted)
 
 	// Return the session with raw tokens so the caller can hand them to
 	// the client. The persisted copy keeps only hashes.
@@ -182,10 +174,6 @@ func (s *SessionService) CreateSession(ctx context.Context, user *auth.User) (*a
 // This method is called on every authenticated request, so caching is critical
 // for performance in production deployments.
 //
-// Parameters:
-//   - ctx: Request context for cancellation
-//   - tokenString: The raw session token presented by the client
-//
 // Returns:
 //   - *auth.Session: The valid session. Token/RefreshToken on the returned
 //     struct hold their **hashed** values (the raw token presented by the
@@ -195,23 +183,20 @@ func (s *SessionService) CreateSession(ctx context.Context, user *auth.User) (*a
 //   - error: AuthErrorCodeTokenExpired if expired, AuthErrorCodeSessionInvalid
 //     if not found, AuthErrorCodeUserNotFound if user was deleted
 func (s *SessionService) ValidateSession(ctx context.Context, tokenString string) (*auth.Session, *auth.User, error) {
-	tokenHash := HashTokenHex(tokenString)
-
-	var session *auth.Session
-	var err error
+	tokenHash := hashTokenHex(tokenString)
 
 	if s.redisClient != nil {
-		session, err = s.getSessionFromCache(ctx, tokenHash)
+		session, err := s.getSessionFromCache(ctx, tokenHash)
 		if err == nil && session != nil {
-			if time.Now().After(session.ExpiresAt) {
-				s.invalidateSessionCache(ctx, session)
-				return nil, nil, NewAuthError(AuthErrorCodeTokenExpired, "session expired")
-			}
-			user, err := s.userStore.GetByID(ctx, session.UserID)
+			user, err := s.loadUserForSession(ctx, session)
 			if err != nil {
-				return nil, nil, NewAuthErrorWithCause(AuthErrorCodeUserNotFound, "user not found", err)
+				// A cached expired session is stale cache; drop it.
+				if time.Now().After(session.ExpiresAt) {
+					s.invalidateSessionCache(ctx, session)
+				}
+				return nil, nil, err
 			}
-			return session, &user, nil
+			return session, user, nil
 		}
 	}
 
@@ -220,21 +205,29 @@ func (s *SessionService) ValidateSession(ctx context.Context, tokenString string
 		return nil, nil, NewAuthErrorWithCause(AuthErrorCodeSessionInvalid, "session not found", err)
 	}
 
-	session = &dbSession
-	if time.Now().After(session.ExpiresAt) {
-		return nil, nil, NewAuthError(AuthErrorCodeTokenExpired, "session expired")
-	}
-
 	if s.redisClient != nil {
-		s.cacheSession(ctx, session)
+		s.cacheSession(ctx, &dbSession)
 	}
 
+	user, err := s.loadUserForSession(ctx, &dbSession)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return &dbSession, user, nil
+}
+
+// loadUserForSession enforces expiry and loads the user for a fetched
+// session (cache or DB path both end here).
+func (s *SessionService) loadUserForSession(ctx context.Context, session *auth.Session) (*auth.User, error) {
+	if time.Now().After(session.ExpiresAt) {
+		return nil, NewAuthError(AuthErrorCodeTokenExpired, "session expired")
+	}
 	user, err := s.userStore.GetByID(ctx, session.UserID)
 	if err != nil {
-		return nil, nil, NewAuthErrorWithCause(AuthErrorCodeUserNotFound, "user not found", err)
+		return nil, NewAuthErrorWithCause(AuthErrorCodeUserNotFound, "user not found", err)
 	}
-
-	return session, &user, nil
+	return &user, nil
 }
 
 // cacheSession stores a session in Redis for fast validation lookups.
@@ -312,7 +305,7 @@ func (s *SessionService) getSessionFromCache(ctx context.Context, tokenHash stri
 // session token from the client; the token is hashed before any store/cache
 // access.
 func (s *SessionService) DeleteSession(ctx context.Context, token string) error {
-	tokenHash := HashTokenHex(token)
+	tokenHash := hashTokenHex(token)
 	session, err := s.sessionStore.GetByToken(ctx, tokenHash)
 	if err != nil {
 		// Without the session record we cannot reliably invalidate the
@@ -324,9 +317,7 @@ func (s *SessionService) DeleteSession(ctx context.Context, token string) error 
 		return err
 	}
 	s.invalidateSessionCache(ctx, &session)
-	if auditErr := s.auditLogger.LogAuthEvent(ctx, AuditEventLogout, session.UserID, true, nil); auditErr != nil {
-		s.logger.Error("session: failed to write logout audit event", "user_id", session.UserID, "error", auditErr)
-	}
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventLogout, session.UserID, true, nil)
 	return nil
 }
 
@@ -341,7 +332,7 @@ func (s *SessionService) DeleteSession(ctx context.Context, token string) error 
 // before any store access. Returns a session with **raw** tokens in its
 // Token/RefreshToken fields so the caller can hand them to the client.
 func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string) (*auth.Session, error) {
-	refreshHash := HashTokenHex(refreshToken)
+	refreshHash := hashTokenHex(refreshToken)
 	old, err := s.sessionStore.GetByRefreshToken(ctx, refreshHash)
 	if err != nil {
 		return nil, NewAuthErrorWithCause(AuthErrorCodeTokenInvalid, "invalid refresh token", err)
@@ -353,42 +344,20 @@ func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string
 		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to revoke old session", err)
 	}
 
-	rawToken, err := generateRandomToken()
+	out, err := s.newSessionRow(ctx, old.UserID, old.IPAddress, old.UserAgent)
 	if err != nil {
-		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate access token", err)
-	}
-	rawRefreshToken, err := generateRandomToken()
-	if err != nil {
-		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate refresh token", err)
+		return nil, err
 	}
 
-	persisted := auth.Session{
-		ID:           GenerateID(),
-		UserID:       old.UserID,
-		Token:        HashTokenHex(rawToken),
-		RefreshToken: HashTokenHex(rawRefreshToken),
-		ExpiresAt:    time.Now().Add(s.config.SessionExpiry),
-		CreatedAt:    time.Now(),
-		IPAddress:    old.IPAddress,
-		UserAgent:    old.UserAgent,
-	}
-	if err := s.sessionStore.Create(ctx, persisted); err != nil {
-		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to create rotated session", err)
-	}
+	// Token rotation is a security event: record it like login/logout.
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventSessionRefresh, old.UserID, true, nil)
 
-	if s.redisClient != nil {
-		s.cacheSession(ctx, &persisted)
-	}
-
-	out := persisted
-	out.Token = rawToken
-	out.RefreshToken = rawRefreshToken
-	return &out, nil
+	return out, nil
 }
 
 func generateRandomToken() (string, error) {
-	bytes := make([]byte, TokenLength)
-	if _, err := rand.Read(bytes); err != nil {
+	bytes, err := randomBytes(TokenLength)
+	if err != nil {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(bytes), nil
@@ -429,6 +398,19 @@ func (s *SessionService) GetBearerTokenValidators() []BearerTokenValidator {
 // GetConfig returns the session configuration.
 func (s *SessionService) GetConfig() *SessionConfig { return s.config }
 
+// Configure replaces the session configuration and Redis client. Intended to
+// be called once at startup (before any traffic) when the service was built
+// without a config, e.g. via NewAuthService. Rebuilds the cookie manager so
+// cookie settings take effect.
+func (s *SessionService) Configure(cfg *SessionConfig) {
+	if cfg == nil {
+		return
+	}
+	s.config = cfg
+	s.cookieManager = NewCookieManager(cfg)
+	s.redisClient = newRedisClient(cfg.Redis)
+}
+
 // GetCookieManager returns the cookie manager.
 func (s *SessionService) GetCookieManager() *CookieManager { return s.cookieManager }
 
@@ -458,39 +440,92 @@ func (s *SessionService) CountUserSessions(ctx context.Context, userID string) (
 	return s.sessionStore.CountByUserID(ctx, userID)
 }
 
-// DeleteUserSessions deletes all sessions for a user
+// purgeUserSessionCache removes every cached session entry for a user from
+// Redis without touching the database.
+//
+// The per-session cache keys are derived from token hashes, so the purge
+// walks the store for the user's sessions to discover them. It therefore
+// MUST run while those rows still exist — i.e. before the DB session purge.
+// Callers that delete the DB rows first (password change) would otherwise
+// purge nothing and leave revoked sessions authenticating from cache until
+// their TTL expires (ValidateSession prefers the cache over the database).
+//
+// No-op when Redis is not configured. Per-session Redis failures are logged
+// by invalidateSessionCache; only the store walk can return an error.
+func (s *SessionService) purgeUserSessionCache(ctx context.Context, userID string) error {
+	if s.redisClient == nil {
+		return nil
+	}
+	if err := s.forEachUserSession(ctx, userID, func(sess *auth.Session) error {
+		s.invalidateSessionCache(ctx, sess)
+		return nil
+	}); err != nil {
+		return err
+	}
+	// Drop the user-session set entirely — it is now empty.
+	if err := s.redisClient.Del(ctx, RedisUserSessionsPrefix+userID).Err(); err != nil {
+		s.logger.Error("session cache: failed to delete user session set", "user_id", userID, "error", err)
+	}
+	return nil
+}
+
+// DeleteUserSessions deletes all sessions for a user and purges every
+// Redis cache entry for those sessions. Without the cache purge, revoked
+// sessions would keep authenticating from Redis until their cached TTL
+// expires (ValidateSession prefers the cache over the database).
 func (s *SessionService) DeleteUserSessions(ctx context.Context, userID string) error {
+	// Purge the cache first: it needs the session rows to exist.
+	if err := s.purgeUserSessionCache(ctx, userID); err != nil {
+		return err
+	}
 	return s.sessionStore.DeleteByUserID(ctx, userID)
 }
 
-// RevokeSessionByID revokes a specific session for a user by its ID.
-//
-// This method verifies that the session belongs to the user before revocation.
-//
-// Parameters:
-//   - ctx: Request context
-//   - userID: The user ID who owns the session
-//   - sessionID: The session ID to revoke
-//
-// Returns:
-//   - error: AuthErrorCodeSessionNotFound if session does not exist or belong to user,
-//     or database error.
+// errStopPage aborts forEachUserSession's walk without an error.
+var errStopPage = errors.New("stop page walk")
+
+// forEachUserSession pages through all of a user's sessions, calling fn for
+// each. Return errStopPage from fn to stop the walk early.
+func (s *SessionService) forEachUserSession(ctx context.Context, userID string, fn func(*auth.Session) error) error {
+	offset := 0
+	for {
+		page, err := s.sessionStore.GetByUserID(ctx, userID, offset, sessionPageSize)
+		if err != nil {
+			return err
+		}
+		if len(page) == 0 {
+			return nil
+		}
+		for i := range page {
+			if err := fn(&page[i]); err != nil {
+				if errors.Is(err, errStopPage) {
+					return nil
+				}
+				return err
+			}
+		}
+		offset += len(page)
+	}
+}
+
+// RevokeSessionByID revokes a specific session for a user by its ID,
+// verifying ownership first.
 func (s *SessionService) RevokeSessionByID(ctx context.Context, userID, sessionID string) error {
 	// Find the session in the user's active sessions to confirm ownership.
 	// We delete by session ID directly because sessions loaded from the store
 	// carry hashed tokens — we cannot feed those back into DeleteSession (which
 	// expects a raw token and would hash again).
-	sessions, err := s.GetUserSessions(ctx, userID, 0, 50)
+	var target *auth.Session
+	err := s.forEachUserSession(ctx, userID, func(sess *auth.Session) error {
+		if sess.ID == sessionID {
+			t := *sess
+			target = &t
+			return errStopPage
+		}
+		return nil
+	})
 	if err != nil {
 		return err
-	}
-
-	var target *auth.Session
-	for _, sess := range sessions {
-		if sess.ID == sessionID {
-			target = sess
-			break
-		}
 	}
 	if target == nil {
 		return ErrSessionNotFound
@@ -500,16 +535,14 @@ func (s *SessionService) RevokeSessionByID(ctx context.Context, userID, sessionI
 		return err
 	}
 	s.invalidateSessionCache(ctx, target)
-	if auditErr := s.auditLogger.LogAuthEvent(ctx, AuditEventLogout, target.UserID, true, nil); auditErr != nil {
-		s.logger.Error("session: failed to write revoke audit event", "user_id", target.UserID, "error", auditErr)
-	}
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventLogout, target.UserID, true, nil)
 	return nil
 }
 
 // MigrateHashSessionTokensForUser rewrites any plaintext session/refresh tokens in
 // the underlying store as their SHA-256 hex hashes (the at-rest format used
 // by CreateSession). It is idempotent: rows whose token columns already look
-// like SHA-256 hex digests (see IsHashedToken) are skipped.
+// like SHA-256 hex digests (see isHashedToken) are skipped.
 //
 // Run this once after upgrading to the hashed-at-rest scheme. After a
 // successful run, all subsequent ValidateSession / DeleteSession /
@@ -530,51 +563,54 @@ func (s *SessionService) RevokeSessionByID(ctx context.Context, userID, sessionI
 // that need a global migration should iterate user IDs from their UserStore
 // and invoke MigrateHashSessionTokensForUser per user.
 func (s *SessionService) MigrateHashSessionTokensForUser(ctx context.Context, userID string) (migrated int, err error) {
-	const pageSize = 100
-	offset := 0
-	for {
-		page, err := s.sessionStore.GetByUserID(ctx, userID, offset, pageSize)
+	// Snapshot all of the user's sessions before mutating. The migration
+	// delete+re-creates rows (changing their IDs), so reading while writing
+	// would shift rows between pages; collecting first makes every row
+	// reachable regardless of how many the user has.
+	var all []auth.Session
+	for offset := 0; ; {
+		page, err := s.sessionStore.GetByUserID(ctx, userID, offset, sessionPageSize)
 		if err != nil {
 			return migrated, err
 		}
 		if len(page) == 0 {
-			return migrated, nil
+			break
 		}
-		for i := range page {
-			row := page[i]
-			needsToken := row.Token != "" && !IsHashedToken(row.Token)
-			needsRefresh := row.RefreshToken != "" && !IsHashedToken(row.RefreshToken)
-			if !needsToken && !needsRefresh {
-				continue
-			}
-			// Re-issue the row with hashed values. We cannot change the
-			// access token via Update (the existing UpdateSession SQL only
-			// touches refresh_token + expires_at), so legacy access tokens
-			// are invalidated by deleting and re-creating with the hashed
-			// value. Refresh tokens are similarly hashed.
-			updated := row
-			if needsToken {
-				updated.Token = HashTokenHex(row.Token)
-			}
-			if needsRefresh {
-				updated.RefreshToken = HashTokenHex(row.RefreshToken)
-			}
-			if err := s.sessionStore.Delete(ctx, row.ID); err != nil {
-				return migrated, err
-			}
-			if err := s.sessionStore.Create(ctx, updated); err != nil {
-				return migrated, err
-			}
-			s.invalidateSessionCache(ctx, &updated)
-			migrated++
-		}
-		// We just rewrote IDs; reset offset and re-page from the start to
-		// avoid skipping rows shifted by the delete/insert pair.
-		offset = 0
-		// Defensive cap to avoid pathological loops if the store keeps
-		// returning the same rows.
-		if migrated > 1_000_000 {
-			return migrated, nil
+		all = append(all, page...)
+		offset += len(page)
+		// Defensive cap to bound memory for pathological stores.
+		if len(all) > 1_000_000 {
+			break
 		}
 	}
+
+	for i := range all {
+		row := all[i]
+		needsToken := row.Token != "" && !isHashedToken(row.Token)
+		needsRefresh := row.RefreshToken != "" && !isHashedToken(row.RefreshToken)
+		if !needsToken && !needsRefresh {
+			continue
+		}
+		// Re-issue the row with hashed values. We cannot change the
+		// access token via Update (the existing UpdateSession SQL only
+		// touches refresh_token + expires_at), so legacy access tokens
+		// are invalidated by deleting and re-creating with the hashed
+		// value. Refresh tokens are similarly hashed.
+		updated := row
+		if needsToken {
+			updated.Token = hashTokenHex(row.Token)
+		}
+		if needsRefresh {
+			updated.RefreshToken = hashTokenHex(row.RefreshToken)
+		}
+		if err := s.sessionStore.Delete(ctx, row.ID); err != nil {
+			return migrated, err
+		}
+		if err := s.sessionStore.Create(ctx, updated); err != nil {
+			return migrated, err
+		}
+		s.invalidateSessionCache(ctx, &updated)
+		migrated++
+	}
+	return migrated, nil
 }

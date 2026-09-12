@@ -590,10 +590,29 @@ func (p *Plugin) initializeKeys(ctx context.Context) error {
 	return nil
 }
 
+// JWT "use" tags distinguish access-key from refresh-key material. The
+// database column only distinguishes keys by (algorithm, use), so refresh
+// keys get their own tag; this keeps access and refresh key pairs separate
+// and lets the JWKS endpoint filter refresh keys out.
+const (
+	useSigAccess  = "sig"
+	useSigRefresh = "sig-refresh"
+)
+
+// keyUseForType maps a token type ("access"/"refresh") to its key "use" tag.
+func keyUseForType(keyType string) string {
+	if keyType == TokenTypeRefresh {
+		return useSigRefresh
+	}
+	return useSigAccess
+}
+
 // getOrCreateKeyPair retrieves or creates a key pair for the given type
 func (p *Plugin) getOrCreateKeyPair(ctx context.Context, keyType string) (jwk.Key, jwk.Key, error) {
+	use := keyUseForType(keyType)
+
 	// Try to get existing key from database
-	key, err := p.store.GetCurrentJWK(ctx, "RS256", "sig")
+	key, err := p.store.GetCurrentJWK(ctx, "RS256", use)
 	if err == nil {
 		pubKey, err := key.PublicKey()
 		if err != nil {
@@ -645,7 +664,7 @@ func (p *Plugin) rotateKeyPair(ctx context.Context, keyType string) (jwk.Key, jw
 		retention = p.config.KeyRetention
 	}
 	expiresAt := time.Now().Add(retention)
-	if err := p.store.StoreJWK(ctx, key, "RS256", "sig", &expiresAt); err != nil {
+	if err := p.store.StoreJWK(ctx, key, "RS256", keyUseForType(keyType), &expiresAt); err != nil {
 		return nil, nil, fmt.Errorf("failed to store JWK: %w", err)
 	}
 
@@ -941,13 +960,31 @@ func (p *Plugin) RefreshTokens(refreshToken string) (*jwttypes.TokenPair, error)
 		p.parseOptions(p.refreshTokenPublicKey)...,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("invalid refresh token: %w", err)
+		// Upgrade compatibility: before refresh keys got their own "sig-refresh"
+		// tag, refresh tokens were signed with the shared "sig" key, which is
+		// now loaded as the access key. Retry with it so outstanding refresh
+		// tokens survive the upgrade; the token_type check below still rejects
+		// access tokens.
+		token, err = jwt.Parse(
+			[]byte(refreshToken),
+			p.parseOptions(p.accessTokenPublicKey)...,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("invalid refresh token: %w", err)
+		}
 	}
 
 	// Extract user ID
 	tokenSubject, ok := token.Subject()
 	if !ok {
 		return nil, errors.New("missing subject in refresh token")
+	}
+
+	// Enforce the token_type claim: an access token must never be
+	// accepted at the refresh endpoint.
+	var claimTokenType string
+	if err := token.Get("token_type", &claimTokenType); err != nil || claimTokenType != TokenTypeRefresh {
+		return nil, errors.New("token type mismatch: not a refresh token")
 	}
 
 	// Immediately blacklist the used refresh token to prevent reuse (if Redis available)
@@ -973,11 +1010,19 @@ func (p *Plugin) blacklistTokenWithContext(ctx context.Context, tokenStr string)
 		tokenStr = parts[1]
 	}
 
-	// Parse token to get expiration time
+	// Parse token to get expiration time. Try the refresh key first (this
+	// is normally called with refresh tokens); fall back to the access key
+	// so logout can also blacklist access tokens.
 	token, err := jwt.Parse(
 		[]byte(tokenStr),
 		p.parseOptions(p.refreshTokenPublicKey)...,
 	)
+	if err != nil {
+		token, err = jwt.Parse(
+			[]byte(tokenStr),
+			p.parseOptions(p.accessTokenPublicKey)...,
+		)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to parse token: %w", err)
 	}

@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -50,13 +51,7 @@ func TestRegisterSchemaFromType(t *testing.T) {
 		t.Error("Property 'age' not found in schema")
 	}
 
-	foundRequired := false
-	for _, r := range schema.Required {
-		if r == "name" {
-			foundRequired = true
-			break
-		}
-	}
+	foundRequired := slices.Contains(schema.Required, "name")
 	if !foundRequired {
 		t.Error("Property 'name' should be required")
 	}

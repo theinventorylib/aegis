@@ -9,67 +9,30 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/oklog/ulid/v2"
+	"uuid"
 )
 
 // IDStrategy defines the algorithm used for generating unique identifiers.
-//
-// Aegis supports multiple ID generation strategies to accommodate different
-// use cases and preferences.
 type IDStrategy string
 
-// IDGeneratorFunc is a function type for custom ID generation.
+// iDGeneratorFunc is a function type for custom ID generation.
 // Implement this to use your own ID generation algorithm (KSUIDs, nanoid, Snowflake, etc.).
-type IDGeneratorFunc func() string
+type iDGeneratorFunc func() string
 
 const (
-	// IDStrategyULID uses ULID (Universally Unique Lexicographically Sortable Identifier).
-	// This is the DEFAULT strategy.
-	//
-	// Benefits:
-	//   - Sortable: IDs are ordered by creation time
-	//   - Compact: 26 characters (vs 36 for UUID)
-	//   - No configuration needed: Works immediately
-	//   - Collision resistant: 80 bits of randomness
-	//   - Database friendly: Efficient indexing due to sortability
-	//
-	// Format: 01ARZ3NDEKTSV4RRFFQ69G5FAV (26 characters)
-	// Structure: 10-byte timestamp + 16-byte randomness
-	//
-	// Best for: Most use cases, especially when you need sortable IDs
+	// IDStrategyULID uses ULID (Universally Unique Lexicographically Sortable
+	// Identifier) — the default. Sortable by creation time, compact (26
+	// characters), database-index friendly.
 	IDStrategyULID IDStrategy = "ulid"
 
-	// IDStrategyUUID uses UUID v4 (random UUIDs).
-	//
-	// Benefits:
-	//   - Standard format: Widely recognized and supported
-	//   - Maximum randomness: 122 bits of entropy
-	//   - Collision resistant: Extremely low probability of collisions
-	//
-	// Drawbacks:
-	//   - Not sortable: IDs are random, not time-ordered
-	//   - Longer: 36 characters with hyphens
-	//   - Database indexing: Less efficient than ULIDs
-	//
-	// Format: 550e8400-e29b-41d4-a716-446655440000 (36 characters)
-	//
-	// Best for: When you need standard UUID format or maximum randomness
+	// IDStrategyUUID uses UUID v4 (random UUIDs). Standard format, maximum
+	// randomness, but not sortable.
 	IDStrategyUUID IDStrategy = "uuid"
 
-	// IDStrategyCustom uses a user-provided custom ID generation function.
-	//
-	// Use this when you need:
-	//   - KSUID (K-Sortable Unique Identifier)
-	//   - Snowflake IDs (Twitter's distributed ID generation)
-	//   - Nanoid (shorter, URL-safe IDs)
-	//   - Database-generated IDs (SERIAL, AUTO_INCREMENT)
-	//   - Custom formatting or business logic
-	//
-	// Set the custom generator with:
-	//   core.SetCustomIDGenerator(func() string { return myIDGenerator() })
-	//
-	// Best for: Specialized requirements or existing ID systems
+	// IDStrategyCustom uses a user-provided custom ID generation function
+	// (KSUID, Snowflake, nanoid, database sequences, …). Set the generator
+	// with core.SetCustomIDGenerator.
 	IDStrategyCustom IDStrategy = "custom"
 )
 
@@ -77,7 +40,7 @@ const (
 type idConfig struct {
 	strategy  IDStrategy
 	entropy   io.Reader
-	generator IDGeneratorFunc
+	generator iDGeneratorFunc
 }
 
 // defaultIDConfig is the package-level ID generation config (default: ULID).
@@ -91,77 +54,29 @@ var defaultIDConfig = &idConfig{
 
 // SetIDStrategy sets the global ID generation strategy for the application.
 //
-// This should be called during application initialization, before any IDs are generated.
-// Changing the strategy after IDs have been generated may cause inconsistent ID formats.
-//
-// Example:
-//
-//	// Switch to UUID v4
-//	core.SetIDStrategy(core.IDStrategyUUID)
-//
-//	// Use ULID (default)
-//	core.SetIDStrategy(core.IDStrategyULID)
+// Call during application initialization, before any IDs are generated;
+// changing it later produces inconsistent ID formats.
 func SetIDStrategy(strategy IDStrategy) {
 	defaultIDConfig.strategy = strategy
 }
 
-// SetCustomIDGenerator sets a custom ID generation function.
-//
-// This automatically switches the ID strategy to IDStrategyCustom. The provided
-// function will be called every time GenerateID() is invoked.
-//
-// Your custom generator should:
-//   - Return unique IDs (collision-free)
-//   - Be thread-safe if called concurrently
-//   - Generate IDs quickly (called frequently)
-//
-// Example (using KSUID):
-//
-//	import "github.com/segmentio/ksuid"
-//	core.SetCustomIDGenerator(func() string {
-//		return ksuid.New().String()
-//	})
-//
-// Example (using database sequences - NOT recommended for distributed systems):
-//
-//	var counter uint64
-//	core.SetCustomIDGenerator(func() string {
-//		return fmt.Sprintf("%d", atomic.AddUint64(&counter, 1))
-//	})
-func SetCustomIDGenerator(generator IDGeneratorFunc) {
+// SetCustomIDGenerator sets a custom ID generation function and switches the
+// strategy to IDStrategyCustom. The generator must return unique IDs and be
+// thread-safe if called concurrently.
+func SetCustomIDGenerator(generator func() string) {
 	defaultIDConfig.generator = generator
 	defaultIDConfig.strategy = IDStrategyCustom
 }
 
 // GetIDStrategy returns the currently active ID generation strategy.
-//
-// Useful for logging or debugging to verify which strategy is in use.
 func GetIDStrategy() IDStrategy {
 	return defaultIDConfig.strategy
 }
 
-// GenerateOTPCode generates a random numeric OTP (One-Time Password) code.
+// GenerateOTPCode generates a random numeric OTP code of the given length
+// using cryptographically secure randomness, with leading zeros preserved.
 //
-// The code uses cryptographically secure randomness (crypto/rand) and includes
-// leading zeros to ensure the specified length.
-//
-// Parameters:
-//   - length: Number of digits (typically 4-8)
-//
-// Common lengths:
-//   - 6 digits: Standard for most 2FA systems (Google Authenticator, etc.)
-//   - 4 digits: Short codes for SMS (balance security vs user convenience)
-//   - 8 digits: High-security scenarios
-//
-// Returns a numeric string with leading zeros if necessary.
-//
-// Example:
-//
-//	// Generate 6-digit code
-//	code, _ := core.GenerateOTPCode(6) // "042816", "912345", etc.
-//
-//	// Generate 4-digit code for SMS
-//	code, _ := core.GenerateOTPCode(4) // "0042", "9123", etc.
+//	code, _ := core.GenerateOTPCode(6) // "042816", "912345", …
 func GenerateOTPCode(length int) (string, error) {
 	if length <= 0 {
 		return "", ValidationError{Field: "length", Message: "OTP length must be positive"}
@@ -176,66 +91,13 @@ func GenerateOTPCode(length int) (string, error) {
 		return "", NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate OTP", err)
 	}
 
-	// Format with leading zeros
 	format := fmt.Sprintf("%%0%dd", length)
-	code := fmt.Sprintf(format, n)
-
-	return code, nil
+	return fmt.Sprintf(format, n), nil
 }
 
 // GenerateID generates a unique identifier using the configured ID strategy.
-//
-// This is the primary ID generation function used throughout Aegis for:
-//   - User IDs
-//   - Session IDs
-//   - Account IDs
-//   - Verification token IDs
-//
-// Default Strategy: ULID
-//   - Format: "01ARZ3NDEKTSV4RRFFQ69G5FAV" (26 characters)
-//   - Sortable by creation time
-//   - Database-friendly indexing
-//   - No configuration required
-//
-// Strategy Selection:
-//
-//   - ULID (default): Best for most use cases
-//
-//   - Sortable IDs improve database performance
-//
-//   - Compact format (26 chars vs 36 for UUID)
-//
-//   - Built-in timestamp makes debugging easier
-//
-//   - UUID: When you need standard UUID format
-//
-//   - Format: "550e8400-e29b-41d4-a716-446655440000"
-//
-//   - Maximum randomness (122 bits)
-//
-//   - Not sortable (random ordering)
-//
-//   - Custom: For specialized requirements
-//
-//   - Implement IDGeneratorFunc
-//
-//   - Examples: KSUID, Snowflake, nanoid, database sequences
-//
-// Usage Examples:
-//
-//	// Default (ULID)
-//	userID := core.GenerateID() // "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-//
-//	// Switch to UUID
-//	core.SetIDStrategy(core.IDStrategyUUID)
-//	userID := core.GenerateID() // "550e8400-e29b-41d4-a716-446655440000"
-//
-//	// Use custom generator
-//	core.SetCustomIDGenerator(func() string { return ksuid.New().String() })
-//	userID := core.GenerateID() // Custom format
-//
-// Note: For database-generated IDs (SERIAL, AUTO_INCREMENT), configure your
-// database schema to generate IDs and don't call this function.
+// Defaults to ULID (26 chars, sortable by creation time); switch with
+// SetIDStrategy / SetCustomIDGenerator before generating IDs.
 func GenerateID() string {
 	switch defaultIDConfig.strategy {
 	case IDStrategyULID:
@@ -256,10 +118,9 @@ func GenerateID() string {
 	}
 }
 
-// ClampIntToInt32 safely converts an `int` to `int32` by clamping the value
-// to the valid range for int32. This prevents unsafe downcasts on platforms
-// where `int` is larger than 32 bits (e.g., amd64) and guards against
-// potential overflows when values originate from untrusted sources.
+// ClampIntToInt32 converts an int to int32, clamping to the valid int32
+// range. Prevents overflow on platforms where int is larger than 32 bits and
+// guards against untrusted values.
 func ClampIntToInt32(n int) int32 {
 	if n <= 0 {
 		return 0
@@ -270,15 +131,12 @@ func ClampIntToInt32(n int) int32 {
 	return int32(n)
 }
 
-// RedactForLog returns a masked version of a user-provided identifier suitable
-// for inclusion in logs. It preserves a small, non-sensitive hint while
-// removing the majority of the value to avoid leaking sensitive data.
+// redactForLog returns a masked version of a user-provided identifier
+// suitable for logs, preserving only a non-sensitive hint:
 //
-// Examples:
-//   - email: "alice@example.com" -> "a***@example.com"
-//   - phone: "+1234567890" -> "+1******90"
-//   - other strings: "userid-abcdef" -> "us***ef"
-func RedactForLog(s string) string {
+//	"alice@example.com" -> "a***@example.com"
+//	"+1234567890"       -> "+1******90"
+func redactForLog(s string) string {
 	if s == "" {
 		return ""
 	}
@@ -309,9 +167,9 @@ func RedactForLog(s string) string {
 	return fmt.Sprintf("%c***%c", s[0], s[len(s)-1])
 }
 
-// HashShort returns a short hash string (hex) of the input suitable for
-// non-reversible identification in logs.
-func HashShort(s string) string {
+// hashShort returns a short hash (first 8 hex chars of SHA-256) of the input,
+// suitable for non-reversible identification in logs.
+func hashShort(s string) string {
 	if s == "" {
 		return ""
 	}
@@ -320,13 +178,13 @@ func HashShort(s string) string {
 	return fmt.Sprintf("%x", h)[:8]
 }
 
-// HashTokenHex returns the SHA-256 hex digest of a token, suitable for
+// hashTokenHex returns the SHA-256 hex digest of a token, suitable for
 // at-rest persistence and cache keying. The output is 64 lowercase hex
 // characters; an empty input yields an empty string. SHA-256 is appropriate
 // here because the input is high-entropy random bytes (not a low-entropy
 // password) — no per-token salt or cost factor is required for collision
 // resistance or pre-image protection at this entropy level.
-func HashTokenHex(token string) string {
+func hashTokenHex(token string) string {
 	if token == "" {
 		return ""
 	}
@@ -334,10 +192,10 @@ func HashTokenHex(token string) string {
 	return fmt.Sprintf("%x", h)
 }
 
-// IsHashedToken reports whether s looks like a SHA-256 hex digest produced
-// by HashTokenHex. Used by migration helpers to skip already-hashed rows
+// isHashedToken reports whether s looks like a SHA-256 hex digest produced
+// by hashTokenHex. Used by migration helpers to skip already-hashed rows
 // for idempotency.
-func IsHashedToken(s string) bool {
+func isHashedToken(s string) bool {
 	if len(s) != 64 {
 		return false
 	}
@@ -349,15 +207,3 @@ func IsHashedToken(s string) bool {
 	}
 	return true
 }
-
-// // GenerateUUID always generates a UUID v4, regardless of strategy
-// // Use this when you specifically need a UUID
-// func GenerateUUID() string {
-// 	return uuid.New().String()
-// }
-// // GenerateSequenceID always generates a sequential ID, regardless of strategy
-// // Use this when you specifically need a sequence
-// func GenerateSequenceID() string {
-// 	id := atomic.AddUint64(&sequenceCounter, 1)
-// 	return fmt.Sprintf("%d", id)
-// }

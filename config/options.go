@@ -281,6 +281,12 @@ func (c *Config) Validate() error {
 		return errors.New("secret is required (use WithSecret) or set APIMode=true for API-only apps")
 	}
 
+	// A short master secret undermines every derived key (CSRF, OAuth state,
+	// token encryption). Fail fast at startup rather than at first use.
+	if len(c.Secret) > 0 && len(c.Secret) < 32 {
+		return errors.New("secret must be at least 32 bytes (use WithSecret with cryptographically random data)")
+	}
+
 	// Validate security-sensitive parameters
 	if c.SessionExpiry <= 0 {
 		return errors.New("session expiry must be positive")

@@ -100,9 +100,7 @@ func generateSchemaType(t reflect.Type, seen map[reflect.Type]bool) *Schema {
 		properties := make(map[string]*Schema)
 		required := []string{}
 
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
-
+		for field := range t.Fields() {
 			// Skip unexported fields
 			if field.PkgPath != "" {
 				continue

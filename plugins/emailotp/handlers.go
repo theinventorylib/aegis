@@ -1,7 +1,6 @@
 package emailotp
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/theinventorylib/aegis/core"
@@ -56,7 +55,7 @@ func NewHandlers(plugin *Plugin) *Handlers {
 //	}
 func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
 	var req emailotptypes.SendOTPRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
@@ -91,10 +90,52 @@ func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// VerifyOTPHandler handles verifying OTP codes.
+// SendVerificationOTPHandler sends an email-verification OTP to an address
+// without requiring authentication, so newly registered but unverified users
+// can prove ownership. Endpoint is public; apply rate limiting at the router
+// or gateway to prevent abuse.
 //
-// This endpoint is public to allow users to verify their email addresses
-// without requiring prior authentication.
+// Endpoint:
+//   - Method: POST
+//   - Path: /email-otp/send-verification
+//   - Auth: Public
+func (h *Handlers) SendVerificationOTPHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := core.ReadJSON(r, &req); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: "Invalid request"})
+		return
+	}
+
+	email := core.SanitizeEmail(req.Email)
+	if err := ValidateEmail(email); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	// Throttle by email so the unauthenticated endpoint cannot be used to spam
+	// an address. Uses the application's configured rate limiter when present.
+	if rl := h.plugin.aegis.GetRateLimiter(); rl != nil {
+		allowed, _, err := rl.Allow(r.Context(), "email-verification:"+email)
+		if err != nil && h.plugin.logger != nil {
+			h.plugin.logger.Error("email-otp: rate limiter error", "error", err)
+		}
+		if !allowed {
+			core.WriteJSON(w, http.StatusTooManyRequests, &core.Response{Success: false, Error: "Too many requests"})
+			return
+		}
+	}
+
+	if err := h.plugin.SendOTP(r.Context(), email, "email_verification"); err != nil {
+		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Verification code sent"})
+}
+
+// VerifyOTPHandler handles verifying OTP codes.
 //
 // Endpoint:
 //   - Method: POST
@@ -124,7 +165,7 @@ func (h *Handlers) SendOTPHandler(w http.ResponseWriter, r *http.Request) {
 //	}
 func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 	var req emailotptypes.VerifyOTPRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,
 			Error:   "Invalid request",
@@ -135,6 +176,9 @@ func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 	// Sanitize inputs
 	req.Email = core.SanitizeEmail(req.Email)
 	req.Code = core.SanitizeString(req.Code, nil)
+	if req.Purpose == "" {
+		req.Purpose = "email_verification"
+	}
 
 	// Validate email format
 	if err := ValidateEmail(req.Email); err != nil {
@@ -145,7 +189,7 @@ func (h *Handlers) VerifyOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	valid, err := h.plugin.VerifyOTP(r.Context(), req.Email, req.Code)
+	valid, err := h.plugin.VerifyOTP(r.Context(), req.Email, req.Purpose, req.Code)
 	if err != nil || !valid {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{
 			Success: false,

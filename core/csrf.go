@@ -2,11 +2,10 @@ package core
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -210,8 +209,8 @@ func applyCSRFDefaults(cfg *CSRFConfig) {
 
 // generateCSRFToken creates a fresh signed token: base64(nonce || hmac).
 func generateCSRFToken(signingKey []byte) (string, error) {
-	nonce := make([]byte, csrfNonceLen)
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+	nonce, err := randomBytes(csrfNonceLen)
+	if err != nil {
 		return "", err
 	}
 	mac := hmac.New(sha256.New, signingKey)
@@ -277,8 +276,7 @@ func isSafeMethod(m string) bool {
 }
 
 func isBearerRequest(r *http.Request) bool {
-	auth := r.Header.Get("Authorization")
-	return len(auth) > 7 && strings.EqualFold(auth[:7], "Bearer ")
+	return bearerToken(r) != ""
 }
 
 func originAllowed(r *http.Request, allowed []string) bool {
@@ -301,12 +299,7 @@ func originAllowed(r *http.Request, allowed []string) bool {
 			}
 		}
 	}
-	for _, a := range allowed {
-		if candidate == a {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(allowed, candidate)
 }
 
 // constantTimeEqualString compares two strings of arbitrary length in

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"github.com/redis/go-redis/v9"
 	"sync"
 	"testing"
 	"time"
@@ -60,7 +61,7 @@ func TestRateLimiter_Allow_WithinLimit(t *testing.T) {
 	key := ratelimitTestIP
 
 	// When - Attempt 3 times (should succeed)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		allowed, remaining, err := limiter.Allow(ctx, key)
 		if err != nil {
 			t.Fatalf("Allow failed: %v", err)
@@ -91,7 +92,7 @@ func TestRateLimiter_Allow_ExceedLimit(t *testing.T) {
 	key := ratelimitTestIP
 
 	// Exhaust the limit
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, _, _ = limiter.Allow(ctx, key)
 	}
 
@@ -210,17 +211,15 @@ func TestRateLimiter_Allow_Concurrent(t *testing.T) {
 	allowedCount := 0
 	var mu sync.Mutex
 
-	for i := 0; i < 150; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 150 {
+		wg.Go(func() {
 			allowed, _, _ := limiter.Allow(ctx, key)
 			if allowed {
 				mu.Lock()
 				allowedCount++
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -266,26 +265,6 @@ func TestDefaultRateLimitConfig(t *testing.T) {
 }
 
 // TC-RL-009: Auth Rate Limit Config
-func TestAuthRateLimitConfig(t *testing.T) {
-	// When
-	config := AuthRateLimitConfig()
-
-	// Then
-	if config == nil {
-		t.Fatal("AuthRateLimitConfig should return non-nil config")
-		return
-	}
-
-	if config.RequestsPerWindow != AuthRateLimitRequests {
-		t.Errorf("Expected %d requests, got %d", AuthRateLimitRequests, config.RequestsPerWindow)
-	}
-
-	// Auth rate limit should be stricter than default
-	defaultConfig := DefaultRateLimitConfig()
-	if config.RequestsPerWindow >= defaultConfig.RequestsPerWindow {
-		t.Error("Auth rate limit should be stricter than default")
-	}
-}
 
 // TC-RL-010: Rate Limiter Stop
 func TestRateLimiter_Stop(_ *testing.T) {
@@ -376,7 +355,7 @@ func TestLoginAttemptTracker_Lockout(t *testing.T) {
 	identifier := ratelimitTestEmail
 
 	// When - Record max attempts
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, _, _ = tracker.RecordFailedAttempt(ctx, identifier)
 	}
 
@@ -540,12 +519,10 @@ func TestLoginAttemptTracker_Concurrent(t *testing.T) {
 
 	// When - Make concurrent attempts
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 			_, _, _ = tracker.RecordFailedAttempt(ctx, identifier)
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -568,4 +545,14 @@ func TestLoginAttemptTracker_Stop(_ *testing.T) {
 	// Then - The cleanup goroutine should have been stopped
 	// (We can't easily verify this externally, so we just check
 	// that Stop() completed without panicking)
+}
+
+// Regression: Stop() used to panic on a nil in-memory store, which happens
+// whenever Redis is configured (the memory store is never initialized).
+func TestRateLimiterStopWithRedisNoPanic(t *testing.T) {
+	rl := NewRateLimiter(nil, redis.NewClient(&redis.Options{Addr: "localhost:0"}), nil, nil)
+	rl.Stop()
+
+	tracker := NewLoginAttemptTracker(nil, redis.NewClient(&redis.Options{Addr: "localhost:0"}))
+	tracker.Stop()
 }

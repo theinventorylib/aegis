@@ -313,6 +313,11 @@ func (p *Plugin) EnrichUser(ctx context.Context, user *core.EnrichedUser) error 
 func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, purpose string) error {
 	// Sanitize phone number
 	phoneNumber = core.SanitizePhoneNumber(phoneNumber)
+	// Default the purpose so OTPs are always stored with a concrete type;
+	// VerifyOTP compares against the same default.
+	if purpose == "" {
+		purpose = "phone_verification"
+	}
 
 	// Generate OTP code using shared utility
 	code, err := core.GenerateOTPCode(p.otpLength)
@@ -357,10 +362,16 @@ func (p *Plugin) SendOTP(ctx context.Context, phoneNumber, purpose string) error
 	return nil
 }
 
-// VerifyOTP verifies an OTP code
-func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, code string) (bool, error) {
+// VerifyOTP verifies an OTP code for a phone number. The code is bound to
+// the phone number and purpose it was issued for, and is consumed on
+// success (single use).
+func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, purpose, code string) (bool, error) {
 	// Sanitize phone number
 	phoneNumber = core.SanitizePhoneNumber(phoneNumber)
+	// Mirror SendOTP's default so programmatic callers passing "" verify.
+	if purpose == "" {
+		purpose = "phone_verification"
+	}
 	// Check if provider supports OTP operations
 	if p.provider != nil {
 		// Use provider's OTP verification
@@ -372,8 +383,9 @@ func (p *Plugin) VerifyOTP(ctx context.Context, phoneNumber, code string) (bool,
 		return false, fmt.Errorf("verification service not configured")
 	}
 
-	// Validate the verification using the core service
-	_, err := p.verificationService.ValidateVerification(ctx, code)
+	// Validate the verification scoped to this phone number and purpose;
+	// the token is deleted on success so it cannot be replayed.
+	_, err := p.verificationService.ValidateVerificationFor(ctx, phoneNumber, purpose, code)
 	if err != nil {
 		return false, err
 	}
@@ -415,10 +427,8 @@ func (p *Plugin) CreateUserWithPhoneAndPassword(ctx context.Context, name, phone
 	phone = core.SanitizePhoneNumber(phone)
 
 	user := smstypes.User{
-		User: auth.User{
-			ID:   core.GenerateID(),
-			Name: name,
-		},
+		ID:            core.GenerateID(),
+		Name:          name,
 		Phone:         &phone,
 		PhoneVerified: false,
 	}

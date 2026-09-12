@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/oklog/ulid/v2"
+	"uuid"
 )
 
 // This file exports private functions for testing purposes.

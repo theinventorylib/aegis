@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **MySQL support across all plugins**: auth, admin, emailotp, jwt, organizations, sms, and oauth all ship MySQL-specific sqlc-generated query sets
 - **Multi-file default stores**: each plugin's `default_store` is now split into `store.go`, `mysql.go`, `postgres.go`, `sqlite.go`, and `querier.go` for easier maintenance
 - **`aegis.Version`**: runtime-accessible framework version string injected by GoReleaser (falls back to build-info `dev`)
+- **Permission-based organization/team roles**: `organizations.Config.OrgRoles` / `TeamRoles`, `Permission` constants, `HasOrgPermission` / `HasTeamPermission`, and `RequireOrgPermission` / `RequireTeamPermission` middleware. Custom roles are now first-class; `CanAccessTeam` accepts any role.
+- **Username login**: `EmailPasswordHandlers.RegisterWithUsername` and login by email or username (username stored on the credentials account).
+- **Email verification gating**: `AuthConfig.RequireEmailVerification`, `AuthService.SetEmailVerificationCheck`, and `POST /auth/email-otp/send-verification` (rate-limited per email).
+- **Password policy enforcement** on registration and password change (`AuthService.ValidatePassword`), plus email-format validation and `ErrEmailAlreadyExists` / `ErrUsernameTaken` sentinels.
 
 ### Changed
 - Router defaults restructured: `router/routes.go` → `router/defaults/routes.go`; `router/handlers.go` → `router/defaults/handlers.go`
@@ -24,9 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Organizations handlers updated with paginated member and team queries
 - Email OTP sender refactored for cleaner template handling
 - Admin plugin modularised; admin store split into dialect-specific files matching the new default_store convention
+- **Upgrade note — master secret**: `config.Validate` now rejects secrets shorter than 32 bytes. Set a ≥32-byte `WithSecret` before upgrading.
+- **Upgrade note — JWT refresh keys**: access and refresh keys are now stored separately (`sig` vs `sig-refresh`). `RefreshTokens` falls back to the legacy shared key so outstanding refresh tokens keep working, but tokens minted with the old shared key should be allowed to expire. The JWKS endpoint no longer exposes refresh keys.
+- **Upgrade note — password policy**: `AuthConfig.PasswordPolicy` is now enforced on registration and password change; previously it was configured but ignored.
 
 ### Deprecated
-- N/A
+- The internal API cleanup unexported or removed a number of v1.6 public identifiers. They are restored as thin compatibility shims (see `core/deprecated.go`) and are scheduled for removal in v2:
+  - Constructors: `NewSessionService`, `NewAccountService`, `NewUserService`, `NewVerificationService`, `NewPluginData`
+  - Helpers: `ValidatePassword`, `ValidatePasswordSimple`, `BindAndValidate`, `ValidateMiddleware`, `WrapError`, `IsValidationError`, `MustGetUser`, `MustGetEnrichedUser`, `IsContextInitialized`, `AegisContext`
+  - Sanitizers/utilities: `SanitizeFilename`, `SanitizeHTML`, `SanitizeSQL`, `SanitizeSQLIdentifier`, `StripTags`, `NormalizeWhitespace`, `RedactForLog`, `HashShort`, `HashTokenHex`, `IsHashedToken`, `BoolPtr`
+  - Types/config: `AccountModel`, `VerificationModel`, `IDGeneratorFunc`, `AuthRateLimitConfig`, `DefaultPasswordHasherConfig`, `DefaultPasswordPolicyConfig`, `GetAuthConfig`, `LoggerAuditLogger`, `NewLoggerAuditLogger`, `SanitizationConfig.NormalizeWhitespace`
+  - Organizations `Config.CustomOrgRoles` / `Config.CustomTeamRoles` (use `OrgRoles` / `TeamRoles`)
+- New code should use the replacements noted on each symbol and `NewAuthService` / `aegis.New` for construction.
 
 ### Removed
 - `router/routes.go` and `router/chi.go` (replaced by `router/defaults/`)

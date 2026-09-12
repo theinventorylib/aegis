@@ -67,10 +67,7 @@ func (m *mockStore) List(_ context.Context, offset, limit int) ([]admintypes.Use
 	if offset >= len(users) {
 		return nil, nil
 	}
-	end := offset + limit
-	if end > len(users) {
-		end = len(users)
-	}
+	end := min(offset+limit, len(users))
 	return users[offset:end], nil
 }
 
@@ -124,7 +121,7 @@ func newPlugin(store admintypes.Store) *Plugin {
 }
 
 func seedUser(store *mockStore, email string) admintypes.User { //nolint:unparam // email is kept as a parameter for future flexibility
-	u := admintypes.User{User: auth.User{ID: "u1", Email: email}}
+	u := admintypes.User{ID: "u1", Email: email}
 	store.users["u1"] = u
 	return u
 }

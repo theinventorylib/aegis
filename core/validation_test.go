@@ -65,9 +65,9 @@ func TestValidatePassword_DefaultPolicy(t *testing.T) {
 
 	for _, password := range validPasswords {
 		t.Run(password, func(t *testing.T) {
-			err := ValidatePassword(password, nil) // nil uses default policy
+			err := validatePassword(password, nil) // nil uses default policy
 			if err != nil {
-				t.Errorf("ValidatePassword(%s) should pass with default policy: %v", password, err)
+				t.Errorf("validatePassword(%s) should pass with default policy: %v", password, err)
 			}
 		})
 	}
@@ -76,9 +76,9 @@ func TestValidatePassword_DefaultPolicy(t *testing.T) {
 // TC-VAL-005: Invalid Password - Too Short
 func TestValidatePassword_TooShort(t *testing.T) {
 	password := "Pass1"
-	err := ValidatePassword(password, nil)
+	err := validatePassword(password, nil)
 	if err == nil {
-		t.Error("ValidatePassword should fail for short password")
+		t.Error("validatePassword should fail for short password")
 	}
 }
 
@@ -91,9 +91,9 @@ func TestValidatePassword_NoUppercase(t *testing.T) {
 		RequireLower: true,
 		RequireDigit: true,
 	}
-	err := ValidatePassword(password, policy)
+	err := validatePassword(password, policy)
 	if err == nil {
-		t.Error("ValidatePassword should fail when no uppercase and required")
+		t.Error("validatePassword should fail when no uppercase and required")
 	}
 }
 
@@ -106,9 +106,9 @@ func TestValidatePassword_NoLowercase(t *testing.T) {
 		RequireLower: true,
 		RequireDigit: true,
 	}
-	err := ValidatePassword(password, policy)
+	err := validatePassword(password, policy)
 	if err == nil {
-		t.Error("ValidatePassword should fail when no lowercase and required")
+		t.Error("validatePassword should fail when no lowercase and required")
 	}
 }
 
@@ -121,9 +121,9 @@ func TestValidatePassword_NoDigit(t *testing.T) {
 		RequireLower: true,
 		RequireDigit: true,
 	}
-	err := ValidatePassword(password, policy)
+	err := validatePassword(password, policy)
 	if err == nil {
-		t.Error("ValidatePassword should fail when no digit and required")
+		t.Error("validatePassword should fail when no digit and required")
 	}
 }
 
@@ -137,9 +137,9 @@ func TestValidatePassword_NoSpecial(t *testing.T) {
 		RequireDigit:   true,
 		RequireSpecial: true,
 	}
-	err := ValidatePassword(password, policy)
+	err := validatePassword(password, policy)
 	if err == nil {
-		t.Error("ValidatePassword should fail when no special char and required")
+		t.Error("validatePassword should fail when no special char and required")
 	}
 }
 
@@ -163,9 +163,9 @@ func TestValidatePassword_WithSpecial(t *testing.T) {
 
 	for _, password := range passwords {
 		t.Run(password, func(t *testing.T) {
-			err := ValidatePassword(password, policy)
+			err := validatePassword(password, policy)
 			if err != nil {
-				t.Errorf("ValidatePassword(%s) should pass: %v", password, err)
+				t.Errorf("validatePassword(%s) should pass: %v", password, err)
 			}
 		})
 	}
@@ -174,7 +174,7 @@ func TestValidatePassword_WithSpecial(t *testing.T) {
 // TC-VAL-011: Password Too Long
 func TestValidatePassword_TooLong(t *testing.T) {
 	password := ""
-	for i := 0; i < 150; i++ {
+	for range 150 {
 		password += "a"
 	}
 
@@ -183,18 +183,18 @@ func TestValidatePassword_TooLong(t *testing.T) {
 		MaxLength: 128,
 	}
 
-	err := ValidatePassword(password, policy)
+	err := validatePassword(password, policy)
 	if err == nil {
-		t.Error("ValidatePassword should fail for too long password")
+		t.Error("validatePassword should fail for too long password")
 	}
 }
 
 // TC-VAL-012: Empty Password
 func TestValidatePassword_Empty(t *testing.T) {
 	password := ""
-	err := ValidatePassword(password, nil)
+	err := validatePassword(password, nil)
 	if err == nil {
-		t.Error("ValidatePassword should fail for empty password")
+		t.Error("validatePassword should fail for empty password")
 	}
 }
 
@@ -210,9 +210,9 @@ func TestValidatePassword_CustomRelaxed(t *testing.T) {
 		RequireSpecial: false,
 	}
 
-	err := ValidatePassword(password, policy)
+	err := validatePassword(password, policy)
 	if err != nil {
-		t.Errorf("ValidatePassword should pass with relaxed policy: %v", err)
+		t.Errorf("validatePassword should pass with relaxed policy: %v", err)
 	}
 }
 
@@ -228,13 +228,13 @@ func TestValidatePassword_CustomStrict(t *testing.T) {
 		RequireSpecial: true,
 	}
 
-	err := ValidatePassword(password, policy)
+	err := validatePassword(password, policy)
 	if err != nil {
-		t.Errorf("ValidatePassword should pass with strict policy: %v", err)
+		t.Errorf("validatePassword should pass with strict policy: %v", err)
 	}
 }
 
-// TC-VAL-015: ValidatePasswordSimple - Valid
+// TC-VAL-015: validatePasswordSimple - Valid
 func TestValidatePasswordSimple_Valid(t *testing.T) {
 	passwords := []string{
 		"simple123",
@@ -244,38 +244,38 @@ func TestValidatePasswordSimple_Valid(t *testing.T) {
 
 	for _, password := range passwords {
 		t.Run(password, func(t *testing.T) {
-			err := ValidatePasswordSimple(password, 6)
+			err := validatePasswordSimple(password, 6)
 			if err != nil {
-				t.Errorf("ValidatePasswordSimple should pass: %v", err)
+				t.Errorf("validatePasswordSimple should pass: %v", err)
 			}
 		})
 	}
 }
 
-// TC-VAL-016: ValidatePasswordSimple - Too Short
+// TC-VAL-016: validatePasswordSimple - Too Short
 func TestValidatePasswordSimple_TooShort(t *testing.T) {
 	password := "pass"
-	err := ValidatePasswordSimple(password, 8)
+	err := validatePasswordSimple(password, 8)
 	if err == nil {
-		t.Error("ValidatePasswordSimple should fail for short password")
+		t.Error("validatePasswordSimple should fail for short password")
 	}
 }
 
-// TC-VAL-017: ValidatePasswordSimple - Empty
+// TC-VAL-017: validatePasswordSimple - Empty
 func TestValidatePasswordSimple_Empty(t *testing.T) {
 	password := ""
-	err := ValidatePasswordSimple(password, 6)
+	err := validatePasswordSimple(password, 6)
 	if err == nil {
-		t.Error("ValidatePasswordSimple should fail for empty password")
+		t.Error("validatePasswordSimple should fail for empty password")
 	}
 }
 
-// TC-VAL-018: ValidatePasswordSimple - Default Min Length
+// TC-VAL-018: validatePasswordSimple - Default Min Length
 func TestValidatePasswordSimple_DefaultMinLength(t *testing.T) {
 	password := "pass12"
-	err := ValidatePasswordSimple(password, 0) // 0 = use default (6)
+	err := validatePasswordSimple(password, 0) // 0 = use default (6)
 	if err != nil {
-		t.Errorf("ValidatePasswordSimple should pass with default min length: %v", err)
+		t.Errorf("validatePasswordSimple should pass with default min length: %v", err)
 	}
 }
 
@@ -296,10 +296,10 @@ func TestValidatePassword_Unicode(t *testing.T) {
 
 	for _, password := range passwords {
 		t.Run(password, func(t *testing.T) {
-			err := ValidatePassword(password, policy)
+			err := validatePassword(password, policy)
 			// Should handle unicode gracefully
 			if err != nil {
-				t.Logf("ValidatePassword(%s) = %v", password, err)
+				t.Logf("validatePassword(%s) = %v", password, err)
 			}
 		})
 	}
@@ -339,13 +339,13 @@ func TestValidatePasswordWithPolicy(t *testing.T) {
 		{"", true},             // Empty
 	}
 
-	policy := DefaultPasswordPolicyConfig()
+	policy := defaultPasswordPolicyConfig()
 
 	for _, tt := range tests {
 		t.Run(tt.password, func(t *testing.T) {
-			err := ValidatePassword(tt.password, policy)
+			err := validatePassword(tt.password, policy)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidatePassword(%s) error = %v, wantErr %v",
+				t.Errorf("validatePassword(%s) error = %v, wantErr %v",
 					tt.password, err, tt.wantErr)
 			}
 		})
@@ -356,7 +356,7 @@ func TestValidatePasswordWithPolicy(t *testing.T) {
 func TestValidateEmail_VeryLong(t *testing.T) {
 	// Create a very long but valid email
 	localPart := ""
-	for i := 0; i < 64; i++ { // Max local part is 64 chars
+	for range 64 { // Max local part is 64 chars
 		localPart += "a"
 	}
 	email := localPart + "@example.com"
@@ -418,9 +418,9 @@ func TestValidatePassword_AllSpecialChars(t *testing.T) {
 	for _, char := range specialChars {
 		password := "Password1" + string(char)
 		t.Run(password, func(t *testing.T) {
-			err := ValidatePassword(password, policy)
+			err := validatePassword(password, policy)
 			if err != nil {
-				t.Errorf("ValidatePassword should accept special char %c: %v", char, err)
+				t.Errorf("validatePassword should accept special char %c: %v", char, err)
 			}
 		})
 	}

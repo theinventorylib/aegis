@@ -1,9 +1,17 @@
 package core
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 )
+
+// isNotFound reports whether err means "row does not exist". Stores are
+// documented to return sql.ErrNoRows (default stores) or the package
+// ErrUserNotFound sentinel; both are accepted.
+func isNotFound(err error) bool {
+	return errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrUserNotFound)
+}
 
 // Common authentication errors used throughout the framework.
 // These sentinel errors can be compared using errors.Is() and provide
@@ -20,6 +28,12 @@ var (
 
 	// ErrEmailNotVerified indicates email verification is required
 	ErrEmailNotVerified = errors.New("email not verified")
+
+	// ErrEmailAlreadyExists indicates a user with the given email already exists
+	ErrEmailAlreadyExists = errors.New("email already registered")
+
+	// ErrUsernameTaken indicates the requested username is already in use
+	ErrUsernameTaken = errors.New("username already taken")
 
 	// ErrInvalidToken indicates a malformed or invalid token
 	ErrInvalidToken = errors.New("invalid token")
@@ -171,20 +185,6 @@ func NewAuthErrorWithCause(code, message string, cause error) *AuthError {
 	}
 }
 
-// WrapError wraps an error with additional context
-func WrapError(err error, message string) error {
-	if err == nil {
-		return nil
-	}
-	return fmt.Errorf("%s: %w", message, err)
-}
-
-// IsValidationError checks if an error is a validation error
-func IsValidationError(err error) bool {
-	var validationErr ValidationError
-	return errors.As(err, &validationErr)
-}
-
 // IsAuthError checks if an error is an auth error
 func IsAuthError(err error) bool {
 	var authErr AuthError
@@ -193,12 +193,10 @@ func IsAuthError(err error) bool {
 
 // GetValidationErrors extracts all validation errors from an error
 func GetValidationErrors(err error) ValidationErrors {
-	var validationErrs ValidationErrors
-	if errors.As(err, &validationErrs) {
+	if validationErrs, ok := errors.AsType[ValidationErrors](err); ok {
 		return validationErrs
 	}
-	var validationErr ValidationError
-	if errors.As(err, &validationErr) {
+	if validationErr, ok := errors.AsType[ValidationError](err); ok {
 		return ValidationErrors{validationErr}
 	}
 	return nil

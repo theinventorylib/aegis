@@ -58,10 +58,10 @@ func TestStaticKeyManager_ConcurrentAccess(t *testing.T) {
 	wg.Add(goroutines * 3)
 
 	// Concurrent writers
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < ops; j++ {
+			for range ops {
 				key := "key"
 				_ = mgr.Set(ctx, key, []byte("value"), time.Minute)
 			}
@@ -69,20 +69,20 @@ func TestStaticKeyManager_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Concurrent readers
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < ops; j++ {
+			for range ops {
 				_, _ = mgr.Get(ctx, "key")
 			}
 		}()
 	}
 
 	// Concurrent deleters
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < ops; j++ {
+			for range ops {
 				_ = mgr.Delete(ctx, "key")
 			}
 		}()
