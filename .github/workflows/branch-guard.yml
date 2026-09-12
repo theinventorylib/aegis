@@ -1,9 +1,12 @@
 name: Branch guard
 
 # `main` (v2) and `v1` are independent release lines, not a feature/baseline
-# pair. This guard fails any PR that tries to merge one line into the other,
+# pair. This guard rejects any PR that tries to merge one line into the other,
 # and verifies that go.mod's module path matches the branch so the wrong line's
-# content can't land on a branch by accident.
+# content can't land on a branch.
+#
+# The two checks are deliberately separate jobs so a push run can never produce
+# a green "Release-line guard" check that masks a failing PR run.
 
 on:
   pull_request:
@@ -15,12 +18,12 @@ permissions:
   contents: read
 
 jobs:
-  line-guard:
+  release-line-guard:
     name: Release-line guard
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Reject cross-line pull requests
-        if: github.event_name == 'pull_request'
         run: |
           base="${{ github.base_ref }}"
           head="${{ github.head_ref }}"
@@ -30,18 +33,17 @@ jobs:
           fi
           echo "OK: $head -> $base"
 
+  module-path-guard:
+    name: Module path guard
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Verify go.mod module path matches the branch
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            ref="${{ github.head_ref }}"
-          else
-            ref="${GITHUB_REF_NAME}"
-          fi
+          ref="${GITHUB_REF_NAME}"
           mod="$(grep -m1 '^module ' go.mod | cut -d' ' -f2)"
           case "$ref" in
             main) want="github.com/theinventorylib/aegis/v2" ;;
