@@ -17,7 +17,7 @@ package core
 import (
 	"context"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // AuthService is the main orchestrator for authentication operations.

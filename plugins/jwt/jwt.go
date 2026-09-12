@@ -60,8 +60,8 @@
 //
 //	import (
 //		"context"
-//		"github.com/theinventorylib/aegis"
-//		"github.com/theinventorylib/aegis/plugins/jwt"
+//		"github.com/theinventorylib/aegis/v2"
+//		"github.com/theinventorylib/aegis/v2/plugins/jwt"
 //	)
 //
 //	func main() {
@@ -102,15 +102,15 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/redis/go-redis/v9"
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
-	iversion "github.com/theinventorylib/aegis/internal/version"
-	"github.com/theinventorylib/aegis/plugins"
-	jwtdefaultstore "github.com/theinventorylib/aegis/plugins/jwt/default_store"
-	jwttypes "github.com/theinventorylib/aegis/plugins/jwt/types"
-	"github.com/theinventorylib/aegis/plugins/openapi"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/config"
+	"github.com/theinventorylib/aegis/v2/core"
+	iversion "github.com/theinventorylib/aegis/v2/internal/version"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	jwtdefaultstore "github.com/theinventorylib/aegis/v2/plugins/jwt/default_store"
+	jwttypes "github.com/theinventorylib/aegis/v2/plugins/jwt/types"
+	"github.com/theinventorylib/aegis/v2/plugins/openapi"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 const (

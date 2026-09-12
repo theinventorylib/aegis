@@ -8,7 +8,7 @@ import (
 	"math"
 	"time"
 
-	types "github.com/theinventorylib/aegis/auth/types"
+	types "github.com/theinventorylib/aegis/v2/auth/types"
 )
 
 // DefaultStore holds all default SQL-based store implementations.

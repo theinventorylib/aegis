@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/core"
-	admintypes "github.com/theinventorylib/aegis/plugins/admin/types"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/core"
+	admintypes "github.com/theinventorylib/aegis/v2/plugins/admin/types"
 )
 
 // mockStore implements admintypes.Store for testing without a database.

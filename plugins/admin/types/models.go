@@ -4,7 +4,7 @@ package types
 import (
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // User represents a user with admin-specific extensions.

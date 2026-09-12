@@ -1,7 +1,7 @@
 package jwt
 
 import (
-	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/v2/plugins"
 )
 
 // GetSchemaRequirements returns schema validation requirements for the JWT plugin.

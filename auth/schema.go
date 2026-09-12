@@ -10,7 +10,7 @@ import (
 	_ "embed"
 	"fmt"
 
-	authtypes "github.com/theinventorylib/aegis/auth/types"
+	authtypes "github.com/theinventorylib/aegis/v2/auth/types"
 )
 
 // Embedded schema SQL for each supported database dialect.
@@ -122,7 +122,7 @@ func GetSchema(dialect Dialect) (*Schema, error) {
 func parseSchemaInfo(_ string) SchemaInfo {
 	// Simple parser/regex could go here, for now returns default
 	return SchemaInfo{
-		Package:      "github.com/theinventorylib/aegis/auth",
+		Package:      "github.com/theinventorylib/aegis/v2/auth",
 		Version:      0, // Version tracking not yet implemented
 		Description:  "",
 		Dependencies: []Dependency{},

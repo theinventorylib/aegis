@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/markbates/goth"
-	core "github.com/theinventorylib/aegis/core"
-	oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
+	core "github.com/theinventorylib/aegis/v2/core"
+	oauthtypes "github.com/theinventorylib/aegis/v2/plugins/oauth/types"
 )
 
 // GothAdapter adapts goth.Provider to Aegis's Provider interface.

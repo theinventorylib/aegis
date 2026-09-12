@@ -3,8 +3,8 @@ package sms
 import (
 	"net/http"
 
-	"github.com/theinventorylib/aegis/core"
-	smstypes "github.com/theinventorylib/aegis/plugins/sms/types"
+	"github.com/theinventorylib/aegis/v2/core"
+	smstypes "github.com/theinventorylib/aegis/v2/plugins/sms/types"
 )
 
 // ========== SMS HANDLERS ==========

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // Context keys are per-type empty structs (never raw strings) so Go's type

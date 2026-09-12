@@ -25,7 +25,7 @@ This example demonstrates how to build a stateless REST API with JWT authenticat
 
 ```bash
 go mod init aegis-jwt-api
-go get github.com/theinventorylib/aegis
+go get github.com/theinventorylib/aegis/v2
 go get github.com/go-chi/chi/v5
 go get github.com/go-chi/cors
 go get github.com/lib/pq
@@ -41,7 +41,7 @@ createdb aegis_jwt
 
 ```bash
 # Install Aegis CLI
-go install github.com/theinventorylib/aegis/cmd/aegis@latest
+go install github.com/theinventorylib/aegis/v2/cmd/aegis@latest
 
 # Export migrations with JWT plugin
 aegis export --dialect postgres --plugins jwt --output ./migrations

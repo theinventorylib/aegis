@@ -35,16 +35,16 @@ import (
 	"os"
 	"strings"
 
-	"github.com/theinventorylib/aegis/exporter"
-	iversion "github.com/theinventorylib/aegis/internal/version"
-	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/plugins/admin"
-	"github.com/theinventorylib/aegis/plugins/emailotp"
-	"github.com/theinventorylib/aegis/plugins/jwt"
-	"github.com/theinventorylib/aegis/plugins/oauth"
-	"github.com/theinventorylib/aegis/plugins/openapi"
-	"github.com/theinventorylib/aegis/plugins/organizations"
-	"github.com/theinventorylib/aegis/plugins/sms"
+	"github.com/theinventorylib/aegis/v2/exporter"
+	iversion "github.com/theinventorylib/aegis/v2/internal/version"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	"github.com/theinventorylib/aegis/v2/plugins/admin"
+	"github.com/theinventorylib/aegis/v2/plugins/emailotp"
+	"github.com/theinventorylib/aegis/v2/plugins/jwt"
+	"github.com/theinventorylib/aegis/v2/plugins/oauth"
+	"github.com/theinventorylib/aegis/v2/plugins/openapi"
+	"github.com/theinventorylib/aegis/v2/plugins/organizations"
+	"github.com/theinventorylib/aegis/v2/plugins/sms"
 )
 
 // version is injected by goreleaser at build time via -X internal/version.Version; falls back to build info or "dev".

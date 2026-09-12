@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // TC-CTX-001: GetPathParam with PathParamFunc in context

@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/markbates/goth"
-	"github.com/theinventorylib/aegis/core"
-	oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
+	"github.com/theinventorylib/aegis/v2/core"
+	oauthtypes "github.com/theinventorylib/aegis/v2/plugins/oauth/types"
 )
 
 // Handlers provides HTTP endpoint handlers for OAuth authentication.

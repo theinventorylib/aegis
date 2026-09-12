@@ -68,7 +68,7 @@ All examples require:
 
 Install Aegis CLI:
 ```bash
-go install github.com/theinventorylib/aegis/cmd/aegis@latest
+go install github.com/theinventorylib/aegis/v2/cmd/aegis@latest
 ```
 
 ### Running an Example
@@ -340,11 +340,11 @@ Found an issue with an example? Have a suggestion?
 
 ## 📖 Additional Resources
 
-- [Aegis Documentation](https://pkg.go.dev/github.com/theinventorylib/aegis)
+- [Aegis Documentation](https://pkg.go.dev/github.com/theinventorylib/aegis/v2)
 - [Project README](../README.md)
 - [Architecture Guide](../ARCHITECTURE.md)
 - [Security Practices](../SECURITY.md)
-- [API Reference](https://pkg.go.dev/github.com/theinventorylib/aegis/core)
+- [API Reference](https://pkg.go.dev/github.com/theinventorylib/aegis/v2/core)
 
 ---
 
@@ -358,6 +358,6 @@ These examples are part of the Aegis project and are licensed under the MIT Lice
 
 - **GitHub Issues:** [Report bugs or ask questions](https://github.com/theinventorylib/aegis/issues)
 - **Discussions:** [Community forum](https://github.com/theinventorylib/aegis/discussions)
-- **Documentation:** [pkg.go.dev](https://pkg.go.dev/github.com/theinventorylib/aegis)
+- **Documentation:** [pkg.go.dev](https://pkg.go.dev/github.com/theinventorylib/aegis/v2)
 
 Happy coding! 🚀

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	sqlcsqlite "github.com/theinventorylib/aegis/plugins/organizations/internal/gen/sqlite"
+	sqlcsqlite "github.com/theinventorylib/aegis/v2/plugins/organizations/internal/gen/sqlite"
 )
 
 // sqliteQuerier adapts sqlcsqlite.Queries to the querier interface.

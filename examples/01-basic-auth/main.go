@@ -24,10 +24,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	_ "github.com/lib/pq"
-	"github.com/theinventorylib/aegis"
-	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/router/routers"
+	"github.com/theinventorylib/aegis/v2"
+	"github.com/theinventorylib/aegis/v2/config"
+	"github.com/theinventorylib/aegis/v2/core"
+	"github.com/theinventorylib/aegis/v2/router/routers"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import (
 	"context"
 	"database/sql"
 
-	sqlcpostgres "github.com/theinventorylib/aegis/plugins/emailotp/internal/gen/postgres"
+	sqlcpostgres "github.com/theinventorylib/aegis/v2/plugins/emailotp/internal/gen/postgres"
 )
 
 type postgresQuerier struct{ q *sqlcpostgres.Queries }

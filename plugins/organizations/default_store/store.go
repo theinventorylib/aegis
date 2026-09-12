@@ -12,8 +12,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/theinventorylib/aegis/plugins"
-	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
 )
 
 // DefaultOrganizationStore implements orgtypes.OrganizationStore using a SQL database.

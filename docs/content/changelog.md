@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Upgrade note — password policy**: `AuthConfig.PasswordPolicy` is now enforced on registration and password change; previously it was configured but ignored.
 
 ### Deprecated
-- The internal API cleanup unexported or removed a number of v1.6 public identifiers. They are restored as thin compatibility shims (see `core/deprecated.go`) and are scheduled for removal in v2:
+- N/A in v2.0.0 — the v1.6 compatibility shims that v1.7.0 added (`core/deprecated.go`) and the deprecated organizations `Config.CustomOrgRoles` / `Config.CustomTeamRoles` were removed in this release; the `v1` branch retains them. Removed symbols:
   - Constructors: `NewSessionService`, `NewAccountService`, `NewUserService`, `NewVerificationService`, `NewPluginData`
   - Helpers: `ValidatePassword`, `ValidatePasswordSimple`, `BindAndValidate`, `ValidateMiddleware`, `WrapError`, `IsValidationError`, `MustGetUser`, `MustGetEnrichedUser`, `IsContextInitialized`, `AegisContext`
   - Sanitizers/utilities: `SanitizeFilename`, `SanitizeHTML`, `SanitizeSQL`, `SanitizeSQLIdentifier`, `StripTags`, `NormalizeWhitespace`, `RedactForLog`, `HashShort`, `HashTokenHex`, `IsHashedToken`, `BoolPtr`

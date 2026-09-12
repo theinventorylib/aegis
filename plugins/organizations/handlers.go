@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/theinventorylib/aegis/core"
-	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
+	"github.com/theinventorylib/aegis/v2/core"
+	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
 )
 
 // ========== ORGANIZATION HANDLERS ==========

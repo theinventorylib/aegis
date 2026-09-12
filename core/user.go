@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // UserService provides high-level user management operations.

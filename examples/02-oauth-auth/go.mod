@@ -7,7 +7,7 @@ require (
 	github.com/gorilla/sessions v1.2.2
 	github.com/lib/pq v1.10.9
 	github.com/markbates/goth v1.82.0
-	github.com/theinventorylib/aegis v0.1.0
+	github.com/theinventorylib/aegis/v2 v2.0.0
 )
 
 require (
@@ -69,4 +69,4 @@ require (
 )
 
 // For local development, using local aegis code
-replace github.com/theinventorylib/aegis => ../../
+replace github.com/theinventorylib/aegis/v2 => ../../

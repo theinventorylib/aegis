@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
+	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
 )
 
 // Permission is a capability that a role can grant within an organization or

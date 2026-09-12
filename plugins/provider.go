@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/config"
+	"github.com/theinventorylib/aegis/v2/core"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 // SchemaRequirement defines a schema validation requirement

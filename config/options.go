@@ -6,9 +6,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/core"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 // Logger is an optional interface for logging Aegis lifecycle events.

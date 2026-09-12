@@ -2,7 +2,7 @@ module example-sanitization
 
 go 1.27
 
-require github.com/theinventorylib/aegis v0.1.0
+require github.com/theinventorylib/aegis/v2 v2.0.0
 
 require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
@@ -16,4 +16,4 @@ require (
 )
 
 // For local development, using local aegis code
-replace github.com/theinventorylib/aegis => ../../
+replace github.com/theinventorylib/aegis/v2 => ../../

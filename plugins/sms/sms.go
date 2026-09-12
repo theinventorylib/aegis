@@ -41,15 +41,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
-	iversion "github.com/theinventorylib/aegis/internal/version"
-	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/plugins/openapi"
-	smsdefaultstore "github.com/theinventorylib/aegis/plugins/sms/default_store"
-	smstypes "github.com/theinventorylib/aegis/plugins/sms/types"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/config"
+	"github.com/theinventorylib/aegis/v2/core"
+	iversion "github.com/theinventorylib/aegis/v2/internal/version"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	"github.com/theinventorylib/aegis/v2/plugins/openapi"
+	smsdefaultstore "github.com/theinventorylib/aegis/v2/plugins/sms/default_store"
+	smstypes "github.com/theinventorylib/aegis/v2/plugins/sms/types"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 // Plugin provides phone-based OTP verification and authentication.

@@ -12,8 +12,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/theinventorylib/aegis/plugins"
-	emailotptypes "github.com/theinventorylib/aegis/plugins/emailotp/types"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	emailotptypes "github.com/theinventorylib/aegis/v2/plugins/emailotp/types"
 )
 
 // DefaultEmailOTPStore implements emailotptypes.Store using a SQL database.

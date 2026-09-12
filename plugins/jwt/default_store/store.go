@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/theinventorylib/aegis/plugins"
-	jwttypes "github.com/theinventorylib/aegis/plugins/jwt/types"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	jwttypes "github.com/theinventorylib/aegis/v2/plugins/jwt/types"
 )
 
 // DefaultJWTStore implements jwttypes.Store using a SQL database backend.

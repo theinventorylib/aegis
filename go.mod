@@ -1,4 +1,4 @@
-module github.com/theinventorylib/aegis
+module github.com/theinventorylib/aegis/v2
 
 go 1.27
 

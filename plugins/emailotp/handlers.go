@@ -3,8 +3,8 @@ package emailotp
 import (
 	"net/http"
 
-	"github.com/theinventorylib/aegis/core"
-	emailotptypes "github.com/theinventorylib/aegis/plugins/emailotp/types"
+	"github.com/theinventorylib/aegis/v2/core"
+	emailotptypes "github.com/theinventorylib/aegis/v2/plugins/emailotp/types"
 )
 
 // ========== EMAIL OTP HANDLERS ==========

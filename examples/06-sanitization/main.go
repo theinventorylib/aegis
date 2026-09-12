@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/theinventorylib/aegis/core"
+	"github.com/theinventorylib/aegis/v2/core"
 )
 
 func main() {

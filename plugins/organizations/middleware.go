@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/theinventorylib/aegis/core"
-	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
+	"github.com/theinventorylib/aegis/v2/core"
+	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
 )
 
 // orgRoleChecker is a function type for checking organization role requirements.

@@ -50,9 +50,9 @@ import (
 	"fmt"
 	"sync"
 
-	iversion "github.com/theinventorylib/aegis/internal/version"
-	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/router"
+	iversion "github.com/theinventorylib/aegis/v2/internal/version"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 // Plugin provides automatic OpenAPI 3.0 documentation generation.

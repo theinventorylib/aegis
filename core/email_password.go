@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // EmailPasswordHandlers provides HTTP handlers and programmatic functions for

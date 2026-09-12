@@ -13,10 +13,10 @@ package defaults
 import (
 	"net/http"
 
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/plugins/openapi"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/core"
+	"github.com/theinventorylib/aegis/v2/plugins/openapi"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 // MountRoutes mounts all core Aegis authentication routes and registers

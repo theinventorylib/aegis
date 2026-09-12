@@ -11,9 +11,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/plugins"
-	admintypes "github.com/theinventorylib/aegis/plugins/admin/types"
+	"github.com/theinventorylib/aegis/v2/core"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	admintypes "github.com/theinventorylib/aegis/v2/plugins/admin/types"
 )
 
 // DefaultAdminStore implements admintypes.Store using a SQL database.

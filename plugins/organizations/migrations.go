@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/v2/plugins"
 )
 
 //go:embed migrations/*/*.sql

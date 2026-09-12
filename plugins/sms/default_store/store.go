@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/theinventorylib/aegis/plugins"
-	smstypes "github.com/theinventorylib/aegis/plugins/sms/types"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	smstypes "github.com/theinventorylib/aegis/v2/plugins/sms/types"
 )
 
 // DefaultSMSStore implements smstypes.Store using a SQL database.

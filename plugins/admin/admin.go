@@ -40,13 +40,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/theinventorylib/aegis/core"
-	iversion "github.com/theinventorylib/aegis/internal/version"
-	"github.com/theinventorylib/aegis/plugins"
-	admindefaultstore "github.com/theinventorylib/aegis/plugins/admin/default_store"
-	admintypes "github.com/theinventorylib/aegis/plugins/admin/types"
-	"github.com/theinventorylib/aegis/plugins/openapi"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/core"
+	iversion "github.com/theinventorylib/aegis/v2/internal/version"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	admindefaultstore "github.com/theinventorylib/aegis/v2/plugins/admin/default_store"
+	admintypes "github.com/theinventorylib/aegis/v2/plugins/admin/types"
+	"github.com/theinventorylib/aegis/v2/plugins/openapi"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 // Plugin provides role-based access control and administrative user management.

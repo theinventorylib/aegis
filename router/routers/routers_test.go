@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/labstack/echo/v4"
 
-	"github.com/theinventorylib/aegis/core"
+	"github.com/theinventorylib/aegis/v2/core"
 )
 
 // helpers for reading response bodies

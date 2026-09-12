@@ -5,8 +5,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/theinventorylib/aegis/core"
-	aegisrouter "github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/core"
+	aegisrouter "github.com/theinventorylib/aegis/v2/router"
 )
 
 // EchoRouter wraps echo.Echo to implement the Router interface.

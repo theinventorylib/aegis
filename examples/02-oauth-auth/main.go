@@ -31,13 +31,13 @@ import (
 	"github.com/markbates/goth"
 	"github.com/markbates/goth/providers/github"
 	"github.com/markbates/goth/providers/google"
-	"github.com/theinventorylib/aegis"
-	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/plugins/oauth"
-	oauthTypes "github.com/theinventorylib/aegis/plugins/oauth/types"
-	"github.com/theinventorylib/aegis/router/routers"
+	"github.com/theinventorylib/aegis/v2"
+	"github.com/theinventorylib/aegis/v2/config"
+	"github.com/theinventorylib/aegis/v2/core"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	"github.com/theinventorylib/aegis/v2/plugins/oauth"
+	oauthTypes "github.com/theinventorylib/aegis/v2/plugins/oauth/types"
+	"github.com/theinventorylib/aegis/v2/router/routers"
 )
 
 func main() {

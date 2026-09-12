@@ -67,13 +67,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/theinventorylib/aegis/core"
-	iversion "github.com/theinventorylib/aegis/internal/version"
-	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/plugins/openapi"
-	orgdefaultstore "github.com/theinventorylib/aegis/plugins/organizations/default_store"
-	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/core"
+	iversion "github.com/theinventorylib/aegis/v2/internal/version"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	"github.com/theinventorylib/aegis/v2/plugins/openapi"
+	orgdefaultstore "github.com/theinventorylib/aegis/v2/plugins/organizations/default_store"
+	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 // Config holds optional configuration for the organizations plugin.
@@ -88,18 +88,6 @@ type Config struct {
 	// TeamRoles overrides or extends the built-in team roles (lead, member).
 	// Semantics are the same as OrgRoles.
 	TeamRoles map[string]RoleDefinition
-
-	// CustomOrgRoles extends the set of assignable org roles.
-	//
-	// Deprecated: use OrgRoles, which also assigns permissions. Roles listed
-	// here are granted the same read-only permissions as "member".
-	CustomOrgRoles []string
-
-	// CustomTeamRoles extends the set of assignable team roles.
-	//
-	// Deprecated: use TeamRoles. Roles listed here are granted the same
-	// read-only permissions as a team "member".
-	CustomTeamRoles []string
 
 	// InvitationSubject is the subject line for invitation emails.
 	// Default: "You're invited!".
@@ -173,7 +161,6 @@ func New(cfg *Config, store orgtypes.OrganizationStore, dialect ...plugins.Diale
 		},
 	}
 	var orgRoles, teamRoles map[string]RoleDefinition
-	var customOrg, customTeam []string
 	if cfg != nil {
 		if cfg.InvitationSubject != "" {
 			p.config.InvitationSubject = cfg.InvitationSubject
@@ -183,28 +170,11 @@ func New(cfg *Config, store orgtypes.OrganizationStore, dialect ...plugins.Diale
 		}
 		p.config.OrgRoles = cfg.OrgRoles
 		p.config.TeamRoles = cfg.TeamRoles
-		p.config.CustomOrgRoles = cfg.CustomOrgRoles
-		p.config.CustomTeamRoles = cfg.CustomTeamRoles
 		orgRoles = cfg.OrgRoles
 		teamRoles = cfg.TeamRoles
-		customOrg = cfg.CustomOrgRoles
-		customTeam = cfg.CustomTeamRoles
 	}
 	p.orgRoles = resolveRoles(defaultOrgRoles(), orgRoles)
 	p.teamRoles = resolveRoles(defaultTeamRoles(), teamRoles)
-
-	// Deprecated Custom*Roles: register the names as read-only roles so they
-	// stay assignable. OrgRoles/TeamRoles take precedence when both are set.
-	for _, role := range customOrg {
-		if _, exists := p.orgRoles[role]; !exists {
-			p.orgRoles[role] = RoleDefinition{Permissions: []Permission{PermOrgView, PermMemberView, PermTeamView}}
-		}
-	}
-	for _, role := range customTeam {
-		if _, exists := p.teamRoles[role]; !exists {
-			p.teamRoles[role] = RoleDefinition{Permissions: []Permission{PermTeamView}}
-		}
-	}
 	return p
 }
 

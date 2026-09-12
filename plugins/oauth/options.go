@@ -1,6 +1,6 @@
 package oauth
 
-import oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
+import oauthtypes "github.com/theinventorylib/aegis/v2/plugins/oauth/types"
 
 // WithScopes sets custom OAuth scopes for the provider.
 //

@@ -9,7 +9,7 @@ import (
 	"database/sql"
 	"time"
 
-	sqlcpostgres "github.com/theinventorylib/aegis/plugins/jwt/internal/gen/postgres"
+	sqlcpostgres "github.com/theinventorylib/aegis/v2/plugins/jwt/internal/gen/postgres"
 )
 
 type postgresQuerier struct{ q *sqlcpostgres.Queries }

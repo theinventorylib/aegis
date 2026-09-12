@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/v2/plugins"
 )
 
 // migrationFS embeds incremental migration files for each SQL dialect.

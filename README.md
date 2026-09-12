@@ -7,7 +7,7 @@
 **Aegis** is a lightweight authentication framework for Go with a **modular plugin architecture** inspired by [better-auth](https://www.better-auth.com/).
 
 [![CI](https://github.com/theinventorylib/aegis/actions/workflows/ci.yml/badge.svg)](https://github.com/theinventorylib/aegis/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/theinventorylib/aegis.svg)](https://pkg.go.dev/github.com/theinventorylib/aegis)
+[![Go Reference](https://pkg.go.dev/badge/github.com/theinventorylib/aegis/v2.svg)](https://pkg.go.dev/github.com/theinventorylib/aegis/v2)
 
 ---
 
@@ -41,13 +41,13 @@
 ## 🚀 Quick Install
 
 ```bash
-go get github.com/theinventorylib/aegis
+go get github.com/theinventorylib/aegis/v2
 ```
 
 For the CLI tool:
 
 ```bash
-go install github.com/theinventorylib/aegis/cmd/aegis@latest
+go install github.com/theinventorylib/aegis/v2/cmd/aegis@latest
 ```
 
 ## 🤝 Contributing

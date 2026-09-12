@@ -36,8 +36,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/theinventorylib/aegis/core"
-	aegisrouter "github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/core"
+	aegisrouter "github.com/theinventorylib/aegis/v2/router"
 )
 
 // ChiRouter wraps chi.Mux to implement the Router interface.

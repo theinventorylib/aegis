@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // This file defines model interfaces that allow for flexible data layer implementations.

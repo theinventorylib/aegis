@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // TC-SES-001: Session Service Creation

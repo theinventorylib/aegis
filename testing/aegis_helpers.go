@@ -13,9 +13,9 @@ import (
 	"testing"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/theinventorylib/aegis"
-	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2"
+	"github.com/theinventorylib/aegis/v2/config"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 // SetupTestAegis creates a configured Aegis instance for testing.

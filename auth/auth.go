@@ -28,7 +28,7 @@ package auth
 import (
 	"database/sql"
 
-	defaultstore "github.com/theinventorylib/aegis/auth/default_store"
+	defaultstore "github.com/theinventorylib/aegis/v2/auth/default_store"
 )
 
 // Config holds the configuration for the auth system.

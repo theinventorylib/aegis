@@ -8,7 +8,7 @@ import (
 	"context"
 	"database/sql"
 
-	sqlcsqlite "github.com/theinventorylib/aegis/plugins/admin/internal/gen/sqlite"
+	sqlcsqlite "github.com/theinventorylib/aegis/v2/plugins/admin/internal/gen/sqlite"
 )
 
 type sqliteQuerier struct{ q *sqlcsqlite.Queries }

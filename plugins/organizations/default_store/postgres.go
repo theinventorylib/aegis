@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	sqlcpostgres "github.com/theinventorylib/aegis/plugins/organizations/internal/gen/postgres"
+	sqlcpostgres "github.com/theinventorylib/aegis/v2/plugins/organizations/internal/gen/postgres"
 )
 
 // postgresQuerier adapts sqlcpostgres.Queries to the querier interface.

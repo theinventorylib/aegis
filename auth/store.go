@@ -1,6 +1,6 @@
 package auth
 
-import authtypes "github.com/theinventorylib/aegis/auth/types"
+import authtypes "github.com/theinventorylib/aegis/v2/auth/types"
 
 // Interface aliases re-export the storage interfaces from auth/types at the
 // top-level auth package so callers do not need to import the sub-package.

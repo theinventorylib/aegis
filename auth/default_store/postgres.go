@@ -8,7 +8,7 @@ import (
 	"context"
 	"database/sql"
 
-	sqlcpostgres "github.com/theinventorylib/aegis/auth/internal/gen/postgres"
+	sqlcpostgres "github.com/theinventorylib/aegis/v2/auth/internal/gen/postgres"
 )
 
 type postgresQuerier struct{ q *sqlcpostgres.Queries }

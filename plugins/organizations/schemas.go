@@ -4,7 +4,7 @@ import (
 	"regexp"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
-	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
+	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
 )
 
 // slugPattern defines the allowed format for organization slugs.

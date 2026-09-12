@@ -41,8 +41,8 @@
 //		"database/sql"
 //		"net/http"
 //
-//		"github.com/theinventorylib/aegis"
-//		"github.com/theinventorylib/aegis/config"
+//		"github.com/theinventorylib/aegis/v2"
+//		"github.com/theinventorylib/aegis/v2/config"
 //		"github.com/go-chi/chi/v5"
 //		_ "github.com/lib/pq"
 //	)
@@ -83,13 +83,13 @@ import (
 	"sync"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
-	iversion "github.com/theinventorylib/aegis/internal/version"
-	"github.com/theinventorylib/aegis/plugins"
-	"github.com/theinventorylib/aegis/router"
-	"github.com/theinventorylib/aegis/router/defaults"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/config"
+	"github.com/theinventorylib/aegis/v2/core"
+	iversion "github.com/theinventorylib/aegis/v2/internal/version"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	"github.com/theinventorylib/aegis/v2/router"
+	"github.com/theinventorylib/aegis/v2/router/defaults"
 )
 
 // Version is the running Aegis framework version.

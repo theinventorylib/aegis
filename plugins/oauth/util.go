@@ -18,7 +18,7 @@ import (
 	"github.com/markbates/goth/providers/spotify"
 	"github.com/markbates/goth/providers/twitch"
 	"github.com/markbates/goth/providers/twitter"
-	oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
+	oauthtypes "github.com/theinventorylib/aegis/v2/plugins/oauth/types"
 )
 
 // CreateGothProvider creates a goth.Provider from ProviderConfig.

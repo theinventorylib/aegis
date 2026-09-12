@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // mockVerificationStore is a minimal in-memory VerificationStore.

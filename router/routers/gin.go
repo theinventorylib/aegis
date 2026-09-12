@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/theinventorylib/aegis/core"
-	aegisrouter "github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/core"
+	aegisrouter "github.com/theinventorylib/aegis/v2/router"
 )
 
 // GinRouter wraps gin.Engine to implement the Router interface.

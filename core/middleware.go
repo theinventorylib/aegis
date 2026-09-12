@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // Default request body size limits prevent denial-of-service attacks via

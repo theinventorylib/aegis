@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	sqlcmysql "github.com/theinventorylib/aegis/plugins/organizations/internal/gen/mysql"
+	sqlcmysql "github.com/theinventorylib/aegis/v2/plugins/organizations/internal/gen/mysql"
 )
 
 // mysqlQuerier adapts sqlcmysql.Queries to the querier interface.

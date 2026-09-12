@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/theinventorylib/aegis/core"
+	"github.com/theinventorylib/aegis/v2/core"
 )
 
 var (

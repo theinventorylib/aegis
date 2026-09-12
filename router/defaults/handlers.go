@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/core"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/core"
 )
 
 // Handlers provides HTTP handlers for core Aegis authentication routes.

@@ -2,7 +2,7 @@
 package types
 
 import (
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // ========== Request DTOs ==========

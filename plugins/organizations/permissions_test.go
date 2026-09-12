@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"testing"
 
-	orgtypes "github.com/theinventorylib/aegis/plugins/organizations/types"
+	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
 )
 
 // fakeStore embeds the interface so only the methods used by a test need to be

@@ -1,8 +1,8 @@
 package organizations
 
 import (
-	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/v2/core"
+	"github.com/theinventorylib/aegis/v2/plugins"
 )
 
 // GetSchemaRequirements returns schema validation requirements for the organizations plugin.

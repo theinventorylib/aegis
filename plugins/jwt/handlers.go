@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/theinventorylib/aegis/core"
-	jwttypes "github.com/theinventorylib/aegis/plugins/jwt/types"
+	"github.com/theinventorylib/aegis/v2/core"
+	jwttypes "github.com/theinventorylib/aegis/v2/plugins/jwt/types"
 )
 
 // Handler manages HTTP handlers for the JWT plugin.

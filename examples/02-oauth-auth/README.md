@@ -24,7 +24,7 @@ This example demonstrates OAuth authentication with Aegis, supporting Google and
 
 ```bash
 go mod init aegis-oauth-example
-go get github.com/theinventorylib/aegis
+go get github.com/theinventorylib/aegis/v2
 go get github.com/go-chi/chi/v5
 go get github.com/lib/pq
 go get github.com/markbates/goth
@@ -63,7 +63,7 @@ createdb aegis_oauth
 
 ```bash
 # Install Aegis CLI
-go install github.com/theinventorylib/aegis/cmd/aegis@latest
+go install github.com/theinventorylib/aegis/v2/cmd/aegis@latest
 
 # Export migrations with OAuth plugin
 aegis export --dialect postgres --plugins oauth --output ./migrations

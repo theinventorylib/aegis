@@ -24,7 +24,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/theinventorylib/aegis/internal/version.Version={{.Version}}
+      - -X github.com/theinventorylib/aegis/v2/internal/version.Version={{.Version}}
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
 
@@ -85,12 +85,12 @@ release:
     
     **Library:**
     ```bash
-    go get github.com/theinventorylib/aegis@{{ .Tag }}
+    go get github.com/theinventorylib/aegis/v2@{{ .Tag }}
     ```
     
     **CLI:**
     ```bash
-    go install github.com/theinventorylib/aegis/cmd/aegis@{{ .Tag }}
+    go install github.com/theinventorylib/aegis/v2/cmd/aegis@{{ .Tag }}
     ```
     
     Or download pre-built binaries below.

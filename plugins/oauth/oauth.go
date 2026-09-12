@@ -60,15 +60,15 @@ import (
 	"time"
 
 	"github.com/markbates/goth"
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
-	iversion "github.com/theinventorylib/aegis/internal/version"
-	"github.com/theinventorylib/aegis/plugins"
-	oauthdefaultstore "github.com/theinventorylib/aegis/plugins/oauth/default_store"
-	oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
-	"github.com/theinventorylib/aegis/plugins/openapi"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/config"
+	"github.com/theinventorylib/aegis/v2/core"
+	iversion "github.com/theinventorylib/aegis/v2/internal/version"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	oauthdefaultstore "github.com/theinventorylib/aegis/v2/plugins/oauth/default_store"
+	oauthtypes "github.com/theinventorylib/aegis/v2/plugins/oauth/types"
+	"github.com/theinventorylib/aegis/v2/plugins/openapi"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 // Plugin provides OAuth 2.0 authentication integration for Aegis.

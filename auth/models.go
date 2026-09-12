@@ -1,6 +1,6 @@
 package auth
 
-import authtypes "github.com/theinventorylib/aegis/auth/types"
+import authtypes "github.com/theinventorylib/aegis/v2/auth/types"
 
 // Type aliases re-export the core domain types from auth/types at the top-level
 // auth package so callers can use auth.User, auth.Account, etc. without importing

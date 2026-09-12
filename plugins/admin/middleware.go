@@ -3,8 +3,8 @@ package admin
 import (
 	"net/http"
 
-	"github.com/theinventorylib/aegis/core"
-	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/v2/core"
+	"github.com/theinventorylib/aegis/v2/plugins"
 )
 
 // Admin plugin context keys for EnrichedUser extensions.

@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/theinventorylib/aegis/plugins"
-	oauthtypes "github.com/theinventorylib/aegis/plugins/oauth/types"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	oauthtypes "github.com/theinventorylib/aegis/v2/plugins/oauth/types"
 )
 
 // DefaultOAuthStore implements oauthtypes.Store using a SQL database.

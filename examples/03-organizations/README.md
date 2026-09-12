@@ -23,7 +23,7 @@ This example demonstrates how to build a multi-tenant SaaS application with Aegi
 
 ```bash
 go mod init aegis-organizations-example
-go get github.com/theinventorylib/aegis
+go get github.com/theinventorylib/aegis/v2
 go get github.com/go-chi/chi/v5
 go get github.com/lib/pq
 ```
@@ -38,7 +38,7 @@ createdb aegis_orgs
 
 ```bash
 # Install Aegis CLI
-go install github.com/theinventorylib/aegis/cmd/aegis@latest
+go install github.com/theinventorylib/aegis/v2/cmd/aegis@latest
 
 # Export migrations with organizations plugin
 aegis export --dialect postgres --plugins organizations --output ./migrations
@@ -288,7 +288,7 @@ CREATE INDEX idx_projects_organization_id ON projects(organization_id);
 ### Checking User Permissions
 
 ```go
-import "github.com/theinventorylib/aegis/plugins/organizations"
+import "github.com/theinventorylib/aegis/v2/plugins/organizations"
 
 func handler(w http.ResponseWriter, r *http.Request) {
     orgID := organizations.GetOrganizationID(r.Context())

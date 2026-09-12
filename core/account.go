@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
+	"github.com/theinventorylib/aegis/v2/auth"
 )
 
 // AccountService manages authentication accounts linked to users.

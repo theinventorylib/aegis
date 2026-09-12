@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theinventorylib/aegis/core"
+	"github.com/theinventorylib/aegis/v2/core"
 )
 
 // StateStore manages OAuth state cookies for CSRF protection during OAuth flows.

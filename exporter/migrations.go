@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/plugins"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/plugins"
 )
 
 // ExportFormat defines the output format for migration exports.
@@ -343,8 +343,8 @@ migrate -path %s -database "%s://localhost/mydb" up
 ## Migration Sources
 
 The original migrations are available at:
-- Auth: github.com/theinventorylib/aegis/auth/migrations/[dialect]/
-- Plugins: github.com/theinventorylib/aegis/plugins/[name]/migrations/[dialect]/
+- Auth: github.com/theinventorylib/aegis/v2/auth/migrations/[dialect]/
+- Plugins: github.com/theinventorylib/aegis/v2/plugins/[name]/migrations/[dialect]/
 `)
 
 	return os.WriteFile(filepath.Join(e.outputDir, "README.md"), []byte(content.String()), 0600)

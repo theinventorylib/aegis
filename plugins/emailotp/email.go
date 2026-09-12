@@ -41,15 +41,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/config"
-	"github.com/theinventorylib/aegis/core"
-	iversion "github.com/theinventorylib/aegis/internal/version"
-	"github.com/theinventorylib/aegis/plugins"
-	emailotpdefaultstore "github.com/theinventorylib/aegis/plugins/emailotp/default_store"
-	emailotptypes "github.com/theinventorylib/aegis/plugins/emailotp/types"
-	"github.com/theinventorylib/aegis/plugins/openapi"
-	"github.com/theinventorylib/aegis/router"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/config"
+	"github.com/theinventorylib/aegis/v2/core"
+	iversion "github.com/theinventorylib/aegis/v2/internal/version"
+	"github.com/theinventorylib/aegis/v2/plugins"
+	emailotpdefaultstore "github.com/theinventorylib/aegis/v2/plugins/emailotp/default_store"
+	emailotptypes "github.com/theinventorylib/aegis/v2/plugins/emailotp/types"
+	"github.com/theinventorylib/aegis/v2/plugins/openapi"
+	"github.com/theinventorylib/aegis/v2/router"
 )
 
 // ValidateEmail validates an email address format. Delegates to

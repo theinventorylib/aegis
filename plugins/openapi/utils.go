@@ -1,8 +1,8 @@
 package openapi
 
 import (
-	"github.com/theinventorylib/aegis/auth"
-	"github.com/theinventorylib/aegis/core"
+	"github.com/theinventorylib/aegis/v2/auth"
+	"github.com/theinventorylib/aegis/v2/core"
 )
 
 // ========== SCHEMA UTILITY FUNCTIONS ==========

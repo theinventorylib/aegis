@@ -33,7 +33,7 @@ go run examples/06-sanitization/main.go
 ### Basic Usage
 
 ```go
-import "github.com/theinventorylib/aegis/core"
+import "github.com/theinventorylib/aegis/v2/core"
 
 // Sanitize user input
 name := core.SanitizeString(userInput, nil)

@@ -23,7 +23,7 @@ This example demonstrates how to set up basic email/password authentication with
 
 ```bash
 go mod init aegis-basic-example
-go get github.com/theinventorylib/aegis
+go get github.com/theinventorylib/aegis/v2
 go get github.com/go-chi/chi/v5
 go get github.com/lib/pq
 ```
@@ -38,7 +38,7 @@ createdb aegis_example
 
 ```bash
 # Install Aegis CLI if not already installed
-go install github.com/theinventorylib/aegis/cmd/aegis@latest
+go install github.com/theinventorylib/aegis/v2/cmd/aegis@latest
 
 # Export migrations for PostgreSQL
 aegis export --dialect postgres --output ./migrations

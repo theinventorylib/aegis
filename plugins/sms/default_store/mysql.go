@@ -7,7 +7,7 @@ import (
 	"context"
 	"database/sql"
 
-	sqlcmysql "github.com/theinventorylib/aegis/plugins/sms/internal/gen/mysql"
+	sqlcmysql "github.com/theinventorylib/aegis/v2/plugins/sms/internal/gen/mysql"
 )
 
 type mysqlQuerier struct{ q *sqlcmysql.Queries }

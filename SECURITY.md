@@ -136,7 +136,7 @@ aegis.New(ctx, cfg)
 ### 5. JWT Security (if using JWT plugin)
 
 ```go
-import "github.com/theinventorylib/aegis/plugins/jwt"
+import "github.com/theinventorylib/aegis/v2/plugins/jwt"
 
 jwtPlugin := jwt.New(nil) // Uses default store
 aegis.Use(ctx, jwtPlugin)
@@ -236,8 +236,8 @@ export AEGIS_JWT_SIGNING_KEY="jwt-private-key"
 ```go
 import (
     "time"
-    "github.com/theinventorylib/aegis/config"
-    "github.com/theinventorylib/aegis/core"
+    "github.com/theinventorylib/aegis/v2/config"
+    "github.com/theinventorylib/aegis/v2/core"
 )
 
 // Enable rate limiting with defaults (100 requests per minute per IP)

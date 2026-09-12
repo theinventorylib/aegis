@@ -9,7 +9,7 @@ import (
 	"database/sql"
 	"time"
 
-	sqlcmysql "github.com/theinventorylib/aegis/plugins/jwt/internal/gen/mysql"
+	sqlcmysql "github.com/theinventorylib/aegis/v2/plugins/jwt/internal/gen/mysql"
 )
 
 type mysqlQuerier struct{ q *sqlcmysql.Queries }
