@@ -42,7 +42,7 @@ jobs:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           # Node 22+ is required by the current Nuxt/Vite toolchain
           # (Set.prototype.difference et al. are ES2024).
