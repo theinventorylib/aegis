@@ -4,6 +4,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **TOTP plugin** (`plugins/totp`): RFC 6238 authenticator-app two-factor authentication with two-phase enrollment, per-session step-up via `RequireVerification`, hashed single-use recovery codes, and `POST /totp/setup|enable|verify|disable|recovery-codes`, `GET /totp/status`.
+- **Organization custom roles and per-member permission overrides**: persisted `organization_role` and `member_permission_override` tables, `GET/POST/PUT/DELETE /organizations/:id/roles`, `GET/PUT /organizations/:id/members/:userId/permissions`, and the programmatic `ListRoles` / `CreateRole` / `UpdateRole` / `DeleteRole`, `GetMemberPermissions`, `MemberPermissionOverrides` / `SetMemberPermissionOverrides`.
+- **Password reset and email-change flows** in core (`AccountService.RequestPasswordReset` / `ConfirmPasswordReset`, `UserService.RequestEmailChange` / `ConfirmEmailChange`) with email-otp endpoints `POST /email-otp/forgot-password`, `/reset-password`, `/email-change`, `/email-change/confirm`. `AuthConfig` gains `PasswordResetExpiry` / `EmailChangeExpiry` (default 1h).
+- **Audit event sinks**: `AuditSink` / `AddAuditSink`, `AuthService.AuditLogger` and `plugins.Aegis.GetAuditLogger`, plus the `user_created`, `user_updated`, `user_deleted` and `email_changed` lifecycle events.
+- Optional caller-supplied email-change token: `RequestEmailChange(ctx, userID, newEmail, customToken)`.
+
+### Changed
+- **PostgreSQL timestamps are now `TIMESTAMPTZ`** instead of RFC3339 `TEXT`. Apply the new `002_timestamptz` (auth/admin/oauth) and `005_timestamptz` (organizations) migrations; raw SQL that compared timestamp columns as strings must compare timestamps. MySQL and SQLite keep text storage.
+- `plugins.Aegis` gained `GetAuditLogger()`; external implementers must add the method.
+
+### Fixed
+- TOTP disable and recovery-code regeneration now require a valid code; `RequireVerification` fails closed on credential-lookup errors.
+- Organization permission writes cap grants at the actor's own framework permissions and protect the owner's role and overrides; the cap normalizes permission strings so a padded spelling cannot bypass it.
+- Timestamptz down-migrations render RFC3339 explicitly instead of a session-dependent `::text` cast; store timestamp parsers log malformed values instead of silently zeroing them.
+- `plugins/admin` `001_initial` creates `ban_expiry` as `TIMESTAMPTZ`.
+- `VerifyOTPHandler` only marks an address verified for `email_verification` codes.
+
+## [2.0.0] - 2026-09-12
+
+### Added
 - Initial documentation site
 - Core authentication features
 - 8 official plugins (Email OTP, SMS, OAuth, JWT, Bearer, Admin, Organizations, OpenAPI)

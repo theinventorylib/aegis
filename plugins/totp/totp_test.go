@@ -244,6 +244,23 @@ func TestEnableRequiresSetup(t *testing.T) {
 	}
 }
 
+func TestRecoveryCodesCanBeDisabled(t *testing.T) {
+	ctx := context.Background()
+	// A negative value disables recovery codes; 0 means "use the default".
+	p := New(&Config{RecoveryCodes: -1}, newFakeStore())
+	setup, err := p.Setup(ctx, "u1")
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	codes, err := p.Enable(ctx, "u1", currentCode(t, setup.Secret))
+	if err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	if len(codes) != 0 {
+		t.Fatalf("recovery codes = %d, want 0", len(codes))
+	}
+}
+
 func TestRegenerateRecoveryCodesRequiresValidCode(t *testing.T) {
 	ctx := context.Background()
 	p, _, verifier := newTestPlugin()
@@ -302,5 +319,27 @@ func TestRequireVerificationMiddleware(t *testing.T) {
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/anything", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("anonymous request: status=%d", rec.Code)
+	}
+}
+
+// errorStore fails the credential lookup so the middleware's fail-closed path
+// can be exercised.
+type errorStore struct{ *fakeStore }
+
+func (s *errorStore) GetCredential(context.Context, string) (totptypes.Credential, error) {
+	return totptypes.Credential{}, errors.New("credential lookup failed")
+}
+
+func TestRequireVerificationFailsClosedOnStoreError(t *testing.T) {
+	p := New(nil, &errorStore{newFakeStore()})
+	handler := p.RequireVerification(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	authed := core.WithUser(core.WithSession(context.Background(), &auth.Session{ID: "s1"}), &auth.User{ID: "u1"})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/anything", nil).WithContext(authed))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("store error: status=%d, want 500", rec.Code)
 	}
 }

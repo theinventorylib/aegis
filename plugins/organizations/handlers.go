@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/theinventorylib/aegis/v2/core"
@@ -529,9 +528,9 @@ func (p *Plugin) UpdateMemberPermissionsHandler(w http.ResponseWriter, r *http.R
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			core.WriteJSONError(w, http.StatusNotFound, "Member not found")
-		case strings.Contains(err.Error(), "duplicate permission"),
-			strings.Contains(err.Error(), "invalid effect"),
-			strings.Contains(err.Error(), "permission is required"):
+		case errors.Is(err, ErrPermissionRequired),
+			errors.Is(err, ErrInvalidEffect),
+			errors.Is(err, ErrDuplicatePermission):
 			core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		default:
 			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to save permissions")

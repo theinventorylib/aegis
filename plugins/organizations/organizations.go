@@ -416,7 +416,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Method:      "PATCH",
 		Path:        prefix + "/{id}/members/{userId}",
 		Summary:     "Update member role",
-		Description: "Update a member's role in the organization (requires owner role)",
+		Description: "Update a member's role in the organization (requires member:assign_roles; the owner's role cannot be changed)",
 		Tags:        []string{"Members"},
 		Auth:        true,
 		Params: []openapi.Param{
@@ -428,7 +428,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			200: openapi.RefResponse("Role updated successfully", "Success"),
 			400: openapi.RefResponse("Invalid request or validation error", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
-			403: openapi.RefResponse("Only owner can update roles", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
 		},
 	})
 
@@ -477,7 +477,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Method:      "PUT",
 		Path:        prefix + "/{id}/members/{userId}/permissions",
 		Summary:     "Replace member permissions",
-		Description: "Replace a member's permission overrides. Deny wins over the role; grant adds a permission the role does not carry.",
+		Description: "Replace a member's permission overrides. Deny wins over the role; grant adds a permission the role does not carry. Grants are capped at the actor's own framework permissions, and the owner's overrides cannot be changed.",
 		Tags:        []string{"Members"},
 		Auth:        true,
 		Params: []openapi.Param{

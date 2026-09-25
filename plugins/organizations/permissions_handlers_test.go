@@ -56,12 +56,12 @@ func (s *keyedStore) CreateMemberPermissionOverride(_ context.Context, o orgtype
 	return nil
 }
 
-func putMemberPermissions(t *testing.T, p *Plugin, actorID, targetID, body string) *httptest.ResponseRecorder {
+func putMemberPermissions(t *testing.T, p *Plugin, targetID, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPut, "/organizations/o1/members/"+targetID+"/permissions", strings.NewReader(body))
 	req.SetPathValue("id", "o1")
 	req.SetPathValue("userId", targetID)
-	req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: actorID}))
+	req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: "admin"}))
 	rec := httptest.NewRecorder()
 	p.UpdateMemberPermissionsHandler(rec, req)
 	return rec
@@ -71,13 +71,22 @@ func TestUpdateMemberPermissionsCapsGrants(t *testing.T) {
 	p := New(nil, &keyedStore{roles: map[string]string{"admin": orgtypes.RoleAdmin, "member": orgtypes.RoleMember}})
 
 	// An admin may not grant org:delete: the built-in admin role lacks it.
-	rec := putMemberPermissions(t, p, "admin", "member", `{"overrides":[{"permission":"org:delete","effect":"grant"}]}`)
+	rec := putMemberPermissions(t, p, "member", `{"overrides":[{"permission":"org:delete","effect":"grant"}]}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("granting org:delete: status = %d, want 403 (%s)", rec.Code, rec.Body.String())
 	}
 
+	// Normalization must not slip a framework permission past the cap: each of
+	// these sanitizes to "org:delete" on the write path.
+	for _, raw := range []string{" org:delete", "org:delete ", "org:\\u0000delete"} {
+		rec = putMemberPermissions(t, p, "member", `{"overrides":[{"permission":"`+raw+`","effect":"grant"}]}`)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("padded %q: status = %d, want 403 (%s)", raw, rec.Code, rec.Body.String())
+		}
+	}
+
 	// A permission the actor holds is grantable.
-	rec = putMemberPermissions(t, p, "admin", "member", `{"overrides":[{"permission":"member:manage","effect":"grant"}]}`)
+	rec = putMemberPermissions(t, p, "member", `{"overrides":[{"permission":"member:manage","effect":"grant"}]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("granting member:manage: status = %d, want 200 (%s)", rec.Code, rec.Body.String())
 	}
@@ -86,7 +95,7 @@ func TestUpdateMemberPermissionsCapsGrants(t *testing.T) {
 func TestUpdateMemberPermissionsProtectsOwner(t *testing.T) {
 	p := New(nil, &keyedStore{roles: map[string]string{"admin": orgtypes.RoleAdmin, "owner": orgtypes.RoleOwner}})
 
-	rec := putMemberPermissions(t, p, "admin", "owner", `{"overrides":[{"permission":"org:delete","effect":"deny"}]}`)
+	rec := putMemberPermissions(t, p, "owner", `{"overrides":[{"permission":"org:delete","effect":"deny"}]}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("overriding owner: status = %d, want 400 (%s)", rec.Code, rec.Body.String())
 	}
@@ -98,6 +107,10 @@ func TestUngrantablePermission(t *testing.T) {
 
 	if bad, err := p.ungrantablePermission(ctx, "u1", "o1", []Permission{PermOrgDelete}); err != nil || bad != PermOrgDelete {
 		t.Fatalf("framework permission: bad=%q err=%v, want %q", bad, err, PermOrgDelete)
+	}
+	// A normalized spelling of a framework permission is capped identically.
+	if bad, err := p.ungrantablePermission(ctx, "u1", "o1", []Permission{" org:delete "}); err != nil || bad != PermOrgDelete {
+		t.Fatalf("padded framework permission: bad=%q err=%v, want %q", bad, err, PermOrgDelete)
 	}
 	if bad, err := p.ungrantablePermission(ctx, "u1", "o1", []Permission{PermMemberManage}); err != nil || bad != "" {
 		t.Fatalf("held permission: bad=%q err=%v, want grantable", bad, err)

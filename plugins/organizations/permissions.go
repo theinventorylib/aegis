@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/theinventorylib/aegis/v2/core"
 	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
 )
 
@@ -174,7 +175,12 @@ func (p *Plugin) HasOrgPermission(ctx context.Context, userID, orgID string, per
 // permission strings are always grantable.
 func (p *Plugin) ungrantablePermission(ctx context.Context, actorID, orgID string, perms []Permission) (Permission, error) {
 	var held map[Permission]bool
-	for _, perm := range perms {
+	for _, raw := range perms {
+		// Normalize exactly like the write path does: a padded or control-char
+		// spelling (" org:delete", "org:\x00delete") must be capped by the
+		// same rule as the canonical string, or it would slip through here and
+		// be stored sanitized.
+		perm := Permission(core.SanitizeString(string(raw), nil))
 		if _, known := frameworkPermissions[perm]; !known {
 			continue
 		}
