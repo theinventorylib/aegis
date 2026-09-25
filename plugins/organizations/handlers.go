@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/theinventorylib/aegis/v2/core"
@@ -501,43 +502,16 @@ func (p *Plugin) UpdateMemberPermissionsHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Duplicate permissions would violate the (org, user, permission) unique
-	// constraint part-way through the insert loop; reject them up front.
-	seen := make(map[string]bool, len(req.Overrides))
-	overrides := make([]orgtypes.MemberPermissionOverride, 0, len(req.Overrides))
-	now := time.Now()
-	for _, o := range req.Overrides {
-		perm := core.SanitizeString(o.Permission, nil)
-		if seen[perm] {
-			core.WriteJSONError(w, http.StatusBadRequest, "Duplicate permission: "+perm)
-			return
-		}
-		seen[perm] = true
-		overrides = append(overrides, orgtypes.MemberPermissionOverride{
-			ID:             core.GenerateID(),
-			OrganizationID: orgID,
-			UserID:         userID,
-			Permission:     perm,
-			Effect:         orgtypes.PermissionEffect(o.Effect),
-			CreatedAt:      now,
-			UpdatedAt:      now,
-		})
-	}
-
-	// The member must exist before we touch overrides.
-	if _, err := p.store.GetMember(r.Context(), userID, orgID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			core.WriteJSONError(w, http.StatusNotFound, "Member not found")
-			return
-		}
-		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to load member")
-		return
-	}
-
 	// A grant may not exceed the actor's own authority.
-	grants := make([]Permission, 0, len(overrides))
-	for _, o := range overrides {
-		if o.Effect == orgtypes.PermissionEffectGrant {
+	overrides := make([]orgtypes.MemberPermissionOverride, 0, len(req.Overrides))
+	grants := make([]Permission, 0, len(req.Overrides))
+	for _, o := range req.Overrides {
+		override := orgtypes.MemberPermissionOverride{
+			Permission: o.Permission,
+			Effect:     orgtypes.PermissionEffect(o.Effect),
+		}
+		overrides = append(overrides, override)
+		if override.Effect == orgtypes.PermissionEffectGrant {
 			grants = append(grants, Permission(o.Permission))
 		}
 	}
@@ -549,15 +523,20 @@ func (p *Plugin) UpdateMemberPermissionsHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if err := p.store.DeleteMemberPermissionOverrides(r.Context(), orgID, userID); err != nil {
-		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to clear permissions")
-		return
-	}
-	for _, override := range overrides {
-		if err := p.store.CreateMemberPermissionOverride(r.Context(), override); err != nil {
+	// The plugin validates duplicates/effects, confirms the target is a member
+	// and replaces the set (delete-then-insert).
+	if err := p.SetMemberPermissionOverrides(r.Context(), orgID, userID, overrides); err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			core.WriteJSONError(w, http.StatusNotFound, "Member not found")
+		case strings.Contains(err.Error(), "duplicate permission"),
+			strings.Contains(err.Error(), "invalid effect"),
+			strings.Contains(err.Error(), "permission is required"):
+			core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		default:
 			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to save permissions")
-			return
 		}
+		return
 	}
 
 	perms, err := p.GetMemberPermissions(r.Context(), userID, orgID)

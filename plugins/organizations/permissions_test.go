@@ -38,6 +38,16 @@ func (f *fakeStore) ListMemberPermissionOverrides(_ context.Context, _, _ string
 	return f.overrides, nil
 }
 
+func (f *fakeStore) CreateMemberPermissionOverride(_ context.Context, o orgtypes.MemberPermissionOverride) error {
+	f.overrides = append(f.overrides, o)
+	return nil
+}
+
+func (f *fakeStore) DeleteMemberPermissionOverrides(_ context.Context, _, _ string) error {
+	f.overrides = nil
+	return nil
+}
+
 func (f *fakeStore) ListOrganizationRoles(_ context.Context, _ string) ([]orgtypes.OrganizationRole, error) {
 	out := make([]orgtypes.OrganizationRole, 0, len(f.customRoles))
 	for _, r := range f.customRoles {
@@ -401,5 +411,54 @@ func TestAssignableOrgRolesIncludesCustom(t *testing.T) {
 	req.Role = orgtypes.RoleOwner
 	if err := p.ValidateAddMember(ctx, "o1", req); err == nil {
 		t.Fatal("owner must never be assignable through member endpoints")
+	}
+}
+
+func TestSetMemberPermissionOverrides(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{memberOrgRole: orgtypes.RoleAdmin}
+	p := New(nil, store)
+
+	err := p.SetMemberPermissionOverrides(ctx, "o1", "u1", []orgtypes.MemberPermissionOverride{
+		{Permission: string(PermMemberManage), Effect: orgtypes.PermissionEffectDeny},
+		{Permission: "view_giving", Effect: orgtypes.PermissionEffectGrant},
+	})
+	if err != nil {
+		t.Fatalf("set overrides: %v", err)
+	}
+	if len(store.overrides) != 2 {
+		t.Fatalf("stored %d overrides, want 2", len(store.overrides))
+	}
+	for _, o := range store.overrides {
+		if o.ID == "" || o.OrganizationID != "o1" || o.UserID != "u1" || o.CreatedAt.IsZero() || o.UpdatedAt.IsZero() {
+			t.Errorf("override not filled in: %+v", o)
+		}
+	}
+
+	// Replacement clears the previous set.
+	if err := p.SetMemberPermissionOverrides(ctx, "o1", "u1", nil); err != nil {
+		t.Fatalf("clear overrides: %v", err)
+	}
+	if len(store.overrides) != 0 {
+		t.Fatalf("stored %d overrides after clear, want 0", len(store.overrides))
+	}
+
+	// Duplicates and unknown effects are rejected before any write.
+	if err := p.SetMemberPermissionOverrides(ctx, "o1", "u1", []orgtypes.MemberPermissionOverride{
+		{Permission: "view_giving", Effect: orgtypes.PermissionEffectGrant},
+		{Permission: "view_giving", Effect: orgtypes.PermissionEffectDeny},
+	}); err == nil {
+		t.Fatal("duplicate permission must be rejected")
+	}
+	if err := p.SetMemberPermissionOverrides(ctx, "o1", "u1", []orgtypes.MemberPermissionOverride{
+		{Permission: "view_giving", Effect: "sideways"},
+	}); err == nil {
+		t.Fatal("unknown effect must be rejected")
+	}
+
+	// Non-members cannot carry overrides.
+	nonMember := New(nil, &fakeStore{})
+	if err := nonMember.SetMemberPermissionOverrides(ctx, "o1", "u1", nil); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("non-member: got %v, want sql.ErrNoRows", err)
 	}
 }
