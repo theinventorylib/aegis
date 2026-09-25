@@ -6,6 +6,7 @@ package defaultstore
 import (
 	"context"
 	"database/sql"
+	"log"
 	"time"
 
 	sqlcpostgres "github.com/theinventorylib/aegis/v2/plugins/sms/internal/gen/postgres"
@@ -59,8 +60,12 @@ func (p *postgresQuerier) updateUserPhone(ctx context.Context, id string, phoneN
 // pgParseTime converts a canonical RFC3339 string to the time.Time the
 // generated postgres queries expect.
 func pgParseTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
+		log.Printf("aegis/sms: ignoring malformed RFC3339 timestamp %q: %v", s, err)
 		return time.Time{}
 	}
 	return t

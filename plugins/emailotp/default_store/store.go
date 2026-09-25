@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/theinventorylib/aegis/v2/plugins"
@@ -107,8 +108,16 @@ func ptrToNullString(s *string) sql.NullString {
 	return sql.NullString{String: *s, Valid: true}
 }
 
-// parseTime parses an RFC3339 string to time.Time (returns zero on failure).
+// parseTime parses an RFC3339 string to time.Time. An empty string maps to the
+// zero time; a malformed value is logged and also maps to the zero time.
 func parseTime(s string) time.Time {
-	t, _ := time.Parse(time.RFC3339, s) //nolint:errcheck
+	if s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		log.Printf("aegis/emailotp: ignoring malformed RFC3339 timestamp %q: %v", s, err)
+		return time.Time{}
+	}
 	return t
 }

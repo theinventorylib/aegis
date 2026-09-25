@@ -205,7 +205,13 @@ func TestSetupEnableVerifyDisableFlow(t *testing.T) {
 		t.Fatal("consumed recovery code should be removed from the store")
 	}
 
-	if err := p.Disable(ctx, "u1"); err != nil {
+	if err := p.Disable(ctx, "u1", "000000"); !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("disable with a bad code: got %v, want ErrInvalidCode", err)
+	}
+	if !store.creds["u1"].Enabled {
+		t.Fatal("a rejected disable must leave TOTP enabled")
+	}
+	if err := p.Disable(ctx, "u1", currentCode(t, setup.Secret)); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
 	if store.creds["u1"].Enabled || store.creds["u1"].Secret != "" {

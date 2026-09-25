@@ -74,13 +74,22 @@ func (h *Handlers) EnableHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DisableHandler removes the credential.
+// DisableHandler removes the credential after confirming a TOTP code.
 func (h *Handlers) DisableHandler(w http.ResponseWriter, r *http.Request) {
 	userID := currentUserID(w, r)
 	if userID == "" {
 		return
 	}
-	if err := h.plugin.Disable(r.Context(), userID); err != nil {
+	var req totptypes.DisableRequest
+	if err := core.ReadJSON(r, &req); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: "Invalid request"})
+		return
+	}
+	if err := h.plugin.Disable(r.Context(), userID, req.Code); err != nil {
+		if errors.Is(err, ErrInvalidCode) {
+			core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+			return
+		}
 		core.WriteJSON(w, http.StatusInternalServerError, &core.Response{Success: false, Error: "failed to disable two-factor"})
 		return
 	}

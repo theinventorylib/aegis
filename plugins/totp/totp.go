@@ -85,7 +85,9 @@ type Config struct {
 	// SecretBytes is the entropy of generated secrets (default: 20).
 	SecretBytes int
 	// RecoveryCodes is how many single-use recovery codes are generated on
-	// enable (default: 10, 0 disables recovery codes).
+	// enable (default: 10). Set it to a negative value to disable recovery
+	// codes; 0 means "use the default", so an unset field cannot silently
+	// drop recovery codes.
 	RecoveryCodes int
 	// SessionTTL is how long a session stays verified after a successful code
 	// (default: 12h).
@@ -260,8 +262,21 @@ func (p *Plugin) Enable(ctx context.Context, userID, code string) ([]string, err
 }
 
 // Disable clears the credential, every session verification and any outstanding
-// recovery codes.
-func (p *Plugin) Disable(ctx context.Context, userID string) error {
+// recovery codes. A valid TOTP code is required so a hijacked session cannot
+// silently remove the second factor. Disabling an account that has no credential
+// is a no-op, so callers stay idempotent.
+func (p *Plugin) Disable(ctx context.Context, userID, code string) error {
+	ok, err := p.Verify(ctx, userID, code)
+	if err != nil {
+		if errors.Is(err, ErrNotEnabled) {
+			return nil
+		}
+		return err
+	}
+	if !ok {
+		return ErrInvalidCode
+	}
+
 	if err := p.store.SetCredential(ctx, userID, nil, false); err != nil {
 		return err
 	}
@@ -351,7 +366,19 @@ func (p *Plugin) RequireVerification(next http.Handler) http.Handler {
 			return
 		}
 		enabled, err := p.IsEnabled(r.Context(), userID)
-		if err != nil || !enabled {
+		if err != nil {
+			// Fail closed: a credential lookup error must not silently drop
+			// the second factor.
+			if p.logger != nil {
+				p.logger.Error("totp: failed to read credential", "user_id", userID, "error", err)
+			}
+			core.WriteJSON(w, http.StatusInternalServerError, &core.Response{
+				Success: false,
+				Error:   "two-factor check failed",
+			})
+			return
+		}
+		if !enabled {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -501,11 +528,13 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Method:      "POST",
 		Path:        prefix + "/disable",
 		Summary:     "Disable TOTP",
-		Description: "Remove the TOTP credential, all session verifications and outstanding recovery codes",
+		Description: "Remove the TOTP credential, all session verifications and outstanding recovery codes. Requires a valid TOTP code so a hijacked session cannot remove the second factor.",
 		Tags:        []string{"TOTP"},
 		Auth:        true,
+		Body:        openapi.BodyOf[totptypes.DisableRequest](),
 		Responses: openapi.Responses{
 			200: openapi.RefResponse("TOTP disabled", "Success"),
+			400: openapi.RefResponse("Invalid code", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 		},
 	})

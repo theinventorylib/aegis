@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math"
 	"time"
 
@@ -424,8 +425,12 @@ func fromNullString(ns sql.NullString) string {
 }
 
 func parseTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
+		log.Printf("aegis: ignoring malformed RFC3339 timestamp %q: %v", s, err)
 		return time.Time{}
 	}
 	return t

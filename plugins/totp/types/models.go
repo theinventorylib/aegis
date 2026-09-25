@@ -38,6 +38,11 @@ type VerifyRequest struct {
 	Recovery bool   `json:"recovery"`
 }
 
+// DisableRequest confirms the second factor before removing it.
+type DisableRequest struct {
+	Code string `json:"code"`
+}
+
 // StatusResponse reports enrollment and current-session state.
 type StatusResponse struct {
 	Enabled  bool `json:"enabled"`

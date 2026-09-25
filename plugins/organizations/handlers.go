@@ -484,6 +484,13 @@ func (p *Plugin) UpdateMemberPermissionsHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Ownership must not be deniable either: an admin who also grants
+	// PermMemberAssignRoles could otherwise strip the owner's permissions.
+	if p.IsOwner(r.Context(), userID, orgID) {
+		core.WriteJSONError(w, http.StatusBadRequest, "Cannot change the owner's permissions")
+		return
+	}
+
 	var req UpdateMemberPermissionsRequest
 	if err := core.ReadJSON(r, &req); err != nil {
 		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
@@ -524,6 +531,21 @@ func (p *Plugin) UpdateMemberPermissionsHandler(w http.ResponseWriter, r *http.R
 			return
 		}
 		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to load member")
+		return
+	}
+
+	// A grant may not exceed the actor's own authority.
+	grants := make([]Permission, 0, len(overrides))
+	for _, o := range overrides {
+		if o.Effect == orgtypes.PermissionEffectGrant {
+			grants = append(grants, Permission(o.Permission))
+		}
+	}
+	if bad, err := p.ungrantablePermission(r.Context(), user.ID, orgID, grants); err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
+		return
+	} else if bad != "" {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden: cannot grant a permission you do not hold: "+string(bad))
 		return
 	}
 
@@ -597,7 +619,16 @@ func (p *Plugin) CreateRoleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := p.CreateRole(r.Context(), orgID, req.Name, permissionsFromStrings(req.Permissions))
+	perms := permissionsFromStrings(req.Permissions)
+	if bad, err := p.ungrantablePermission(r.Context(), user.ID, orgID, perms); err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
+		return
+	} else if bad != "" {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden: cannot grant a permission you do not hold: "+string(bad))
+		return
+	}
+
+	info, err := p.CreateRole(r.Context(), orgID, req.Name, perms)
 	switch {
 	case errors.Is(err, ErrRoleReserved):
 		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
@@ -636,7 +667,16 @@ func (p *Plugin) UpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := p.UpdateRole(r.Context(), orgID, name, permissionsFromStrings(req.Permissions))
+	perms := permissionsFromStrings(req.Permissions)
+	if bad, err := p.ungrantablePermission(r.Context(), user.ID, orgID, perms); err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
+		return
+	} else if bad != "" {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden: cannot grant a permission you do not hold: "+string(bad))
+		return
+	}
+
+	info, err := p.UpdateRole(r.Context(), orgID, name, perms)
 	switch {
 	case errors.Is(err, ErrRoleReserved):
 		core.WriteJSONError(w, http.StatusBadRequest, err.Error())

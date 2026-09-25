@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"slices"
 	"time"
@@ -496,11 +497,16 @@ func buildInvitation(inv invitationRow) orgtypes.Invitation {
 	return result
 }
 
-// parseOrgTime parses an RFC3339 timestamp string into time.Time.
-// Returns the zero value on parse failure.
+// parseOrgTime parses an RFC3339 timestamp string into time.Time. An empty
+// string (nullable column) maps to the zero time; a malformed value is logged
+// and also maps to the zero time.
 func parseOrgTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
+		log.Printf("aegis/organizations: ignoring malformed RFC3339 timestamp %q: %v", s, err)
 		return time.Time{}
 	}
 	return t

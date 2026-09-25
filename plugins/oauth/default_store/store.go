@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/theinventorylib/aegis/v2/plugins"
@@ -170,10 +171,17 @@ func nullStr(ns sql.NullString) string {
 	return ""
 }
 
-// parseTime parses an RFC3339 timestamp string into time.Time. On parse failure
-// it returns the zero value of time.Time rather than propagating the error,
-// matching the convention used throughout the store for stored string timestamps.
+// parseTime parses an RFC3339 timestamp string into time.Time. An empty string
+// (a nullable column with no value) maps to the zero time; a malformed value is
+// logged and also maps to the zero time.
 func parseTime(s string) time.Time {
-	t, _ := time.Parse(time.RFC3339, s) //nolint:errcheck
+	if s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		log.Printf("aegis/oauth: ignoring malformed RFC3339 timestamp %q: %v", s, err)
+		return time.Time{}
+	}
 	return t
 }

@@ -8,6 +8,7 @@ package defaultstore
 import (
 	"context"
 	"database/sql"
+	"log"
 	"time"
 
 	sqlcpostgres "github.com/theinventorylib/aegis/v2/auth/internal/gen/postgres"
@@ -22,8 +23,12 @@ func newPostgresQuerier(db *sql.DB) *postgresQuerier {
 // parseTS converts a canonical RFC3339 string to the time.Time the generated
 // postgres queries expect.
 func parseTS(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
+		log.Printf("aegis: ignoring malformed RFC3339 timestamp %q: %v", s, err)
 		return time.Time{}
 	}
 	return t

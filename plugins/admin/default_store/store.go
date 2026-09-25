@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math"
 	"time"
 
@@ -202,6 +203,8 @@ func buildUser(row adminUserRow) admintypes.User {
 	if row.BanExpiry.Valid {
 		if t, err := time.Parse(time.RFC3339, row.BanExpiry.String); err == nil {
 			be = &t
+		} else {
+			log.Printf("aegis/admin: ignoring malformed RFC3339 timestamp %q: %v", row.BanExpiry.String, err)
 		}
 	}
 	u := admintypes.User{}
@@ -247,8 +250,12 @@ func fromNullString(ns sql.NullString) string {
 }
 
 func parseTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
+		log.Printf("aegis/admin: ignoring malformed RFC3339 timestamp %q: %v", s, err)
 		return time.Time{}
 	}
 	return t

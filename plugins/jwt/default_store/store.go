@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -81,10 +82,16 @@ func (s *DefaultJWTStore) ListJWKS(ctx context.Context) ([]jwttypes.JWK, error) 
 	for i, r := range rows {
 		var expiresAt *time.Time
 		if r.ExpiresAt.Valid {
-			t, _ := time.Parse(time.RFC3339, r.ExpiresAt.String) //nolint:errcheck
-			expiresAt = &t
+			if t, err := time.Parse(time.RFC3339, r.ExpiresAt.String); err != nil {
+				log.Printf("aegis/jwt: ignoring malformed RFC3339 timestamp %q: %v", r.ExpiresAt.String, err)
+			} else {
+				expiresAt = &t
+			}
 		}
-		createdAt, _ := time.Parse(time.RFC3339, r.CreatedAt) //nolint:errcheck
+		createdAt, err := time.Parse(time.RFC3339, r.CreatedAt)
+		if err != nil {
+			log.Printf("aegis/jwt: ignoring malformed RFC3339 timestamp %q: %v", r.CreatedAt, err)
+		}
 		result[i] = jwttypes.JWK{
 			Kid:       r.Kid,
 			KeyData:   []byte(r.KeyData),

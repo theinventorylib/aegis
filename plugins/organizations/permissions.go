@@ -41,6 +41,16 @@ const (
 	PermInvitationManage Permission = "invitation:manage"
 )
 
+// frameworkPermissions is the set of permissions Aegis' own handlers enforce.
+// Grants of these are capped by what the actor holds; app-defined permission
+// strings are not capped because the application owns their meaning.
+var frameworkPermissions = map[Permission]struct{}{
+	PermOrgView: {}, PermOrgManage: {}, PermOrgDelete: {},
+	PermMemberView: {}, PermMemberManage: {}, PermMemberAssignRoles: {},
+	PermTeamView: {}, PermTeamManage: {}, PermTeamMemberManage: {},
+	PermInvitationManage: {},
+}
+
 // RoleDefinition describes an assignable organization or team role and the
 // permissions it grants.
 type RoleDefinition struct {
@@ -154,6 +164,36 @@ func (p *Plugin) HasOrgPermission(ctx context.Context, userID, orgID string, per
 		}
 	}
 	return allowed, nil
+}
+
+// ungrantablePermission returns the first permission in perms that actorID may
+// not grant, or "" when every permission is grantable. A framework permission
+// the actor does not hold is refused, so a member who can assign permissions
+// cannot mint authority they were never given (for example an admin granting
+// org:delete, which the built-in admin role deliberately lacks). App-defined
+// permission strings are always grantable.
+func (p *Plugin) ungrantablePermission(ctx context.Context, actorID, orgID string, perms []Permission) (Permission, error) {
+	var held map[Permission]bool
+	for _, perm := range perms {
+		if _, known := frameworkPermissions[perm]; !known {
+			continue
+		}
+		if held == nil {
+			// Resolve the actor's effective set once rather than per permission.
+			effective, err := p.GetMemberPermissions(ctx, actorID, orgID)
+			if err != nil {
+				return "", err
+			}
+			held = make(map[Permission]bool, len(effective.Permissions))
+			for _, h := range effective.Permissions {
+				held[h] = true
+			}
+		}
+		if !held[perm] {
+			return perm, nil
+		}
+	}
+	return "", nil
 }
 
 // MemberPermissions describes a member's effective authorization: the role,
