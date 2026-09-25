@@ -1,10 +1,13 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.1] - 2026-09-25
 
 ### Added
 - **Organizations plugin**: `GET /organizations/:id/permissions` returns the caller's own role, overrides and effective permissions, and `GET /organizations/:id/members/permissions` returns the same per member (paginated) for admin overviews — completing the role/permission listing surface alongside `GET /organizations/:id/roles` (#73).
+
+### Changed
+- Dependency updates: `golang.org/x/crypto` 0.57.0, `github.com/lestrrat-go/jwx/v3` 3.3.0, `github.com/labstack/echo/v4` 4.15.4, `github.com/nyaruka/phonenumbers` 1.8.1, `github.com/go-ozzo/ozzo-validation/v4` 4.4.1; GitHub Actions bumped to `actions/checkout@v7`, `actions/setup-go@v7`, `actions/setup-node@v7`, `codecov/codecov-action@v7`.
 
 ## [2.1.0] - 2026-09-25
 
