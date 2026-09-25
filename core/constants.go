@@ -76,6 +76,17 @@ const (
 	DefaultRefreshExpiry = 7 * 24 * time.Hour
 )
 
+// Default account-security flow lifetimes.
+const (
+	// DefaultPasswordResetExpiry is the default lifetime of a password-reset
+	// token (1 hour). Short enough to limit the value of a leaked mail.
+	DefaultPasswordResetExpiry = time.Hour
+
+	// DefaultEmailChangeExpiry is the default lifetime of an email-change
+	// confirmation token (1 hour).
+	DefaultEmailChangeExpiry = time.Hour
+)
+
 // Default password hashing constants use Argon2id parameters.
 // These values are based on OWASP recommendations for 2024 and balance
 // security (resistance to attacks) with performance (server load).

@@ -27,6 +27,14 @@ type AuthConfig struct {
 	// checker is wired.
 	RequireEmailVerification bool
 
+	// PasswordResetExpiry is how long password-reset tokens remain valid.
+	// Zero uses DefaultPasswordResetExpiry (1 hour).
+	PasswordResetExpiry time.Duration
+
+	// EmailChangeExpiry is how long email-change confirmation tokens remain
+	// valid. Zero uses DefaultEmailChangeExpiry (1 hour).
+	EmailChangeExpiry time.Duration
+
 	// UserFields controls which plugin extension fields are included in user
 	// API responses. If nil, all extension fields are included.
 	// Use this to limit what data is exposed in user objects.
@@ -193,6 +201,8 @@ func DefaultAuthConfig() *AuthConfig {
 		PasswordPolicy:                     defaultPasswordPolicyConfig(),
 		InvalidateSessionsOnPasswordChange: true, // Security best practice
 		UserFields:                         nil,  // Include all extension fields by default
+		PasswordResetExpiry:                DefaultPasswordResetExpiry,
+		EmailChangeExpiry:                  DefaultEmailChangeExpiry,
 	}
 }
 

@@ -91,6 +91,13 @@ func (as *AuthService) SetEmailVerificationResetter(fn func(ctx context.Context,
 	as.User.setEmailVerificationReset(fn)
 }
 
+// SetEmailVerifiedMarker wires the callback invoked after a confirmed email
+// change, so the email plugin can mark the new address verified. Email plugins
+// call this during Init. Passing nil disables the marker.
+func (as *AuthService) SetEmailVerifiedMarker(fn func(ctx context.Context, userID string) error) {
+	as.User.setEmailVerifiedMarker(fn)
+}
+
 // NewAuthService creates a new AuthService with all sub-services initialized.
 //
 // Parameters:
@@ -141,6 +148,8 @@ func NewAuthService(authConfig *AuthConfig, authConn *auth.Auth, hashConfig *Pas
 	as.Session = newSessionService(as.userStore, as.sessionStore, nil, auditLogger, logger)
 	as.Account.setSessionInvalidator(as.Session.purgeUserSessionCache)
 	as.User.setSessionCachePurger(as.Session.purgeUserSessionCache)
+	as.Account.setSecurityStores(as.userStore, as.Verification)
+	as.User.setVerificationService(as.Verification)
 	as.EmailPassword = NewEmailPasswordHandlers(as)
 
 	return as

@@ -55,6 +55,14 @@ type AccountService struct {
 	// the SQL delete alone leaves revoked sessions valid in the cache
 	// until their cached TTL expires. Wired by AuthService.
 	invalidateSessions func(ctx context.Context, userID string) error
+
+	// userStore resolves accounts by email for the password-reset flow.
+	// Wired by AuthService.
+	userStore auth.UserStore
+
+	// verification issues and redeems password-reset tokens. Wired by
+	// AuthService.
+	verification *VerificationService
 }
 
 // newAccountService creates a new account service with the specified dependencies.
@@ -86,6 +94,13 @@ func newAccountService(accountStore auth.AccountStore, sessionStore auth.Session
 // exported so the ordering invariant cannot be broken from outside.
 func (s *AccountService) setSessionInvalidator(f func(ctx context.Context, userID string) error) {
 	s.invalidateSessions = f
+}
+
+// setSecurityStores wires the stores used by the password-reset flow. Called
+// by NewAuthService during setup.
+func (s *AccountService) setSecurityStores(userStore auth.UserStore, verification *VerificationService) {
+	s.userStore = userStore
+	s.verification = verification
 }
 
 // CreateAccount creates a new account

@@ -53,6 +53,14 @@ type UserService struct {
 	// verification flag for a new address so a previously-verified flag never
 	// carries over after an email change.
 	emailVerificationReset func(ctx context.Context, userID, email string) error
+
+	// verification issues and redeems email-change tokens. Wired by AuthService.
+	verification *VerificationService
+
+	// emailVerifiedMarker, when set by an email plugin, marks the user's
+	// current email verified. Used after a confirmed email change, where
+	// control of the new address has just been proven.
+	emailVerifiedMarker func(ctx context.Context, userID string) error
 }
 
 // newUserService creates a new user service with the specified dependencies.
@@ -82,6 +90,18 @@ func (s *UserService) setSessionCachePurger(fn func(ctx context.Context, userID 
 // Set by AuthService when an email plugin registers a resetter.
 func (s *UserService) setEmailVerificationReset(fn func(ctx context.Context, userID, email string) error) {
 	s.emailVerificationReset = fn
+}
+
+// setVerificationService wires the verification service used by the
+// email-change flow. Called by AuthService during setup.
+func (s *UserService) setVerificationService(v *VerificationService) {
+	s.verification = v
+}
+
+// setEmailVerifiedMarker wires the marker run after a confirmed email change.
+// Set by AuthService when an email plugin registers one.
+func (s *UserService) setEmailVerifiedMarker(fn func(ctx context.Context, userID string) error) {
+	s.emailVerifiedMarker = fn
 }
 
 // DeleteUser deletes a user and all associated data (accounts and sessions).
