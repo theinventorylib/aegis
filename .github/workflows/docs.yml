@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main (site root)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: main
 
@@ -68,7 +68,7 @@ jobs:
 
       # --- v1 line: build the previous major and serve it under /aegis/v1/ ---
       - name: Checkout v1 docs
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: v1
           path: v1-src
