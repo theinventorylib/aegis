@@ -26,7 +26,7 @@ func (r *recordingSink) find(eventType AuditEventType) *AuditEvent {
 
 func TestAuditSinkReceivesEventsAlongsidePrimary(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, primary := newSecurityTestAuth()
+	as, _, _, primary := newSecurityTestAuth()
 	sink := &recordingSink{}
 	as.AddAuditSink(sink)
 
@@ -43,7 +43,7 @@ func TestAuditSinkReceivesEventsAlongsidePrimary(t *testing.T) {
 }
 
 func TestAuditSinkCarriesRequestMeta(t *testing.T) {
-	as, _, _, _, _ := newSecurityTestAuth()
+	as, _, _, _ := newSecurityTestAuth()
 	sink := &recordingSink{}
 	as.AddAuditSink(sink)
 	ctx := WithRequestMeta(context.Background(), &RequestMeta{IPAddress: "203.0.113.7", UserAgent: "aegis-test"})
@@ -62,7 +62,7 @@ func TestAuditSinkCarriesRequestMeta(t *testing.T) {
 
 func TestUserLifecycleEmitsAuditEvents(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, primary := newSecurityTestAuth()
+	as, _, _, primary := newSecurityTestAuth()
 	u, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "alice@example.com"}, "Str0ngPassword1!")
 	if err != nil {
 		t.Fatalf("create user: %v", err)

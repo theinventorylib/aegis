@@ -11,7 +11,7 @@ import (
 
 func TestEmailChangeEndToEnd(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, audit := newSecurityTestAuth()
+	as, _, _, audit := newSecurityTestAuth()
 
 	user, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "old@example.com"}, "Str0ngPassword1!")
 	if err != nil {
@@ -60,7 +60,7 @@ func TestEmailChangeEndToEnd(t *testing.T) {
 
 func TestEmailChangeRejectsTakenEmail(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, _ := newSecurityTestAuth()
+	as, _, _, _ := newSecurityTestAuth()
 	alice, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "alice@example.com"}, "Str0ngPassword1!")
 	if err != nil {
 		t.Fatalf("create alice: %v", err)
@@ -76,7 +76,7 @@ func TestEmailChangeRejectsTakenEmail(t *testing.T) {
 
 func TestEmailChangeRejectsSameEmail(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, _ := newSecurityTestAuth()
+	as, _, _, _ := newSecurityTestAuth()
 	user, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "alice@example.com"}, "Str0ngPassword1!")
 	if err != nil {
 		t.Fatalf("create user: %v", err)
@@ -88,7 +88,7 @@ func TestEmailChangeRejectsSameEmail(t *testing.T) {
 
 func TestEmailChangeRejectsWrongTokenType(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, _ := newSecurityTestAuth()
+	as, _, _, _ := newSecurityTestAuth()
 	user, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "alice@example.com"}, "Str0ngPassword1!")
 	if err != nil {
 		t.Fatalf("create user: %v", err)
@@ -104,7 +104,7 @@ func TestEmailChangeRejectsWrongTokenType(t *testing.T) {
 
 func TestEmailChangeMarkerFailureStillApplies(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, _ := newSecurityTestAuth()
+	as, _, _, _ := newSecurityTestAuth()
 	user, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "old@example.com"}, "Str0ngPassword1!")
 	if err != nil {
 		t.Fatalf("create user: %v", err)

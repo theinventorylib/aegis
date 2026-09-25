@@ -593,7 +593,9 @@ func (s *DefaultOrganizationStore) CountOrganizationMembersWithRole(ctx context.
 // buildOrganizationRole converts a canonical row into the public model.
 func buildOrganizationRole(r organizationRoleRow) orgtypes.OrganizationRole {
 	var perms []string
-	_ = json.Unmarshal([]byte(r.Permissions), &perms)
+	if err := json.Unmarshal([]byte(r.Permissions), &perms); err != nil {
+		perms = []string{}
+	}
 	if perms == nil {
 		perms = []string{}
 	}

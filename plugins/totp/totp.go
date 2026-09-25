@@ -269,7 +269,9 @@ func (p *Plugin) Disable(ctx context.Context, userID string) error {
 		return err
 	}
 	if p.verification != nil {
-		_ = p.verification.InvalidateVerification(ctx, userID, verificationTypeRecovery)
+		if err := p.verification.InvalidateVerification(ctx, userID, verificationTypeRecovery); err != nil && p.logger != nil {
+			p.logger.Error("totp: failed to invalidate recovery codes", "user_id", userID, "error", err)
+		}
 	}
 	return nil
 }
@@ -293,7 +295,9 @@ func (p *Plugin) VerifyRecoveryCode(ctx context.Context, userID, code string) (b
 		return false, nil
 	}
 	if _, err := p.verification.ValidateVerificationFor(ctx, userID, verificationTypeRecovery, code); err != nil {
-		return false, nil
+		// Invalid, expired and already-used codes are all failed
+		// verifications, not operational errors.
+		return false, nil //nolint:nilerr
 	}
 	return true, nil
 }
@@ -393,7 +397,11 @@ func (p *Plugin) validCode(secret, code string, now time.Time) bool {
 		return false
 	}
 	for offset := -p.skew; offset <= p.skew; offset++ {
-		want, err := hotp(secret, uint64(now.Add(time.Duration(offset)*p.period).Unix()/int64(p.period.Seconds())), p.digits)
+		unix := now.Add(time.Duration(offset) * p.period).Unix()
+		if unix < 0 {
+			continue
+		}
+		want, err := hotp(secret, uint64(unix/int64(p.period.Seconds())), p.digits) //nolint:gosec // unix >= 0 checked above
 		if err != nil {
 			return false
 		}

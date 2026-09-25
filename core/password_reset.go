@@ -90,7 +90,9 @@ func (s *AccountService) ConfirmPasswordReset(ctx context.Context, token, newPas
 	if err := s.verification.DeleteVerification(ctx, v.ID); err != nil {
 		return auth.User{}, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to consume password-reset token", err)
 	}
-	_ = s.verification.InvalidateVerification(ctx, v.Identifier, VerificationTypePasswordReset)
+	if err := s.verification.InvalidateVerification(ctx, v.Identifier, VerificationTypePasswordReset); err != nil {
+		s.logger.Error("password reset: failed to invalidate sibling tokens", "user_id", user.GetID(), "error", err)
+	}
 
 	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventPasswordReset, user.GetID(), true, nil)
 	return user, nil

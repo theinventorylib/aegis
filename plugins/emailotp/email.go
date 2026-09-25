@@ -735,8 +735,8 @@ func (p *Plugin) RequestPasswordReset(ctx context.Context, email string) error {
 		}
 		return err
 	}
-	subject, body := p.passwordResetMail(token)
-	return p.SendEmail(ctx, email, subject, body)
+	body := p.passwordResetMail(token)
+	return p.SendEmail(ctx, email, "Reset your password", body)
 }
 
 // ResetPassword redeems a password-reset token and sets the account's new
@@ -759,8 +759,8 @@ func (p *Plugin) RequestEmailChange(ctx context.Context, userID, newEmail string
 	if err != nil {
 		return err
 	}
-	subject, body := p.emailChangeMail(token)
-	return p.SendEmail(ctx, newEmail, subject, body)
+	body := p.emailChangeMail(token)
+	return p.SendEmail(ctx, newEmail, "Confirm your new email address", body)
 }
 
 // ConfirmEmailChange redeems an email-change token for the authenticated user.
@@ -773,21 +773,21 @@ func (p *Plugin) ConfirmEmailChange(ctx context.Context, userID, token string) (
 
 // passwordResetMail renders the reset message. With a configured URL template
 // the token travels as a link; otherwise it is mailed as a code.
-func (p *Plugin) passwordResetMail(token string) (subject, body string) {
+func (p *Plugin) passwordResetMail(token string) string {
 	if p.passwordResetURL != "" {
 		link := strings.ReplaceAll(p.passwordResetURL, "{token}", token)
-		return "Reset your password", "Use this link to choose a new password:\n\n" + link
+		return "Use this link to choose a new password:\n\n" + link
 	}
-	return "Reset your password", "Your password reset code is: " + token
+	return "Your password reset code is: " + token
 }
 
 // emailChangeMail renders the email-change confirmation message.
-func (p *Plugin) emailChangeMail(token string) (subject, body string) {
+func (p *Plugin) emailChangeMail(token string) string {
 	if p.emailChangeURL != "" {
 		link := strings.ReplaceAll(p.emailChangeURL, "{token}", token)
-		return "Confirm your new email address", "Confirm this address to finish changing your email:\n\n" + link
+		return "Confirm this address to finish changing your email:\n\n" + link
 	}
-	return "Confirm your new email address", "Your email change confirmation code is: " + token
+	return "Your email change confirmation code is: " + token
 }
 
 // Ensure Plugin implements UserEnricher

@@ -104,7 +104,7 @@ func TestVerifyOTPOnlyMarksEmailVerifiedForVerificationPurpose(t *testing.T) {
 
 func TestPasswordResetMailUsesURLTemplate(t *testing.T) {
 	p := New(&Config{PasswordResetURL: "https://app.example.com/reset?token={token}"}, nil, plugins.DialectPostgres)
-	_, body := p.passwordResetMail("abc123")
+	body := p.passwordResetMail("abc123")
 	if !strings.Contains(body, "https://app.example.com/reset?token=abc123") {
 		t.Fatalf("body does not contain rendered link: %q", body)
 	}
@@ -112,7 +112,7 @@ func TestPasswordResetMailUsesURLTemplate(t *testing.T) {
 
 func TestEmailChangeMailFallsBackToCode(t *testing.T) {
 	p := New(&Config{}, nil, plugins.DialectPostgres)
-	_, body := p.emailChangeMail("abc123")
+	body := p.emailChangeMail("abc123")
 	if !strings.Contains(body, "abc123") {
 		t.Fatalf("body does not contain the code: %q", body)
 	}

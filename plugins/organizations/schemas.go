@@ -347,7 +347,9 @@ func (p *Plugin) assignableOrgRoles(ctx context.Context, orgID string) ([]any, e
 	roles := p.orgMemberRoles()
 	seen := make(map[string]bool, len(roles))
 	for _, role := range roles {
-		seen[role.(string)] = true
+		if name, ok := role.(string); ok {
+			seen[name] = true
+		}
 	}
 
 	custom, err := p.store.ListOrganizationRoles(ctx, orgID)

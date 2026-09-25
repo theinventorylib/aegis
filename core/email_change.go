@@ -93,7 +93,9 @@ func (s *UserService) ConfirmEmailChange(ctx context.Context, userID, token stri
 	if err := s.verification.DeleteVerification(ctx, v.ID); err != nil {
 		return auth.User{}, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to consume email-change token", err)
 	}
-	_ = s.verification.InvalidateVerification(ctx, v.Identifier, VerificationTypeEmailChange)
+	if err := s.verification.InvalidateVerification(ctx, v.Identifier, VerificationTypeEmailChange); err != nil {
+		s.logger.Error("email change: failed to invalidate sibling tokens", "user_id", userID, "error", err)
+	}
 
 	if s.emailVerifiedMarker != nil {
 		if err := s.emailVerifiedMarker(ctx, userID, v.Identifier); err != nil {

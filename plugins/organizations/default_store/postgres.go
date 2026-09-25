@@ -369,19 +369,3 @@ func pgParseTime(s string) time.Time {
 
 // pgFormatTime converts a time.Time back to the canonical RFC3339 string.
 func pgFormatTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
-
-// pgParseNullTime converts a nullable canonical string to sql.NullTime.
-func pgParseNullTime(ns sql.NullString) sql.NullTime {
-	if !ns.Valid {
-		return sql.NullTime{}
-	}
-	return sql.NullTime{Time: pgParseTime(ns.String), Valid: true}
-}
-
-// pgFormatNullTime converts sql.NullTime back to a nullable canonical string.
-func pgFormatNullTime(nt sql.NullTime) sql.NullString {
-	if !nt.Valid {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: pgFormatTime(nt.Time), Valid: true}
-}

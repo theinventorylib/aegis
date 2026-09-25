@@ -35,7 +35,7 @@ func (r *recordingAuditLogger) has(eventType AuditEventType) bool {
 
 // newSecurityTestAuth builds an AuthService wired like production (security
 // stores + verification) over in-memory stores.
-func newSecurityTestAuth() (*AuthService, *mockUserStore, *mockSessionStore, *mockVerificationStore, *recordingAuditLogger) {
+func newSecurityTestAuth() (*AuthService, *mockSessionStore, *mockVerificationStore, *recordingAuditLogger) {
 	users := &mockUserStore{}
 	accounts := &fakeAccountStore{}
 	sessions := &mockSessionStore{}
@@ -61,12 +61,12 @@ func newSecurityTestAuth() (*AuthService, *mockUserStore, *mockSessionStore, *mo
 	as.Account.setSecurityStores(users, verification)
 	as.User.setVerificationService(verification)
 	as.EmailPassword = NewEmailPasswordHandlers(as)
-	return as, users, sessions, vstore, audit
+	return as, sessions, vstore, audit
 }
 
 func TestPasswordResetEndToEnd(t *testing.T) {
 	ctx := context.Background()
-	as, _, sessions, vstore, audit := newSecurityTestAuth()
+	as, sessions, vstore, audit := newSecurityTestAuth()
 
 	user, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "alice@example.com"}, "OldPassword123!")
 	if err != nil {
@@ -119,7 +119,7 @@ func TestPasswordResetEndToEnd(t *testing.T) {
 }
 
 func TestPasswordResetUnknownEmail(t *testing.T) {
-	as, _, _, _, _ := newSecurityTestAuth()
+	as, _, _, _ := newSecurityTestAuth()
 	_, _, err := as.Account.RequestPasswordReset(context.Background(), "nobody@example.com")
 	if !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("got %v, want ErrUserNotFound", err)
@@ -128,7 +128,7 @@ func TestPasswordResetUnknownEmail(t *testing.T) {
 
 func TestPasswordResetRejectsWrongTokenType(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, _ := newSecurityTestAuth()
+	as, _, _, _ := newSecurityTestAuth()
 	if _, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "alice@example.com"}, "OldPassword123!"); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestPasswordResetRejectsWrongTokenType(t *testing.T) {
 
 func TestPasswordResetWeakPasswordKeepsToken(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, _ := newSecurityTestAuth()
+	as, _, _, _ := newSecurityTestAuth()
 	if _, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "alice@example.com"}, "OldPassword123!"); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestPasswordResetWeakPasswordKeepsToken(t *testing.T) {
 
 func TestPasswordResetExpiredToken(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, _ := newSecurityTestAuth()
+	as, _, _, _ := newSecurityTestAuth()
 	if _, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "alice@example.com"}, "OldPassword123!"); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestPasswordResetExpiredToken(t *testing.T) {
 
 func TestPasswordResetInvalidatesPreviousTokens(t *testing.T) {
 	ctx := context.Background()
-	as, _, _, _, _ := newSecurityTestAuth()
+	as, _, _, _ := newSecurityTestAuth()
 	if _, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "alice@example.com"}, "OldPassword123!"); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
