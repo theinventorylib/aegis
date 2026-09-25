@@ -7,6 +7,7 @@ package defaultstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
@@ -535,4 +536,84 @@ func (s *DefaultOrganizationStore) CreateMemberPermissionOverride(ctx context.Co
 // DeleteMemberPermissionOverrides removes every override for a member.
 func (s *DefaultOrganizationStore) DeleteMemberPermissionOverrides(ctx context.Context, orgID, userID string) error {
 	return s.q.deleteMemberPermissionOverrides(ctx, orgID, userID)
+}
+
+// ListOrganizationRoles returns the organization's persisted custom roles.
+func (s *DefaultOrganizationStore) ListOrganizationRoles(ctx context.Context, orgID string) ([]orgtypes.OrganizationRole, error) {
+	rows, err := s.q.listOrganizationRoles(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]orgtypes.OrganizationRole, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, buildOrganizationRole(r))
+	}
+	return out, nil
+}
+
+// GetOrganizationRole retrieves a persisted role by name.
+func (s *DefaultOrganizationStore) GetOrganizationRole(ctx context.Context, orgID, name string) (orgtypes.OrganizationRole, error) {
+	r, err := s.q.getOrganizationRole(ctx, orgID, name)
+	if err != nil {
+		return orgtypes.OrganizationRole{}, err
+	}
+	return buildOrganizationRole(r), nil
+}
+
+// CreateOrganizationRole stores a new custom role.
+func (s *DefaultOrganizationStore) CreateOrganizationRole(ctx context.Context, role orgtypes.OrganizationRole) error {
+	perms, err := marshalPermissions(role.Permissions)
+	if err != nil {
+		return err
+	}
+	return s.q.createOrganizationRole(ctx, role.ID, role.OrganizationID, role.Name, perms,
+		role.CreatedAt.UTC().Format(time.RFC3339), role.UpdatedAt.UTC().Format(time.RFC3339))
+}
+
+// UpdateOrganizationRole replaces a role's permissions.
+func (s *DefaultOrganizationStore) UpdateOrganizationRole(ctx context.Context, role orgtypes.OrganizationRole) error {
+	perms, err := marshalPermissions(role.Permissions)
+	if err != nil {
+		return err
+	}
+	return s.q.updateOrganizationRole(ctx, role.OrganizationID, role.Name, perms, role.UpdatedAt.UTC().Format(time.RFC3339))
+}
+
+// DeleteOrganizationRole removes a custom role.
+func (s *DefaultOrganizationStore) DeleteOrganizationRole(ctx context.Context, orgID, name string) error {
+	return s.q.deleteOrganizationRole(ctx, orgID, name)
+}
+
+// CountOrganizationMembersWithRole counts members holding a role.
+func (s *DefaultOrganizationStore) CountOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int, error) {
+	n, err := s.q.countOrganizationMembersWithRole(ctx, orgID, role)
+	return int(n), err
+}
+
+// buildOrganizationRole converts a canonical row into the public model.
+func buildOrganizationRole(r organizationRoleRow) orgtypes.OrganizationRole {
+	var perms []string
+	_ = json.Unmarshal([]byte(r.Permissions), &perms)
+	if perms == nil {
+		perms = []string{}
+	}
+	return orgtypes.OrganizationRole{
+		ID:             r.ID,
+		OrganizationID: r.OrganizationID,
+		Name:           r.Name,
+		Permissions:    perms,
+		CreatedAt:      parseOrgTime(r.CreatedAt),
+		UpdatedAt:      parseOrgTime(r.UpdatedAt),
+	}
+}
+
+func marshalPermissions(perms []string) (string, error) {
+	if perms == nil {
+		perms = []string{}
+	}
+	b, err := json.Marshal(perms)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }

@@ -538,6 +538,91 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	})
 
 	// Team operations at /teams/:teamId under plugin prefix
+	// Custom roles: compiled roles are read-only, custom roles are per-org.
+	rolesGroup := orgGroup.Group("/:id/roles", "Roles")
+	rolesGroup.GET("/", requireAuth(http.HandlerFunc(p.ListRolesHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "GET",
+		Path:        prefix + "/{id}/roles",
+		Summary:     "List organization roles",
+		Description: "List compiled roles plus the organization's persisted custom roles. Compiled definitions win on name collisions.",
+		Tags:        []string{"Roles"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Role catalog", "Success"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+		},
+	})
+
+	rolesGroup.POST("/", requireAuth(http.HandlerFunc(p.CreateRoleHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/{id}/roles",
+		Summary:     "Create a custom role",
+		Description: "Create an organization-specific role. Compiled role names are reserved.",
+		Tags:        []string{"Roles"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[CreateRoleRequest](),
+		Responses: openapi.Responses{
+			201: openapi.RefResponse("Role created", "Success"),
+			400: openapi.RefResponse("Invalid request or reserved name", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			409: openapi.RefResponse("Role already exists", "Error"),
+		},
+	})
+
+	rolesGroup.PUT("/:name", requireAuth(http.HandlerFunc(p.UpdateRoleHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "PUT",
+		Path:        prefix + "/{id}/roles/{name}",
+		Summary:     "Update a custom role",
+		Description: "Replace a custom role's permissions. Compiled roles cannot be edited.",
+		Tags:        []string{"Roles"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "name", In: "path", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[UpdateRoleRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Role updated", "Success"),
+			400: openapi.RefResponse("Reserved name", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Role not found", "Error"),
+		},
+	})
+
+	rolesGroup.DELETE("/:name", requireAuth(http.HandlerFunc(p.DeleteRoleHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "DELETE",
+		Path:        prefix + "/{id}/roles/{name}",
+		Summary:     "Delete a custom role",
+		Description: "Delete a custom role. Roles still assigned to members are refused.",
+		Tags:        []string{"Roles"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "name", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Role deleted", "Success"),
+			400: openapi.RefResponse("Reserved name", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Role not found", "Error"),
+			409: openapi.RefResponse("Role is assigned to members", "Error"),
+		},
+	})
+
 	teamsGroup := orgGroup.Group("/teams", "Teams")
 
 	teamsGroup.GET("/:teamId", requireAuth(http.HandlerFunc(p.GetTeamHandler)).ServeHTTP)

@@ -63,6 +63,15 @@ type Organization struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
+type OrganizationRole struct {
+	ID             string `json:"id"`
+	OrganizationID string `json:"organization_id"`
+	Name           string `json:"name"`
+	Permissions    string `json:"permissions"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+}
+
 type Session struct {
 	ID           string         `json:"id"`
 	UserID       string         `json:"user_id"`

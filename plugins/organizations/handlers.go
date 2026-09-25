@@ -323,7 +323,7 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 	req.UserID = core.SanitizeString(req.UserID, nil)
 	req.Role = core.SanitizeString(req.Role, nil)
 
-	if err := p.ValidateAddMember(req); err != nil {
+	if err := p.ValidateAddMember(r.Context(), orgID, req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
@@ -407,7 +407,7 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 	// Sanitize inputs
 	req.Role = core.SanitizeString(req.Role, nil)
 
-	if err := p.ValidateUpdateMemberRole(req); err != nil {
+	if err := p.ValidateUpdateMemberRole(r.Context(), orgID, req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}
@@ -544,6 +544,147 @@ func (p *Plugin) UpdateMemberPermissionsHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Permissions updated", Data: perms})
+}
+
+// ListRolesHandler returns the compiled and custom roles for the organization.
+func (p *Plugin) ListRolesHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	orgID := core.GetSanitizedPathParam(r, "id")
+	if orgID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermOrgView) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+	roles, err := p.ListRoles(r.Context(), orgID)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to list roles")
+		return
+	}
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Data: roles})
+}
+
+// CreateRoleHandler creates a custom organization role.
+func (p *Plugin) CreateRoleHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	orgID := core.GetSanitizedPathParam(r, "id")
+	if orgID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermOrgManage) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	var req CreateRoleRequest
+	if err := core.ReadJSON(r, &req); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if err := req.Validate(); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	info, err := p.CreateRole(r.Context(), orgID, req.Name, permissionsFromStrings(req.Permissions))
+	switch {
+	case errors.Is(err, ErrRoleReserved):
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	case errors.Is(err, ErrRoleExists):
+		core.WriteJSONError(w, http.StatusConflict, err.Error())
+		return
+	case err != nil:
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to create role")
+		return
+	}
+	core.WriteJSON(w, http.StatusCreated, &core.Response{Success: true, Data: info})
+}
+
+// UpdateRoleHandler replaces a custom role's permissions.
+func (p *Plugin) UpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	orgID := core.GetSanitizedPathParam(r, "id")
+	name := core.GetSanitizedPathParam(r, "name")
+	if orgID == "" || name == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID and role name required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermOrgManage) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	var req UpdateRoleRequest
+	if err := core.ReadJSON(r, &req); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	info, err := p.UpdateRole(r.Context(), orgID, name, permissionsFromStrings(req.Permissions))
+	switch {
+	case errors.Is(err, ErrRoleReserved):
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	case errors.Is(err, sql.ErrNoRows):
+		core.WriteJSONError(w, http.StatusNotFound, "Role not found")
+		return
+	case err != nil:
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to update role")
+		return
+	}
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Data: info})
+}
+
+// DeleteRoleHandler removes a custom role that is not in use.
+func (p *Plugin) DeleteRoleHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	orgID := core.GetSanitizedPathParam(r, "id")
+	name := core.GetSanitizedPathParam(r, "name")
+	if orgID == "" || name == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID and role name required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermOrgManage) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	err = p.DeleteRole(r.Context(), orgID, name)
+	switch {
+	case errors.Is(err, ErrRoleReserved):
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	case errors.Is(err, ErrRoleInUse):
+		core.WriteJSONError(w, http.StatusConflict, err.Error())
+		return
+	case errors.Is(err, sql.ErrNoRows):
+		core.WriteJSONError(w, http.StatusNotFound, "Role not found")
+		return
+	case err != nil:
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to delete role")
+		return
+	}
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Role deleted"})
 }
 
 // RemoveOrganizationMemberHandler removes a member from an organization
@@ -1046,7 +1187,7 @@ func (p *Plugin) CreateInvitationHandler(w http.ResponseWriter, r *http.Request)
 		teamID = req.TeamID
 	}
 
-	if err := p.ValidateCreateInvitation(req); err != nil {
+	if err := p.ValidateCreateInvitation(r.Context(), orgID, req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		return
 	}

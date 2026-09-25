@@ -41,6 +41,22 @@ func (q *Queries) CountOrganizationMembers(ctx context.Context, organizationID s
 	return count, err
 }
 
+const countOrganizationMembersWithRole = `-- name: CountOrganizationMembersWithRole :one
+SELECT COUNT(*) FROM members WHERE organization_id = ? AND role = ?
+`
+
+type CountOrganizationMembersWithRoleParams struct {
+	OrganizationID string `json:"organization_id"`
+	Role           string `json:"role"`
+}
+
+func (q *Queries) CountOrganizationMembersWithRole(ctx context.Context, arg CountOrganizationMembersWithRoleParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countOrganizationMembersWithRole, arg.OrganizationID, arg.Role)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countTeamMembers = `-- name: CountTeamMembers :one
 SELECT COUNT(*) FROM team_member WHERE team_id = ?
 `
@@ -196,6 +212,32 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 	return err
 }
 
+const createOrganizationRole = `-- name: CreateOrganizationRole :exec
+INSERT INTO organization_role (id, organization_id, name, permissions, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+`
+
+type CreateOrganizationRoleParams struct {
+	ID             string `json:"id"`
+	OrganizationID string `json:"organization_id"`
+	Name           string `json:"name"`
+	Permissions    string `json:"permissions"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+}
+
+func (q *Queries) CreateOrganizationRole(ctx context.Context, arg CreateOrganizationRoleParams) error {
+	_, err := q.db.ExecContext(ctx, createOrganizationRole,
+		arg.ID,
+		arg.OrganizationID,
+		arg.Name,
+		arg.Permissions,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const createTeam = `-- name: CreateTeam :exec
 
 INSERT INTO team (id, organization_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
@@ -284,6 +326,20 @@ type DeleteOrganizationParams struct {
 
 func (q *Queries) DeleteOrganization(ctx context.Context, arg DeleteOrganizationParams) error {
 	_, err := q.db.ExecContext(ctx, deleteOrganization, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const deleteOrganizationRole = `-- name: DeleteOrganizationRole :exec
+DELETE FROM organization_role WHERE organization_id = ? AND name = ?
+`
+
+type DeleteOrganizationRoleParams struct {
+	OrganizationID string `json:"organization_id"`
+	Name           string `json:"name"`
+}
+
+func (q *Queries) DeleteOrganizationRole(ctx context.Context, arg DeleteOrganizationRoleParams) error {
+	_, err := q.db.ExecContext(ctx, deleteOrganizationRole, arg.OrganizationID, arg.Name)
 	return err
 }
 
@@ -411,6 +467,31 @@ func (q *Queries) GetOrganizationBySlug(ctx context.Context, slug string) (GetOr
 		&i.ID,
 		&i.Name,
 		&i.Slug,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getOrganizationRole = `-- name: GetOrganizationRole :one
+SELECT id, organization_id, name, permissions, created_at, updated_at
+FROM organization_role
+WHERE organization_id = ? AND name = ?
+`
+
+type GetOrganizationRoleParams struct {
+	OrganizationID string `json:"organization_id"`
+	Name           string `json:"name"`
+}
+
+func (q *Queries) GetOrganizationRole(ctx context.Context, arg GetOrganizationRoleParams) (OrganizationRole, error) {
+	row := q.db.QueryRowContext(ctx, getOrganizationRole, arg.OrganizationID, arg.Name)
+	var i OrganizationRole
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.Name,
+		&i.Permissions,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -646,6 +727,43 @@ func (q *Queries) ListOrganizationMembers(ctx context.Context, arg ListOrganizat
 	return items, nil
 }
 
+const listOrganizationRoles = `-- name: ListOrganizationRoles :many
+SELECT id, organization_id, name, permissions, created_at, updated_at
+FROM organization_role
+WHERE organization_id = ?
+ORDER BY name
+`
+
+func (q *Queries) ListOrganizationRoles(ctx context.Context, organizationID string) ([]OrganizationRole, error) {
+	rows, err := q.db.QueryContext(ctx, listOrganizationRoles, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrganizationRole
+	for rows.Next() {
+		var i OrganizationRole
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.Name,
+			&i.Permissions,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTeamMembers = `-- name: ListTeamMembers :many
 SELECT id, team_id, user_id, role, created_at, updated_at FROM team_member WHERE team_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?
 `
@@ -858,6 +976,29 @@ func (q *Queries) UpdateOrganization(ctx context.Context, arg UpdateOrganization
 		arg.Slug,
 		arg.UpdatedAt,
 		arg.ID,
+	)
+	return err
+}
+
+const updateOrganizationRole = `-- name: UpdateOrganizationRole :exec
+UPDATE organization_role
+SET permissions = ?, updated_at = ?
+WHERE organization_id = ? AND name = ?
+`
+
+type UpdateOrganizationRoleParams struct {
+	Permissions    string `json:"permissions"`
+	UpdatedAt      string `json:"updated_at"`
+	OrganizationID string `json:"organization_id"`
+	Name           string `json:"name"`
+}
+
+func (q *Queries) UpdateOrganizationRole(ctx context.Context, arg UpdateOrganizationRoleParams) error {
+	_, err := q.db.ExecContext(ctx, updateOrganizationRole,
+		arg.Permissions,
+		arg.UpdatedAt,
+		arg.OrganizationID,
+		arg.Name,
 	)
 	return err
 }

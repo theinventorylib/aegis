@@ -161,6 +161,28 @@ type OrganizationStore interface {
 	// DeleteMemberPermissionOverrides removes every override for a member.
 	DeleteMemberPermissionOverrides(ctx context.Context, orgID, userID string) error
 
+	// ========== Role definition operations ==========
+
+	// ListOrganizationRoles returns the organization's persisted custom roles.
+	// Returns an empty slice when none exist.
+	ListOrganizationRoles(ctx context.Context, orgID string) ([]OrganizationRole, error)
+
+	// GetOrganizationRole retrieves a persisted role by name.
+	GetOrganizationRole(ctx context.Context, orgID, name string) (OrganizationRole, error)
+
+	// CreateOrganizationRole stores a new custom role.
+	CreateOrganizationRole(ctx context.Context, role OrganizationRole) error
+
+	// UpdateOrganizationRole replaces a role's permissions.
+	UpdateOrganizationRole(ctx context.Context, role OrganizationRole) error
+
+	// DeleteOrganizationRole removes a custom role.
+	DeleteOrganizationRole(ctx context.Context, orgID, name string) error
+
+	// CountOrganizationMembersWithRole counts members holding a role, so a role
+	// in use cannot be deleted out from under them.
+	CountOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int, error)
+
 	// ========== Invitation operations ==========
 
 	// CreateInvitation stores a new invitation.

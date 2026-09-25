@@ -143,3 +143,29 @@ INSERT INTO member_permission_override (
 
 -- name: DeleteMemberPermissionOverrides :exec
 DELETE FROM member_permission_override WHERE organization_id = ? AND user_id = ?;
+
+-- name: ListOrganizationRoles :many
+SELECT id, organization_id, name, permissions, created_at, updated_at
+FROM organization_role
+WHERE organization_id = ?
+ORDER BY name;
+
+-- name: GetOrganizationRole :one
+SELECT id, organization_id, name, permissions, created_at, updated_at
+FROM organization_role
+WHERE organization_id = ? AND name = ?;
+
+-- name: CreateOrganizationRole :exec
+INSERT INTO organization_role (id, organization_id, name, permissions, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+-- name: UpdateOrganizationRole :exec
+UPDATE organization_role
+SET permissions = ?, updated_at = ?
+WHERE organization_id = ? AND name = ?;
+
+-- name: DeleteOrganizationRole :exec
+DELETE FROM organization_role WHERE organization_id = ? AND name = ?;
+
+-- name: CountOrganizationMembersWithRole :one
+SELECT COUNT(*) FROM members WHERE organization_id = ? AND role = ?;

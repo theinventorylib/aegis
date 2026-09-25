@@ -314,3 +314,50 @@ func (x *mysqlQuerier) createMemberPermissionOverride(ctx context.Context, id, o
 func (x *mysqlQuerier) deleteMemberPermissionOverrides(ctx context.Context, orgID, userID string) error {
 	return x.q.DeleteMemberPermissionOverrides(ctx, sqlcmysql.DeleteMemberPermissionOverridesParams{OrganizationID: orgID, UserID: userID})
 }
+
+func (x *mysqlQuerier) listOrganizationRoles(ctx context.Context, orgID string) ([]organizationRoleRow, error) {
+	rows, err := x.q.ListOrganizationRoles(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]organizationRoleRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, organizationRoleRow{
+			ID: r.ID, OrganizationID: r.OrganizationID, Name: r.Name,
+			Permissions: r.Permissions, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (x *mysqlQuerier) getOrganizationRole(ctx context.Context, orgID, name string) (organizationRoleRow, error) {
+	r, err := x.q.GetOrganizationRole(ctx, sqlcmysql.GetOrganizationRoleParams{OrganizationID: orgID, Name: name})
+	if err != nil {
+		return organizationRoleRow{}, err
+	}
+	return organizationRoleRow{
+		ID: r.ID, OrganizationID: r.OrganizationID, Name: r.Name,
+		Permissions: r.Permissions, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	}, nil
+}
+
+func (x *mysqlQuerier) createOrganizationRole(ctx context.Context, id, orgID, name, permissions, createdAt, updatedAt string) error {
+	return x.q.CreateOrganizationRole(ctx, sqlcmysql.CreateOrganizationRoleParams{
+		ID: id, OrganizationID: orgID, Name: name, Permissions: permissions,
+		CreatedAt: createdAt, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *mysqlQuerier) updateOrganizationRole(ctx context.Context, orgID, name, permissions, updatedAt string) error {
+	return x.q.UpdateOrganizationRole(ctx, sqlcmysql.UpdateOrganizationRoleParams{
+		OrganizationID: orgID, Name: name, Permissions: permissions, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *mysqlQuerier) deleteOrganizationRole(ctx context.Context, orgID, name string) error {
+	return x.q.DeleteOrganizationRole(ctx, sqlcmysql.DeleteOrganizationRoleParams{OrganizationID: orgID, Name: name})
+}
+
+func (x *mysqlQuerier) countOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int64, error) {
+	return x.q.CountOrganizationMembersWithRole(ctx, sqlcmysql.CountOrganizationMembersWithRoleParams{OrganizationID: orgID, Role: role})
+}

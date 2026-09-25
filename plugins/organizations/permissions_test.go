@@ -13,9 +13,11 @@ import (
 // implemented.
 type fakeStore struct {
 	orgtypes.OrganizationStore
-	memberOrgRole string
-	teamRole      string
-	overrides     []orgtypes.MemberPermissionOverride
+	memberOrgRole   string
+	teamRole        string
+	overrides       []orgtypes.MemberPermissionOverride
+	customRoles     map[string]orgtypes.OrganizationRole
+	roleMemberCount int
 }
 
 func (f *fakeStore) GetMember(_ context.Context, _, _ string) (orgtypes.Member, error) {
@@ -34,6 +36,46 @@ func (f *fakeStore) GetTeamMember(_ context.Context, _, _ string) (orgtypes.Team
 
 func (f *fakeStore) ListMemberPermissionOverrides(_ context.Context, _, _ string) ([]orgtypes.MemberPermissionOverride, error) {
 	return f.overrides, nil
+}
+
+func (f *fakeStore) ListOrganizationRoles(_ context.Context, _ string) ([]orgtypes.OrganizationRole, error) {
+	out := make([]orgtypes.OrganizationRole, 0, len(f.customRoles))
+	for _, r := range f.customRoles {
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (f *fakeStore) GetOrganizationRole(_ context.Context, _, name string) (orgtypes.OrganizationRole, error) {
+	if r, ok := f.customRoles[name]; ok {
+		return r, nil
+	}
+	return orgtypes.OrganizationRole{}, sql.ErrNoRows
+}
+
+func (f *fakeStore) CreateOrganizationRole(_ context.Context, role orgtypes.OrganizationRole) error {
+	if f.customRoles == nil {
+		f.customRoles = map[string]orgtypes.OrganizationRole{}
+	}
+	f.customRoles[role.Name] = role
+	return nil
+}
+
+func (f *fakeStore) UpdateOrganizationRole(_ context.Context, role orgtypes.OrganizationRole) error {
+	if _, ok := f.customRoles[role.Name]; !ok {
+		return sql.ErrNoRows
+	}
+	f.customRoles[role.Name] = role
+	return nil
+}
+
+func (f *fakeStore) DeleteOrganizationRole(_ context.Context, _, name string) error {
+	delete(f.customRoles, name)
+	return nil
+}
+
+func (f *fakeStore) CountOrganizationMembersWithRole(_ context.Context, _, _ string) (int, error) {
+	return f.roleMemberCount, nil
 }
 
 func TestRoleDefinition_Allows(t *testing.T) {
@@ -235,5 +277,129 @@ func TestGetMemberPermissionsResolvesOverrides(t *testing.T) {
 
 	if _, err := New(nil, &fakeStore{}).GetMemberPermissions(ctx, "u1", "o1"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("non-member: got %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestCustomRoleGrantsPermissions(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{
+		memberOrgRole: "billing",
+		customRoles: map[string]orgtypes.OrganizationRole{
+			"billing": {Name: "billing", Permissions: []string{string(PermOrgView), "view_giving"}},
+		},
+	}
+	p := New(nil, store)
+
+	if ok, err := p.HasOrgPermission(ctx, "u1", "o1", PermOrgView); err != nil || !ok {
+		t.Errorf("custom role should grant org:view (ok=%v err=%v)", ok, err)
+	}
+	if ok, err := p.HasOrgPermission(ctx, "u1", "o1", "view_giving"); err != nil || !ok {
+		t.Errorf("custom role should grant app permission (ok=%v err=%v)", ok, err)
+	}
+	if ok, _ := p.HasOrgPermission(ctx, "u1", "o1", PermOrgManage); ok {
+		t.Error("custom role must not grant permissions it does not list")
+	}
+}
+
+func TestCompiledRoleWinsOverCustomRole(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{
+		memberOrgRole: orgtypes.RoleAdmin,
+		customRoles: map[string]orgtypes.OrganizationRole{
+			"admin": {Name: "admin", Permissions: []string{string(PermOrgDelete)}},
+		},
+	}
+	p := New(nil, store)
+	if ok, _ := p.HasOrgPermission(ctx, "u1", "o1", PermOrgDelete); ok {
+		t.Error("a custom role must not shadow the built-in admin role")
+	}
+}
+
+func TestCreateUpdateDeleteRole(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{memberOrgRole: orgtypes.RoleOwner}
+	p := New(nil, store)
+
+	if _, err := p.CreateRole(ctx, "o1", "admin", nil); !errors.Is(err, ErrRoleReserved) {
+		t.Fatalf("compiled name: got %v, want ErrRoleReserved", err)
+	}
+	if _, err := p.CreateRole(ctx, "o1", "billing", []Permission{PermOrgView}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := p.CreateRole(ctx, "o1", "billing", nil); !errors.Is(err, ErrRoleExists) {
+		t.Fatalf("duplicate: got %v, want ErrRoleExists", err)
+	}
+
+	info, err := p.UpdateRole(ctx, "o1", "billing", []Permission{PermOrgView, PermMemberView})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if len(info.Permissions) != 2 {
+		t.Errorf("updated permissions = %v, want 2 entries", info.Permissions)
+	}
+	if _, err := p.UpdateRole(ctx, "o1", "ghost", nil); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("unknown role: got %v, want sql.ErrNoRows", err)
+	}
+
+	store.roleMemberCount = 1
+	if err := p.DeleteRole(ctx, "o1", "billing"); !errors.Is(err, ErrRoleInUse) {
+		t.Fatalf("in-use role: got %v, want ErrRoleInUse", err)
+	}
+	store.roleMemberCount = 0
+	if err := p.DeleteRole(ctx, "o1", "billing"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if err := p.DeleteRole(ctx, "o1", "admin"); !errors.Is(err, ErrRoleReserved) {
+		t.Fatalf("compiled delete: got %v, want ErrRoleReserved", err)
+	}
+}
+
+func TestListRolesMergesCatalog(t *testing.T) {
+	ctx := context.Background()
+	p := New(nil, &fakeStore{
+		customRoles: map[string]orgtypes.OrganizationRole{
+			"billing": {Name: "billing", Permissions: []string{string(PermOrgView)}},
+			"admin":   {Name: "admin", Permissions: []string{string(PermOrgDelete)}},
+		},
+	})
+	roles, err := p.ListRoles(ctx, "o1")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	byName := map[string]RoleInfo{}
+	for _, r := range roles {
+		byName[r.Name] = r
+	}
+	if r, ok := byName["billing"]; !ok || !r.Custom {
+		t.Error("custom role should be listed as custom")
+	}
+	if r, ok := byName["admin"]; !ok || r.Custom {
+		t.Error("compiled role must win and be listed as non-custom")
+	}
+	if r := byName[orgtypes.RoleOwner]; len(r.Permissions) == 0 {
+		t.Error("compiled owner role should be listed with its permissions")
+	}
+}
+
+func TestAssignableOrgRolesIncludesCustom(t *testing.T) {
+	ctx := context.Background()
+	p := New(nil, &fakeStore{
+		customRoles: map[string]orgtypes.OrganizationRole{
+			"billing": {Name: "billing", Permissions: []string{string(PermOrgView)}},
+			"owner":   {Name: "owner", Permissions: nil},
+		},
+	})
+
+	req := AddOrganizationMemberRequest{UserID: "u1", Role: "billing"}
+	if err := p.ValidateAddMember(ctx, "o1", req); err != nil {
+		t.Fatalf("custom role should be assignable: %v", err)
+	}
+	req.Role = "ghost"
+	if err := p.ValidateAddMember(ctx, "o1", req); err == nil {
+		t.Fatal("unknown role must be rejected")
+	}
+	req.Role = orgtypes.RoleOwner
+	if err := p.ValidateAddMember(ctx, "o1", req); err == nil {
+		t.Fatal("owner must never be assignable through member endpoints")
 	}
 }

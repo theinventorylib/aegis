@@ -43,6 +43,10 @@ type permissionOverrideRow struct {
 	ID, OrganizationID, UserID, Permission, Effect, CreatedAt, UpdatedAt string
 }
 
+type organizationRoleRow struct {
+	ID, OrganizationID, Name, Permissions, CreatedAt, UpdatedAt string
+}
+
 // listOrgRow is the reduced row returned by ListUserOrganizations
 // (same fields as orgRow but kept separate for clarity).
 type listOrgRow = orgRow
@@ -100,4 +104,12 @@ type querier interface {
 	listMemberPermissionOverrides(ctx context.Context, orgID, userID string) ([]permissionOverrideRow, error)
 	createMemberPermissionOverride(ctx context.Context, id, orgID, userID, permission, effect, createdAt, updatedAt string) error
 	deleteMemberPermissionOverrides(ctx context.Context, orgID, userID string) error
+
+	// Role definition queries
+	listOrganizationRoles(ctx context.Context, orgID string) ([]organizationRoleRow, error)
+	getOrganizationRole(ctx context.Context, orgID, name string) (organizationRoleRow, error)
+	createOrganizationRole(ctx context.Context, id, orgID, name, permissions, createdAt, updatedAt string) error
+	updateOrganizationRole(ctx context.Context, orgID, name, permissions, updatedAt string) error
+	deleteOrganizationRole(ctx context.Context, orgID, name string) error
+	countOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int64, error)
 }

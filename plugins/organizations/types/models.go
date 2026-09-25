@@ -215,3 +215,17 @@ type MemberPermissionOverride struct {
 	CreatedAt      time.Time        `json:"createdAt"`
 	UpdatedAt      time.Time        `json:"updatedAt"`
 }
+
+// OrganizationRole is a persisted, organization-specific role definition.
+//
+// Built-in and Config.OrgRoles definitions stay in code; these are created per
+// organization through the API. Permissions are stored as a JSON array of
+// app-defined permission strings.
+type OrganizationRole struct {
+	ID             string    `json:"id"`
+	OrganizationID string    `json:"organizationId"`
+	Name           string    `json:"name"`
+	Permissions    []string  `json:"permissions"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}

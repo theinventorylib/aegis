@@ -130,7 +130,10 @@ func (p *Plugin) HasOrgPermission(ctx context.Context, userID, orgID string, per
 		}
 		return false, err
 	}
-	allowed := p.orgRoles[m.Role].Allows(perm)
+	allowed, err := p.roleAllows(ctx, orgID, m.Role, perm)
+	if err != nil {
+		return false, err
+	}
 
 	overrides, err := p.store.ListMemberPermissionOverrides(ctx, orgID, userID)
 	if err != nil {
@@ -174,8 +177,12 @@ func (p *Plugin) GetMemberPermissions(ctx context.Context, userID, orgID string)
 		return MemberPermissions{}, err
 	}
 
-	effective := make(map[Permission]bool, len(overrides))
-	for _, perm := range p.orgRoles[m.Role].Permissions {
+	rolePerms, err := p.rolePermissions(ctx, orgID, m.Role)
+	if err != nil {
+		return MemberPermissions{}, err
+	}
+	effective := make(map[Permission]bool, len(rolePerms)+len(overrides))
+	for _, perm := range rolePerms {
 		effective[perm] = true
 	}
 	for _, o := range overrides {

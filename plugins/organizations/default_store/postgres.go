@@ -308,3 +308,50 @@ func (x *postgresQuerier) createMemberPermissionOverride(ctx context.Context, id
 func (x *postgresQuerier) deleteMemberPermissionOverrides(ctx context.Context, orgID, userID string) error {
 	return x.q.DeleteMemberPermissionOverrides(ctx, sqlcpostgres.DeleteMemberPermissionOverridesParams{OrganizationID: orgID, UserID: userID})
 }
+
+func (x *postgresQuerier) listOrganizationRoles(ctx context.Context, orgID string) ([]organizationRoleRow, error) {
+	rows, err := x.q.ListOrganizationRoles(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]organizationRoleRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, organizationRoleRow{
+			ID: r.ID, OrganizationID: r.OrganizationID, Name: r.Name,
+			Permissions: r.Permissions, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (x *postgresQuerier) getOrganizationRole(ctx context.Context, orgID, name string) (organizationRoleRow, error) {
+	r, err := x.q.GetOrganizationRole(ctx, sqlcpostgres.GetOrganizationRoleParams{OrganizationID: orgID, Name: name})
+	if err != nil {
+		return organizationRoleRow{}, err
+	}
+	return organizationRoleRow{
+		ID: r.ID, OrganizationID: r.OrganizationID, Name: r.Name,
+		Permissions: r.Permissions, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	}, nil
+}
+
+func (x *postgresQuerier) createOrganizationRole(ctx context.Context, id, orgID, name, permissions, createdAt, updatedAt string) error {
+	return x.q.CreateOrganizationRole(ctx, sqlcpostgres.CreateOrganizationRoleParams{
+		ID: id, OrganizationID: orgID, Name: name, Permissions: permissions,
+		CreatedAt: createdAt, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *postgresQuerier) updateOrganizationRole(ctx context.Context, orgID, name, permissions, updatedAt string) error {
+	return x.q.UpdateOrganizationRole(ctx, sqlcpostgres.UpdateOrganizationRoleParams{
+		OrganizationID: orgID, Name: name, Permissions: permissions, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *postgresQuerier) deleteOrganizationRole(ctx context.Context, orgID, name string) error {
+	return x.q.DeleteOrganizationRole(ctx, sqlcpostgres.DeleteOrganizationRoleParams{OrganizationID: orgID, Name: name})
+}
+
+func (x *postgresQuerier) countOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int64, error) {
+	return x.q.CountOrganizationMembersWithRole(ctx, sqlcpostgres.CountOrganizationMembersWithRoleParams{OrganizationID: orgID, Role: role})
+}

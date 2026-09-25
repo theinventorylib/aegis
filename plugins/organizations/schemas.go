@@ -1,6 +1,9 @@
 package organizations
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"regexp"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -150,6 +153,24 @@ func (r UpdateMemberPermissionsRequest) Validate() error {
 		}
 	}
 	return nil
+}
+
+// CreateRoleRequest creates a custom organization role.
+type CreateRoleRequest struct {
+	Name        string   `json:"name"`        // Role name (1-50 chars, not a compiled role)
+	Permissions []string `json:"permissions"` // Permission strings
+}
+
+// Validate validates the create role request.
+func (r CreateRoleRequest) Validate() error {
+	return validation.ValidateStruct(&r,
+		validation.Field(&r.Name, validation.Required, validation.Length(1, 50)),
+	)
+}
+
+// UpdateRoleRequest replaces a custom role's permissions.
+type UpdateRoleRequest struct {
+	Permissions []string `json:"permissions"`
 }
 
 // ========== Team Request Schemas ==========
@@ -319,6 +340,30 @@ func (p *Plugin) orgMemberRoles() []any {
 	return roles
 }
 
+// assignableOrgRoles returns the compiled assignable roles plus the
+// organization's persisted custom roles. Compiled names win, and owner is
+// never assignable through the member endpoints.
+func (p *Plugin) assignableOrgRoles(ctx context.Context, orgID string) ([]any, error) {
+	roles := p.orgMemberRoles()
+	seen := make(map[string]bool, len(roles))
+	for _, role := range roles {
+		seen[role.(string)] = true
+	}
+
+	custom, err := p.store.ListOrganizationRoles(ctx, orgID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	for _, role := range custom {
+		if role.Name == orgtypes.RoleOwner || seen[role.Name] {
+			continue
+		}
+		seen[role.Name] = true
+		roles = append(roles, role.Name)
+	}
+	return roles, nil
+}
+
 // teamMemberRoles returns the assignable team-level roles.
 func (p *Plugin) teamMemberRoles() []any {
 	roles := make([]any, 0, len(p.teamRoles))
@@ -329,19 +374,27 @@ func (p *Plugin) teamMemberRoles() []any {
 }
 
 // ValidateAddMember validates an AddOrganizationMemberRequest against the
-// configured org roles.
-func (p *Plugin) ValidateAddMember(req AddOrganizationMemberRequest) error {
+// configured and persisted org roles.
+func (p *Plugin) ValidateAddMember(ctx context.Context, orgID string, req AddOrganizationMemberRequest) error {
+	roles, err := p.assignableOrgRoles(ctx, orgID)
+	if err != nil {
+		return err
+	}
 	return validation.ValidateStruct(&req,
 		validation.Field(&req.UserID, validation.Required),
-		validation.Field(&req.Role, validation.Required, validation.In(p.orgMemberRoles()...)),
+		validation.Field(&req.Role, validation.Required, validation.In(roles...)),
 	)
 }
 
 // ValidateUpdateMemberRole validates an UpdateMemberRoleRequest against the
-// configured org roles.
-func (p *Plugin) ValidateUpdateMemberRole(req UpdateMemberRoleRequest) error {
+// configured and persisted org roles.
+func (p *Plugin) ValidateUpdateMemberRole(ctx context.Context, orgID string, req UpdateMemberRoleRequest) error {
+	roles, err := p.assignableOrgRoles(ctx, orgID)
+	if err != nil {
+		return err
+	}
 	return validation.ValidateStruct(&req,
-		validation.Field(&req.Role, validation.Required, validation.In(p.orgMemberRoles()...)),
+		validation.Field(&req.Role, validation.Required, validation.In(roles...)),
 	)
 }
 
@@ -364,11 +417,15 @@ func (p *Plugin) ValidateUpdateTeamMemberRole(req UpdateTeamMemberRoleRequest) e
 
 // ValidateCreateInvitation validates a CreateInvitationRequest. The role is
 // validated against team roles when the invitation targets a team, and against
-// org roles otherwise.
-func (p *Plugin) ValidateCreateInvitation(req CreateInvitationRequest) error {
-	roles := p.orgMemberRoles()
-	if req.TeamID != nil && *req.TeamID != "" {
-		roles = p.teamMemberRoles()
+// the org's assignable roles otherwise.
+func (p *Plugin) ValidateCreateInvitation(ctx context.Context, orgID string, req CreateInvitationRequest) error {
+	roles := p.teamMemberRoles()
+	if req.TeamID == nil || *req.TeamID == "" {
+		var err error
+		roles, err = p.assignableOrgRoles(ctx, orgID)
+		if err != nil {
+			return err
+		}
 	}
 	return validation.ValidateStruct(&req,
 		validation.Field(&req.Email, validation.Required, validation.Length(1, 255)),
