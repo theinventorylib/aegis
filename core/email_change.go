@@ -11,6 +11,10 @@ import (
 // RequestEmailChange issues a confirmation token for moving userID's account
 // to newEmail and returns the raw token for delivery to that address.
 //
+// customToken lets the caller supply a short code (e.g. a 6-digit OTP) instead
+// of the generated 64-character token; it is stored hashed like any other
+// verification token. Pass nil for the default token.
+//
 // The token is stored hashed and scoped to the new address (identifier =
 // newEmail, type = email_change), so redeeming it proves control of that
 // mailbox. The account keeps its current address until ConfirmEmailChange is
@@ -18,7 +22,7 @@ import (
 // invalidated first.
 //
 // Returns ErrEmailAlreadyExists when another account already owns newEmail.
-func (s *UserService) RequestEmailChange(ctx context.Context, userID, newEmail string) (string, error) {
+func (s *UserService) RequestEmailChange(ctx context.Context, userID, newEmail string, customToken *string) (string, error) {
 	newEmail = SanitizeEmail(newEmail)
 	if err := ValidateEmail(newEmail); err != nil {
 		return "", err
@@ -48,7 +52,7 @@ func (s *UserService) RequestEmailChange(ctx context.Context, userID, newEmail s
 		return "", err
 	}
 
-	v, err := s.verification.CreateVerification(ctx, newEmail, VerificationTypeEmailChange, s.emailChangeExpiry(), nil)
+	v, err := s.verification.CreateVerification(ctx, newEmail, VerificationTypeEmailChange, s.emailChangeExpiry(), customToken)
 	if err != nil {
 		return "", err
 	}

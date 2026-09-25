@@ -755,7 +755,7 @@ func (p *Plugin) RequestEmailChange(ctx context.Context, userID, newEmail string
 	if p.userService == nil {
 		return fmt.Errorf("user service not configured")
 	}
-	token, err := p.userService.RequestEmailChange(ctx, userID, newEmail)
+	token, err := p.userService.RequestEmailChange(ctx, userID, newEmail, nil)
 	if err != nil {
 		return err
 	}

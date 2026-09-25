@@ -28,7 +28,7 @@ func TestEmailChangeEndToEnd(t *testing.T) {
 		return nil
 	})
 
-	token, err := as.User.RequestEmailChange(ctx, user.GetID(), "new@example.com")
+	token, err := as.User.RequestEmailChange(ctx, user.GetID(), "new@example.com", nil)
 	if err != nil {
 		t.Fatalf("request change: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestEmailChangeRejectsTakenEmail(t *testing.T) {
 	if _, err := as.User.CreateUser(ctx, auth.User{Name: "Bob", Email: "bob@example.com"}, "Str0ngPassword1!"); err != nil {
 		t.Fatalf("create bob: %v", err)
 	}
-	_, err = as.User.RequestEmailChange(ctx, alice.GetID(), "bob@example.com")
+	_, err = as.User.RequestEmailChange(ctx, alice.GetID(), "bob@example.com", nil)
 	if !errors.Is(err, ErrEmailAlreadyExists) {
 		t.Fatalf("got %v, want ErrEmailAlreadyExists", err)
 	}
@@ -81,7 +81,7 @@ func TestEmailChangeRejectsSameEmail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	if _, err := as.User.RequestEmailChange(ctx, user.GetID(), "alice@example.com"); err == nil {
+	if _, err := as.User.RequestEmailChange(ctx, user.GetID(), "alice@example.com", nil); err == nil {
 		t.Fatal("expected same-email rejection")
 	}
 }
@@ -112,7 +112,7 @@ func TestEmailChangeMarkerFailureStillApplies(t *testing.T) {
 	as.User.setEmailVerifiedMarker(func(_ context.Context, _, _ string) error {
 		return errors.New("plugin unavailable")
 	})
-	token, err := as.User.RequestEmailChange(ctx, user.GetID(), "new@example.com")
+	token, err := as.User.RequestEmailChange(ctx, user.GetID(), "new@example.com", nil)
 	if err != nil {
 		t.Fatalf("request change: %v", err)
 	}
