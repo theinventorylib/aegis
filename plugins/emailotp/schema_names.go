@@ -7,8 +7,12 @@ package emailotp
 // request/response examples.
 const (
 	// Request schemas
-	SchemaLoginWithEmailRequest    = "LoginWithEmailRequest"
-	SchemaRegisterWithEmailRequest = "RegisterWithEmailRequest"
-	SchemaSendOTPRequest           = "SendOTPRequest"
-	SchemaVerifyOTPRequest         = "VerifyOTPRequest"
+	SchemaLoginWithEmailRequest     = "LoginWithEmailRequest"
+	SchemaRegisterWithEmailRequest  = "RegisterWithEmailRequest"
+	SchemaSendOTPRequest            = "SendOTPRequest"
+	SchemaVerifyOTPRequest          = "VerifyOTPRequest"
+	SchemaForgotPasswordRequest     = "ForgotPasswordRequest"
+	SchemaResetPasswordRequest      = "ResetPasswordRequest"
+	SchemaRequestEmailChangeRequest = "RequestEmailChangeRequest"
+	SchemaConfirmEmailChangeRequest = "ConfirmEmailChangeRequest"
 )

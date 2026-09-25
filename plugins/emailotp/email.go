@@ -37,8 +37,10 @@ package emailotp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/theinventorylib/aegis/v2/auth"
@@ -86,6 +88,12 @@ type Plugin struct {
 	verificationService *core.VerificationService
 	// sessionService creates sessions after successful authentication
 	sessionService *core.SessionService
+	// userService manages user records (email changes)
+	userService *core.UserService
+	// passwordResetURL is the link template for password-reset mails
+	passwordResetURL string
+	// emailChangeURL is the link template for email-change confirmation mails
+	emailChangeURL string
 	// dialect specifies database dialect (postgres, mysql)
 	dialect plugins.Dialect
 	// aegis is the main framework instance
@@ -105,6 +113,17 @@ type Config struct {
 	Provider  Provider      // Email sending provider (required for production)
 	OTPExpiry time.Duration // OTP expiry duration (default: 10 minutes)
 	OTPLength int           // OTP code length (default: 6)
+
+	// PasswordResetURL is the link template used for password-reset mails.
+	// "{token}" is replaced with the reset token, e.g.
+	// "https://app.example.com/reset-password?token={token}".
+	// When empty, the raw token is mailed as a code instead.
+	PasswordResetURL string
+
+	// EmailChangeURL is the link template used for email-change confirmation
+	// mails, e.g. "https://app.example.com/account/email?token={token}".
+	// When empty, the raw token is mailed as a code instead.
+	EmailChangeURL string
 }
 
 // New creates a new Email OTP plugin instance.
@@ -142,11 +161,13 @@ func New(cfg *Config, store emailotptypes.Store, dialect ...plugins.Dialect) *Pl
 	}
 
 	return &Plugin{
-		store:     store,
-		provider:  cfg.Provider,
-		otpExpiry: cfg.OTPExpiry,
-		otpLength: cfg.OTPLength,
-		dialect:   d,
+		store:            store,
+		provider:         cfg.Provider,
+		otpExpiry:        cfg.OTPExpiry,
+		otpLength:        cfg.OTPLength,
+		passwordResetURL: cfg.PasswordResetURL,
+		emailChangeURL:   cfg.EmailChangeURL,
+		dialect:          d,
 	}
 }
 
@@ -172,6 +193,7 @@ func (p *Plugin) Init(ctx context.Context, a plugins.Aegis) error {
 	p.accountService = authService.Account
 	p.sessionService = authService.Session
 	p.verificationService = authService.Verification
+	p.userService = authService.User
 	p.logger = a.GetLogger()
 	p.aegis = a
 
@@ -217,6 +239,12 @@ func (p *Plugin) Init(ctx context.Context, a plugins.Aegis) error {
 	// verified address cannot make the new one look verified.
 	authService.SetEmailVerificationResetter(func(ctx context.Context, userID, email string) error {
 		return p.store.UpdateUserEmail(ctx, userID, email, false)
+	})
+
+	// Mark the new address verified after a confirmed email change: the user
+	// proved control of it by redeeming the confirmation token.
+	authService.SetEmailVerifiedMarker(func(ctx context.Context, userID, email string) error {
+		return p.store.UpdateUserEmail(ctx, userID, email, true)
 	})
 
 	return nil
@@ -279,6 +307,72 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			200: openapi.RefResponse("Verification code sent", "Success"),
 			400: openapi.RefResponse("Invalid request", "Error"),
 			500: openapi.RefResponse("Failed to send email", "Error"),
+		},
+	})
+
+	// Password reset. The request endpoint answers the same for every address
+	// so it cannot be used to enumerate accounts.
+	emailGroup.POST("/forgot-password", handlers.ForgotPasswordHandler)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/forgot-password",
+		Summary:     "Request a password reset",
+		Description: "Mail a password-reset token to the address if it has an account. The response is identical either way.",
+		Tags:        []string{"Email OTP"},
+		Body:        openapi.BodyOf[emailotptypes.ForgotPasswordRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Reset requested", "Success"),
+			400: openapi.RefResponse("Invalid request", "Error"),
+			429: openapi.RefResponse("Too many requests", "Error"),
+		},
+	})
+
+	emailGroup.POST("/reset-password", handlers.ResetPasswordHandler)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/reset-password",
+		Summary:     "Complete a password reset",
+		Description: "Redeem a password-reset token and set a new password. All existing sessions are revoked.",
+		Tags:        []string{"Email OTP"},
+		Body:        openapi.BodyOf[emailotptypes.ResetPasswordRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Password reset", "Success"),
+			400: openapi.RefResponse("Invalid or expired token, or password policy violation", "Error"),
+		},
+	})
+
+	// Email change. Both endpoints require a session: the confirmation token
+	// is bound to the new address, and the account that changes is the caller.
+	emailGroup.POST("/email-change", requireAuth(http.HandlerFunc(handlers.RequestEmailChangeHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/email-change",
+		Summary:     "Request an email change",
+		Description: "Mail a confirmation token to the new address for the authenticated user",
+		Tags:        []string{"Email OTP"},
+		Auth:        true,
+		Body:        openapi.BodyOf[emailotptypes.RequestEmailChangeRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Confirmation sent", "Success"),
+			400: openapi.RefResponse("Invalid request", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			409: openapi.RefResponse("Email already in use", "Error"),
+		},
+	})
+
+	emailGroup.POST("/email-change/confirm", requireAuth(http.HandlerFunc(handlers.ConfirmEmailChangeHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/email-change/confirm",
+		Summary:     "Confirm an email change",
+		Description: "Redeem the token mailed to the new address and move the authenticated account to it",
+		Tags:        []string{"Email OTP"},
+		Auth:        true,
+		Body:        openapi.BodyOf[emailotptypes.ConfirmEmailChangeRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Email updated", "Success"),
+			400: openapi.RefResponse("Invalid or expired token", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
 		},
 	})
 }
@@ -624,6 +718,76 @@ func (p *Plugin) UpdateUserEmail(ctx context.Context, userID, email string, veri
 		return fmt.Errorf("store not configured")
 	}
 	return p.store.UpdateUserEmail(ctx, userID, email, verified)
+}
+
+// RequestPasswordReset issues a password-reset token for the account that owns
+// email and mails it to that address. It returns nil when the address has no
+// account, so HTTP callers can keep responses enumeration-safe; delivery
+// failures are returned.
+func (p *Plugin) RequestPasswordReset(ctx context.Context, email string) error {
+	if p.accountService == nil {
+		return fmt.Errorf("account service not configured")
+	}
+	_, token, err := p.accountService.RequestPasswordReset(ctx, email)
+	if err != nil {
+		if errors.Is(err, core.ErrUserNotFound) {
+			return nil
+		}
+		return err
+	}
+	subject, body := p.passwordResetMail(token)
+	return p.SendEmail(ctx, email, subject, body)
+}
+
+// ResetPassword redeems a password-reset token and sets the account's new
+// password. All existing sessions are revoked by the core flow.
+func (p *Plugin) ResetPassword(ctx context.Context, token, newPassword string) error {
+	if p.accountService == nil {
+		return fmt.Errorf("account service not configured")
+	}
+	_, err := p.accountService.ConfirmPasswordReset(ctx, token, newPassword)
+	return err
+}
+
+// RequestEmailChange issues a confirmation token for the new address and mails
+// it there. The change is applied only when ConfirmEmailChange redeems it.
+func (p *Plugin) RequestEmailChange(ctx context.Context, userID, newEmail string) error {
+	if p.userService == nil {
+		return fmt.Errorf("user service not configured")
+	}
+	token, err := p.userService.RequestEmailChange(ctx, userID, newEmail)
+	if err != nil {
+		return err
+	}
+	subject, body := p.emailChangeMail(token)
+	return p.SendEmail(ctx, newEmail, subject, body)
+}
+
+// ConfirmEmailChange redeems an email-change token for the authenticated user.
+func (p *Plugin) ConfirmEmailChange(ctx context.Context, userID, token string) (auth.User, error) {
+	if p.userService == nil {
+		return auth.User{}, fmt.Errorf("user service not configured")
+	}
+	return p.userService.ConfirmEmailChange(ctx, userID, token)
+}
+
+// passwordResetMail renders the reset message. With a configured URL template
+// the token travels as a link; otherwise it is mailed as a code.
+func (p *Plugin) passwordResetMail(token string) (subject, body string) {
+	if p.passwordResetURL != "" {
+		link := strings.ReplaceAll(p.passwordResetURL, "{token}", token)
+		return "Reset your password", "Use this link to choose a new password:\n\n" + link
+	}
+	return "Reset your password", "Your password reset code is: " + token
+}
+
+// emailChangeMail renders the email-change confirmation message.
+func (p *Plugin) emailChangeMail(token string) (subject, body string) {
+	if p.emailChangeURL != "" {
+		link := strings.ReplaceAll(p.emailChangeURL, "{token}", token)
+		return "Confirm your new email address", "Confirm this address to finish changing your email:\n\n" + link
+	}
+	return "Confirm your new email address", "Your email change confirmation code is: " + token
 }
 
 // Ensure Plugin implements UserEnricher

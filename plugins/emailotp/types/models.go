@@ -45,6 +45,29 @@ type VerifyOTPRequest struct {
 	Purpose string `json:"purpose"` // OTP purpose
 }
 
+// ForgotPasswordRequest starts the password-reset flow for an email address.
+type ForgotPasswordRequest struct {
+	Email string `json:"email"` // Account email address
+}
+
+// ResetPasswordRequest completes a password reset with the token that was
+// mailed by the forgot-password endpoint.
+type ResetPasswordRequest struct {
+	Token       string `json:"token"`        // Reset token from the email
+	NewPassword string `json:"new_password"` // New password (validated against the configured policy)
+}
+
+// RequestEmailChangeRequest starts the verified email-change flow.
+type RequestEmailChangeRequest struct {
+	NewEmail string `json:"new_email"` // Address to move the account to
+}
+
+// ConfirmEmailChangeRequest completes the email-change flow with the token
+// mailed to the new address.
+type ConfirmEmailChangeRequest struct {
+	Token string `json:"token"` // Confirmation token from the email
+}
+
 // ========== Extended User Model ==========
 
 // User extends the core auth.User model with the email-specific verification flag.
