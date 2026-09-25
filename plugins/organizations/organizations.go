@@ -452,6 +452,48 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
+	membersGroup.GET("/:userId/permissions", requireAuth(http.HandlerFunc(p.GetMemberPermissionsHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "GET",
+		Path:        prefix + "/{id}/members/{userId}/permissions",
+		Summary:     "Get member permissions",
+		Description: "Return a member's role, per-member overrides and the resolved effective permissions",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Effective permissions", "Success"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Member not found", "Error"),
+		},
+	})
+
+	membersGroup.PUT("/:userId/permissions", requireAuth(http.HandlerFunc(p.UpdateMemberPermissionsHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "PUT",
+		Path:        prefix + "/{id}/members/{userId}/permissions",
+		Summary:     "Replace member permissions",
+		Description: "Replace a member's permission overrides. Deny wins over the role; grant adds a permission the role does not carry.",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[UpdateMemberPermissionsRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Permissions updated", "Success"),
+			400: openapi.RefResponse("Invalid request or duplicate permission", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Member not found", "Error"),
+		},
+	})
+
 	// Organization-specific teams under orgGroup
 	orgTeams := orgGroup.Group("/:id/teams", "Teams")
 

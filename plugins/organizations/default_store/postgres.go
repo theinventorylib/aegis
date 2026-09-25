@@ -282,3 +282,29 @@ var _ querier = (*postgresQuerier)(nil)
 
 // suppress unused import warning when all methods are generated
 var _ = fmt.Sprintf
+
+func (x *postgresQuerier) listMemberPermissionOverrides(ctx context.Context, orgID, userID string) ([]permissionOverrideRow, error) {
+	rows, err := x.q.ListMemberPermissionOverrides(ctx, sqlcpostgres.ListMemberPermissionOverridesParams{OrganizationID: orgID, UserID: userID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]permissionOverrideRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, permissionOverrideRow{
+			ID: r.ID, OrganizationID: r.OrganizationID, UserID: r.UserID,
+			Permission: r.Permission, Effect: r.Effect, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (x *postgresQuerier) createMemberPermissionOverride(ctx context.Context, id, orgID, userID, permission, effect, createdAt, updatedAt string) error {
+	return x.q.CreateMemberPermissionOverride(ctx, sqlcpostgres.CreateMemberPermissionOverrideParams{
+		ID: id, OrganizationID: orgID, UserID: userID, Permission: permission,
+		Effect: effect, CreatedAt: createdAt, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *postgresQuerier) deleteMemberPermissionOverrides(ctx context.Context, orgID, userID string) error {
+	return x.q.DeleteMemberPermissionOverrides(ctx, sqlcpostgres.DeleteMemberPermissionOverridesParams{OrganizationID: orgID, UserID: userID})
+}

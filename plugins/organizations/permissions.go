@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 
 	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
 )
@@ -116,8 +117,10 @@ func cloneRoles(in map[string]RoleDefinition) map[string]RoleDefinition {
 	return out
 }
 
-// HasOrgPermission reports whether the user's role in the organization grants
-// perm. Users who are not members, or whose role is unknown, have no
+// HasOrgPermission reports whether the user may exercise perm in the
+// organization. The role's permissions are the baseline; per-member overrides
+// adjust them: a deny always wins, a grant adds a permission the role does not
+// carry. Users who are not members, or whose role is unknown, have no
 // permissions. A store lookup error other than "member not found" is returned.
 func (p *Plugin) HasOrgPermission(ctx context.Context, userID, orgID string, perm Permission) (bool, error) {
 	m, err := p.store.GetMember(ctx, userID, orgID)
@@ -127,7 +130,70 @@ func (p *Plugin) HasOrgPermission(ctx context.Context, userID, orgID string, per
 		}
 		return false, err
 	}
-	return p.orgRoles[m.Role].Allows(perm), nil
+	allowed := p.orgRoles[m.Role].Allows(perm)
+
+	overrides, err := p.store.ListMemberPermissionOverrides(ctx, orgID, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return allowed, nil
+		}
+		return false, err
+	}
+	for _, o := range overrides {
+		if Permission(o.Permission) != perm {
+			continue
+		}
+		switch o.Effect {
+		case orgtypes.PermissionEffectDeny:
+			return false, nil
+		case orgtypes.PermissionEffectGrant:
+			return true, nil
+		}
+	}
+	return allowed, nil
+}
+
+// MemberPermissions describes a member's effective authorization: the role,
+// the raw overrides, and the resolved permission set.
+type MemberPermissions struct {
+	Role        string                              `json:"role"`
+	Overrides   []orgtypes.MemberPermissionOverride `json:"overrides"`
+	Permissions []Permission                        `json:"permissions"`
+}
+
+// GetMemberPermissions resolves a member's effective permissions: the role's
+// permissions with per-member overrides applied (deny wins over grant, grant
+// wins over the role). Returns sql.ErrNoRows when the user is not a member.
+func (p *Plugin) GetMemberPermissions(ctx context.Context, userID, orgID string) (MemberPermissions, error) {
+	m, err := p.store.GetMember(ctx, userID, orgID)
+	if err != nil {
+		return MemberPermissions{}, err
+	}
+	overrides, err := p.store.ListMemberPermissionOverrides(ctx, orgID, userID)
+	if err != nil {
+		return MemberPermissions{}, err
+	}
+
+	effective := make(map[Permission]bool, len(overrides))
+	for _, perm := range p.orgRoles[m.Role].Permissions {
+		effective[perm] = true
+	}
+	for _, o := range overrides {
+		switch o.Effect {
+		case orgtypes.PermissionEffectDeny:
+			delete(effective, Permission(o.Permission))
+		case orgtypes.PermissionEffectGrant:
+			effective[Permission(o.Permission)] = true
+		}
+	}
+
+	perms := make([]Permission, 0, len(effective))
+	for perm := range effective {
+		perms = append(perms, perm)
+	}
+	slices.Sort(perms)
+
+	return MemberPermissions{Role: m.Role, Overrides: overrides, Permissions: perms}, nil
 }
 
 // HasTeamPermission reports whether the user's role in the team grants perm.

@@ -1,6 +1,8 @@
 package organizations
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"time"
 
@@ -424,6 +426,124 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 		Success: true,
 		Message: "Role updated",
 	})
+}
+
+// GetMemberPermissionsHandler returns a member's role, overrides and resolved
+// permission set.
+func (p *Plugin) GetMemberPermissionsHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	orgID := core.GetSanitizedPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "userId")
+	if orgID == "" || userID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID and User ID required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermMemberAssignRoles) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	perms, err := p.GetMemberPermissions(r.Context(), userID, orgID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			core.WriteJSONError(w, http.StatusNotFound, "Member not found")
+			return
+		}
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to load permissions")
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Data: perms})
+}
+
+// UpdateMemberPermissionsHandler replaces a member's permission overrides.
+//
+// The set is replaced, not merged: delete-then-insert. A failure part-way
+// through leaves the member with a partial set, which the caller can correct
+// by re-sending the desired list.
+func (p *Plugin) UpdateMemberPermissionsHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	orgID := core.GetSanitizedPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "userId")
+	if orgID == "" || userID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID and User ID required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermMemberAssignRoles) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	var req UpdateMemberPermissionsRequest
+	if err := core.ReadJSON(r, &req); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if err := req.Validate(); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	// Duplicate permissions would violate the (org, user, permission) unique
+	// constraint part-way through the insert loop; reject them up front.
+	seen := make(map[string]bool, len(req.Overrides))
+	overrides := make([]orgtypes.MemberPermissionOverride, 0, len(req.Overrides))
+	now := time.Now()
+	for _, o := range req.Overrides {
+		perm := core.SanitizeString(o.Permission, nil)
+		if seen[perm] {
+			core.WriteJSONError(w, http.StatusBadRequest, "Duplicate permission: "+perm)
+			return
+		}
+		seen[perm] = true
+		overrides = append(overrides, orgtypes.MemberPermissionOverride{
+			ID:             core.GenerateID(),
+			OrganizationID: orgID,
+			UserID:         userID,
+			Permission:     perm,
+			Effect:         orgtypes.PermissionEffect(o.Effect),
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		})
+	}
+
+	// The member must exist before we touch overrides.
+	if _, err := p.store.GetMember(r.Context(), userID, orgID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			core.WriteJSONError(w, http.StatusNotFound, "Member not found")
+			return
+		}
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to load member")
+		return
+	}
+
+	if err := p.store.DeleteMemberPermissionOverrides(r.Context(), orgID, userID); err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to clear permissions")
+		return
+	}
+	for _, override := range overrides {
+		if err := p.store.CreateMemberPermissionOverride(r.Context(), override); err != nil {
+			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to save permissions")
+			return
+		}
+	}
+
+	perms, err := p.GetMemberPermissions(r.Context(), userID, orgID)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to load permissions")
+		return
+	}
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Permissions updated", Data: perms})
 }
 
 // RemoveOrganizationMemberHandler removes a member from an organization

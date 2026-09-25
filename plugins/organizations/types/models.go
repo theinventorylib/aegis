@@ -191,3 +191,27 @@ type TeamMember struct {
 	CreatedAt time.Time `json:"createdAt"` // When the user joined the team
 	UpdatedAt time.Time `json:"updatedAt"` // Last role update timestamp
 }
+
+// PermissionEffect is how an override adjusts the permissions a role grants:
+// grant adds a permission on top of the role, deny removes one.
+type PermissionEffect string
+
+const (
+	// PermissionEffectGrant adds a permission the role does not grant.
+	PermissionEffectGrant PermissionEffect = "grant"
+	// PermissionEffectDeny removes a permission the role would grant.
+	PermissionEffectDeny PermissionEffect = "deny"
+)
+
+// MemberPermissionOverride is a per-member adjustment to the role's
+// permissions. Permission values are app-defined strings (including the
+// built-in org/team permissions), so applications can use their own catalog.
+type MemberPermissionOverride struct {
+	ID             string           `json:"id"`
+	OrganizationID string           `json:"organizationId"`
+	UserID         string           `json:"userId"`
+	Permission     string           `json:"permission"`
+	Effect         PermissionEffect `json:"effect"`
+	CreatedAt      time.Time        `json:"createdAt"`
+	UpdatedAt      time.Time        `json:"updatedAt"`
+}

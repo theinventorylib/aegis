@@ -504,3 +504,35 @@ func parseOrgTime(s string) time.Time {
 	}
 	return t
 }
+
+// ListMemberPermissionOverrides returns the member's permission overrides.
+func (s *DefaultOrganizationStore) ListMemberPermissionOverrides(ctx context.Context, orgID, userID string) ([]orgtypes.MemberPermissionOverride, error) {
+	rows, err := s.q.listMemberPermissionOverrides(ctx, orgID, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]orgtypes.MemberPermissionOverride, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, orgtypes.MemberPermissionOverride{
+			ID:             r.ID,
+			OrganizationID: r.OrganizationID,
+			UserID:         r.UserID,
+			Permission:     r.Permission,
+			Effect:         orgtypes.PermissionEffect(r.Effect),
+			CreatedAt:      parseOrgTime(r.CreatedAt),
+			UpdatedAt:      parseOrgTime(r.UpdatedAt),
+		})
+	}
+	return out, nil
+}
+
+// CreateMemberPermissionOverride stores one override.
+func (s *DefaultOrganizationStore) CreateMemberPermissionOverride(ctx context.Context, o orgtypes.MemberPermissionOverride) error {
+	return s.q.createMemberPermissionOverride(ctx, o.ID, o.OrganizationID, o.UserID, o.Permission, string(o.Effect),
+		o.CreatedAt.UTC().Format(time.RFC3339), o.UpdatedAt.UTC().Format(time.RFC3339))
+}
+
+// DeleteMemberPermissionOverrides removes every override for a member.
+func (s *DefaultOrganizationStore) DeleteMemberPermissionOverrides(ctx context.Context, orgID, userID string) error {
+	return s.q.deleteMemberPermissionOverrides(ctx, orgID, userID)
+}

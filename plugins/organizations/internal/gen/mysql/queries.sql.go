@@ -142,6 +142,35 @@ func (q *Queries) CreateMember(ctx context.Context, arg CreateMemberParams) erro
 	return err
 }
 
+const createMemberPermissionOverride = `-- name: CreateMemberPermissionOverride :exec
+INSERT INTO member_permission_override (
+    id, organization_id, user_id, permission, effect, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+`
+
+type CreateMemberPermissionOverrideParams struct {
+	ID             string `json:"id"`
+	OrganizationID string `json:"organization_id"`
+	UserID         string `json:"user_id"`
+	Permission     string `json:"permission"`
+	Effect         string `json:"effect"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+}
+
+func (q *Queries) CreateMemberPermissionOverride(ctx context.Context, arg CreateMemberPermissionOverrideParams) error {
+	_, err := q.db.ExecContext(ctx, createMemberPermissionOverride,
+		arg.ID,
+		arg.OrganizationID,
+		arg.UserID,
+		arg.Permission,
+		arg.Effect,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const createOrganization = `-- name: CreateOrganization :exec
 
 INSERT INTO organization (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
@@ -227,6 +256,20 @@ DELETE FROM invitation WHERE id = ?
 
 func (q *Queries) DeleteInvitation(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteInvitation, id)
+	return err
+}
+
+const deleteMemberPermissionOverrides = `-- name: DeleteMemberPermissionOverrides :exec
+DELETE FROM member_permission_override WHERE organization_id = ? AND user_id = ?
+`
+
+type DeleteMemberPermissionOverridesParams struct {
+	OrganizationID string `json:"organization_id"`
+	UserID         string `json:"user_id"`
+}
+
+func (q *Queries) DeleteMemberPermissionOverrides(ctx context.Context, arg DeleteMemberPermissionOverridesParams) error {
+	_, err := q.db.ExecContext(ctx, deleteMemberPermissionOverrides, arg.OrganizationID, arg.UserID)
 	return err
 }
 
@@ -504,6 +547,49 @@ func (q *Queries) ListInvitations(ctx context.Context, arg ListInvitationsParams
 			&i.TokenHash,
 			&i.Status,
 			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMemberPermissionOverrides = `-- name: ListMemberPermissionOverrides :many
+SELECT id, organization_id, user_id, permission, effect, created_at, updated_at
+FROM member_permission_override
+WHERE organization_id = ? AND user_id = ?
+ORDER BY permission
+`
+
+type ListMemberPermissionOverridesParams struct {
+	OrganizationID string `json:"organization_id"`
+	UserID         string `json:"user_id"`
+}
+
+func (q *Queries) ListMemberPermissionOverrides(ctx context.Context, arg ListMemberPermissionOverridesParams) ([]MemberPermissionOverride, error) {
+	rows, err := q.db.QueryContext(ctx, listMemberPermissionOverrides, arg.OrganizationID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MemberPermissionOverride
+	for rows.Next() {
+		var i MemberPermissionOverride
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.UserID,
+			&i.Permission,
+			&i.Effect,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

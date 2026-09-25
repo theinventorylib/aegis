@@ -39,6 +39,10 @@ type invitationRow struct {
 	TeamID                                                                                         sql.NullString
 }
 
+type permissionOverrideRow struct {
+	ID, OrganizationID, UserID, Permission, Effect, CreatedAt, UpdatedAt string
+}
+
 // listOrgRow is the reduced row returned by ListUserOrganizations
 // (same fields as orgRow but kept separate for clarity).
 type listOrgRow = orgRow
@@ -91,4 +95,9 @@ type querier interface {
 	countTeamMembers(ctx context.Context, teamID string) (int64, error)
 	updateTeamMemberRole(ctx context.Context, teamID, userID, role, updatedAt string) error
 	removeTeamMember(ctx context.Context, teamID, userID string) error
+
+	// Permission override queries
+	listMemberPermissionOverrides(ctx context.Context, orgID, userID string) ([]permissionOverrideRow, error)
+	createMemberPermissionOverride(ctx context.Context, id, orgID, userID, permission, effect, createdAt, updatedAt string) error
+	deleteMemberPermissionOverrides(ctx context.Context, orgID, userID string) error
 }

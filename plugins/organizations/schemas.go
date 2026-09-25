@@ -117,6 +117,41 @@ func (r UpdateMemberRoleRequest) Validate() error {
 	)
 }
 
+// MemberPermissionOverrideRequest is one entry in
+// UpdateMemberPermissionsRequest. Permission values are app-defined strings
+// (including the built-in org/team permissions).
+type MemberPermissionOverrideRequest struct {
+	Permission string `json:"permission"` // Permission string
+	Effect     string `json:"effect"`     // "grant" or "deny"
+}
+
+// UpdateMemberPermissionsRequest replaces a member's permission overrides.
+// Sending an empty list clears every override.
+type UpdateMemberPermissionsRequest struct {
+	Overrides []MemberPermissionOverrideRequest `json:"overrides"`
+}
+
+// Validate validates the update member permissions request.
+func (r UpdateMemberPermissionsRequest) Validate() error {
+	if err := validation.ValidateStruct(&r,
+		validation.Field(&r.Overrides, validation.Required),
+	); err != nil {
+		return err
+	}
+	for _, o := range r.Overrides {
+		if err := validation.ValidateStruct(&o,
+			validation.Field(&o.Permission, validation.Required, validation.Length(1, 255)),
+			validation.Field(&o.Effect, validation.Required, validation.In(
+				string(orgtypes.PermissionEffectGrant),
+				string(orgtypes.PermissionEffectDeny),
+			)),
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ========== Team Request Schemas ==========
 
 // CreateTeamRequest represents a request to create a team within an organization.

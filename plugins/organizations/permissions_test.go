@@ -3,6 +3,7 @@ package organizations
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
@@ -14,6 +15,7 @@ type fakeStore struct {
 	orgtypes.OrganizationStore
 	memberOrgRole string
 	teamRole      string
+	overrides     []orgtypes.MemberPermissionOverride
 }
 
 func (f *fakeStore) GetMember(_ context.Context, _, _ string) (orgtypes.Member, error) {
@@ -28,6 +30,10 @@ func (f *fakeStore) GetTeamMember(_ context.Context, _, _ string) (orgtypes.Team
 		return orgtypes.TeamMember{}, sql.ErrNoRows
 	}
 	return orgtypes.TeamMember{Role: f.teamRole}, nil
+}
+
+func (f *fakeStore) ListMemberPermissionOverrides(_ context.Context, _, _ string) ([]orgtypes.MemberPermissionOverride, error) {
+	return f.overrides, nil
 }
 
 func TestRoleDefinition_Allows(t *testing.T) {
@@ -150,5 +156,84 @@ func TestHasTeamPermission(t *testing.T) {
 	}
 	if ok, _ := p.HasTeamPermission(ctx, "u1", "t1", PermTeamManage); ok {
 		t.Error("team lead should not manage the team itself")
+	}
+}
+
+func TestHasOrgPermissionWithOverrides(t *testing.T) {
+	ctx := context.Background()
+	grant := func(perm Permission) []orgtypes.MemberPermissionOverride {
+		return []orgtypes.MemberPermissionOverride{{Permission: string(perm), Effect: orgtypes.PermissionEffectGrant}}
+	}
+	deny := func(perm Permission) []orgtypes.MemberPermissionOverride {
+		return []orgtypes.MemberPermissionOverride{{Permission: string(perm), Effect: orgtypes.PermissionEffectDeny}}
+	}
+
+	cases := []struct {
+		name      string
+		role      string
+		overrides []orgtypes.MemberPermissionOverride
+		perm      Permission
+		want      bool
+	}{
+		{"grant adds a permission", orgtypes.RoleMember, grant(PermMemberManage), PermMemberManage, true},
+		{"deny removes a role permission", orgtypes.RoleAdmin, deny(PermMemberManage), PermMemberManage, false},
+		{"deny leaves other permissions alone", orgtypes.RoleAdmin, deny(PermMemberManage), PermOrgView, true},
+		{"grant for another permission is ignored", orgtypes.RoleMember, grant(PermOrgManage), PermMemberManage, false},
+		{"overrides never apply to non-members", "", grant(PermMemberManage), PermMemberManage, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := New(nil, &fakeStore{memberOrgRole: tc.role, overrides: tc.overrides})
+			got, err := p.HasOrgPermission(ctx, "u1", "o1", tc.perm)
+			if err != nil {
+				t.Fatalf("HasOrgPermission: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("HasOrgPermission(%s) = %v, want %v", tc.perm, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGetMemberPermissionsResolvesOverrides(t *testing.T) {
+	ctx := context.Background()
+	p := New(nil, &fakeStore{
+		memberOrgRole: orgtypes.RoleAdmin,
+		overrides: []orgtypes.MemberPermissionOverride{
+			{Permission: string(PermMemberManage), Effect: orgtypes.PermissionEffectDeny},
+			{Permission: "view_giving", Effect: orgtypes.PermissionEffectGrant},
+		},
+	})
+
+	perms, err := p.GetMemberPermissions(ctx, "u1", "o1")
+	if err != nil {
+		t.Fatalf("GetMemberPermissions: %v", err)
+	}
+	if perms.Role != orgtypes.RoleAdmin {
+		t.Errorf("role = %q, want admin", perms.Role)
+	}
+	if len(perms.Overrides) != 2 {
+		t.Errorf("overrides = %d, want 2", len(perms.Overrides))
+	}
+	has := func(perm Permission) bool {
+		for _, p := range perms.Permissions {
+			if p == perm {
+				return true
+			}
+		}
+		return false
+	}
+	if has(PermMemberManage) {
+		t.Error("denied permission should be removed from the effective set")
+	}
+	if !has(PermOrgView) {
+		t.Error("untouched role permission should remain")
+	}
+	if !has("view_giving") {
+		t.Error("granted app permission should be present")
+	}
+
+	if _, err := New(nil, &fakeStore{}).GetMemberPermissions(ctx, "u1", "o1"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("non-member: got %v, want sql.ErrNoRows", err)
 	}
 }

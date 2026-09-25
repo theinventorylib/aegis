@@ -129,3 +129,17 @@ UPDATE invitation SET status = ?, updated_at = ? WHERE id = ?;
 
 -- name: DeleteInvitation :exec
 DELETE FROM invitation WHERE id = ?;
+
+-- name: ListMemberPermissionOverrides :many
+SELECT id, organization_id, user_id, permission, effect, created_at, updated_at
+FROM member_permission_override
+WHERE organization_id = ? AND user_id = ?
+ORDER BY permission;
+
+-- name: CreateMemberPermissionOverride :exec
+INSERT INTO member_permission_override (
+    id, organization_id, user_id, permission, effect, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- name: DeleteMemberPermissionOverrides :exec
+DELETE FROM member_permission_override WHERE organization_id = ? AND user_id = ?;

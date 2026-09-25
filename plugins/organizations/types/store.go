@@ -148,6 +148,19 @@ type OrganizationStore interface {
 	// RemoveTeamMember removes a user from a team.
 	RemoveTeamMember(ctx context.Context, teamID, userID string) error
 
+	// ========== Permission override operations ==========
+
+	// ListMemberPermissionOverrides returns the member's per-permission
+	// overrides. Returns an empty slice when none exist.
+	ListMemberPermissionOverrides(ctx context.Context, orgID, userID string) ([]MemberPermissionOverride, error)
+
+	// CreateMemberPermissionOverride stores one override. Callers replacing a
+	// set should delete first; uniqueness is (organization, user, permission).
+	CreateMemberPermissionOverride(ctx context.Context, override MemberPermissionOverride) error
+
+	// DeleteMemberPermissionOverrides removes every override for a member.
+	DeleteMemberPermissionOverrides(ctx context.Context, orgID, userID string) error
+
 	// ========== Invitation operations ==========
 
 	// CreateInvitation stores a new invitation.

@@ -44,6 +44,16 @@ type Member struct {
 	UpdatedAt      string `json:"updated_at"`
 }
 
+type MemberPermissionOverride struct {
+	ID             string `json:"id"`
+	OrganizationID string `json:"organization_id"`
+	UserID         string `json:"user_id"`
+	Permission     string `json:"permission"`
+	Effect         string `json:"effect"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+}
+
 type Organization struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
