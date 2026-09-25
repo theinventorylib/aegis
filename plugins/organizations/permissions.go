@@ -210,6 +210,14 @@ type MemberPermissions struct {
 	Permissions []Permission                        `json:"permissions"`
 }
 
+// MemberPermissionsEntry is one row of the members-permissions listing: a
+// member's user ID plus the effective authorization resolved for them. The
+// embedded MemberPermissions fields are flattened into the JSON object.
+type MemberPermissionsEntry struct {
+	UserID string `json:"userId"`
+	MemberPermissions
+}
+
 // GetMemberPermissions resolves a member's effective permissions: the role's
 // permissions with per-member overrides applied (deny wins over grant, grant
 // wins over the role). Returns sql.ErrNoRows when the user is not a member.
