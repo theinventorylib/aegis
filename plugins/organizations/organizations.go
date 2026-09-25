@@ -368,6 +368,27 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
+	// The authenticated user's own effective permissions in an organization.
+	orgGroup.GET("/:id/permissions", requireAuth(http.HandlerFunc(p.GetMyPermissionsHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "GET",
+		Path:        prefix + "/{id}/permissions",
+		Summary:     "Get my permissions",
+		Description: "Return the authenticated user's role, per-member overrides and resolved effective permissions for an organization",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Effective permissions", "Success"),
+			400: openapi.RefResponse("Invalid organization ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Not a member of this organization", "Error"),
+			500: openapi.RefResponse("Internal server error", "Error"),
+		},
+	})
+
 	// Organization Member Management - group under orgGroup
 	membersGroup := orgGroup.Group("/:id/members", "Members")
 
@@ -449,6 +470,28 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			400: openapi.RefResponse("Invalid request or cannot remove owner", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			403: openapi.RefResponse("Insufficient permissions", "Error"),
+		},
+	})
+
+	// Every member's effective permissions, paginated. Registered before the
+	// :userId variant so the static segment wins in every router.
+	membersGroup.GET("/permissions", requireAuth(http.HandlerFunc(p.ListMembersPermissionsHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "GET",
+		Path:        prefix + "/{id}/members/permissions",
+		Summary:     "List members' permissions",
+		Description: "Return every member's role, per-member overrides and resolved effective permissions (paginated). Requires member:assign_roles.",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.PaginatedResponseOf[core.PaginatedResponse[MemberPermissionsEntry]]("Effective permissions per member"),
+			400: openapi.RefResponse("Invalid organization ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			500: openapi.RefResponse("Internal server error", "Error"),
 		},
 	})
 

@@ -461,6 +461,88 @@ func (p *Plugin) GetMemberPermissionsHandler(w http.ResponseWriter, r *http.Requ
 	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Data: perms})
 }
 
+// GetMyPermissionsHandler returns the authenticated user's own role, overrides
+// and effective permission set for an organization. Any member can read their
+// own authorization; non-members get 403.
+func (p *Plugin) GetMyPermissionsHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	orgID := core.GetSanitizedPathParam(r, "id")
+	if orgID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
+		return
+	}
+
+	perms, err := p.GetMemberPermissions(r.Context(), user.ID, orgID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+			return
+		}
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to load permissions")
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Data: perms})
+}
+
+// ListMembersPermissionsHandler resolves effective permissions for every member
+// of an organization, paginated. Requires member:assign_roles (owner/admin), the
+// same gate as the single-member route.
+//
+// It issues one lookup per member on the page, so a page size of N costs O(N)
+// queries; keep the default page size for large organizations.
+func (p *Plugin) ListMembersPermissionsHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	orgID := core.GetSanitizedPathParam(r, "id")
+	if orgID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermMemberAssignRoles) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	pagination := core.ParsePagination(r)
+
+	members, totalCount, err := p.ListOrganizationMembers(r.Context(), orgID, pagination.Offset, pagination.Limit)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+	items := make([]MemberPermissionsEntry, 0, len(members))
+	for _, m := range members {
+		perms, err := p.GetMemberPermissions(r.Context(), m.UserID, orgID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to load permissions")
+			return
+		}
+		items = append(items, MemberPermissionsEntry{UserID: m.UserID, MemberPermissions: perms})
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.PaginatedResponse[MemberPermissionsEntry]{
+		Items:      items,
+		TotalCount: totalCount,
+		Page:       pagination.Page,
+		Offset:     pagination.Offset,
+		Limit:      pagination.Limit,
+	})
+}
+
 // UpdateMemberPermissionsHandler replaces a member's permission overrides.
 //
 // The set is replaced, not merged: delete-then-insert. A failure part-way

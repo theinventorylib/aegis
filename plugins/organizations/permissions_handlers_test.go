@@ -8,9 +8,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v4"
+
 	"github.com/theinventorylib/aegis/v2/auth"
 	"github.com/theinventorylib/aegis/v2/core"
 	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
+	aegisrouter "github.com/theinventorylib/aegis/v2/router"
+	"github.com/theinventorylib/aegis/v2/router/routers"
 )
 
 // keyedStore resolves a member's role per user so a test can model an actor and
@@ -54,6 +60,18 @@ func (s *keyedStore) DeleteMemberPermissionOverrides(_ context.Context, _, _ str
 func (s *keyedStore) CreateMemberPermissionOverride(_ context.Context, o orgtypes.MemberPermissionOverride) error {
 	s.overrides = append(s.overrides, o)
 	return nil
+}
+
+func (s *keyedStore) ListOrganizationMembers(_ context.Context, _ string, _, _ int) ([]orgtypes.Member, error) {
+	members := make([]orgtypes.Member, 0, len(s.roles))
+	for userID, role := range s.roles {
+		members = append(members, orgtypes.Member{UserID: userID, Role: role})
+	}
+	return members, nil
+}
+
+func (s *keyedStore) CountOrganizationMembers(_ context.Context, _ string) (int, error) {
+	return len(s.roles), nil
 }
 
 func putMemberPermissions(t *testing.T, p *Plugin, targetID, body string) *httptest.ResponseRecorder {
@@ -119,4 +137,93 @@ func TestUngrantablePermission(t *testing.T) {
 	if bad, err := p.ungrantablePermission(ctx, "u1", "o1", []Permission{"billing:manage"}); err != nil || bad != "" {
 		t.Fatalf("app permission: bad=%q err=%v, want grantable", bad, err)
 	}
+}
+
+func getMyPermissions(t *testing.T, p *Plugin, userID, orgID string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/organizations/"+orgID+"/permissions", nil)
+	req.SetPathValue("id", orgID)
+	req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: userID}))
+	rec := httptest.NewRecorder()
+	p.GetMyPermissionsHandler(rec, req)
+	return rec
+}
+
+func TestGetMyPermissionsHandler(t *testing.T) {
+	p := New(nil, &keyedStore{roles: map[string]string{"member": orgtypes.RoleMember}})
+
+	rec := getMyPermissions(t, p, "member", "o1")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("member: status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"role":"member"`) {
+		t.Fatalf("body missing role: %s", rec.Body.String())
+	}
+
+	// A non-member cannot read permissions for an organization they are not in.
+	rec = getMyPermissions(t, p, "outsider", "o1")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("non-member: status = %d, want 403 (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func listMembersPermissions(t *testing.T, p *Plugin, actorID string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/organizations/o1/members/permissions", nil)
+	req.SetPathValue("id", "o1")
+	req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: actorID}))
+	rec := httptest.NewRecorder()
+	p.ListMembersPermissionsHandler(rec, req)
+	return rec
+}
+
+func TestListMembersPermissionsHandler(t *testing.T) {
+	p := New(nil, &keyedStore{roles: map[string]string{
+		"admin": orgtypes.RoleAdmin, "member": orgtypes.RoleMember, "owner": orgtypes.RoleOwner,
+	}})
+
+	rec := listMembersPermissions(t, p, "admin")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin: status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`"userId":"admin"`, `"userId":"member"`, `"userId":"owner"`, `"totalCount":3`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %s: %s", want, body)
+		}
+	}
+
+	// A plain member lacks member:assign_roles and cannot enumerate the org.
+	rec = listMembersPermissions(t, p, "member")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("member: status = %d, want 403 (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+// The new permission routes must coexist with the :userId variants on every
+// supported router (static segment wins over the parameter).
+func TestOrganizationPermissionRoutesRegisterOnAllRouters(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	mountAndProbe := func(t *testing.T, r aegisrouter.Router) {
+		t.Helper()
+		p := New(nil, nil)
+		p.MountRoutes(r, "/auth/organizations")
+		for _, path := range []string{
+			"/auth/organizations/o1/permissions",
+			"/auth/organizations/o1/members/permissions",
+		} {
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+			// Registered behind RequireAuthMiddleware, so an anonymous request
+			// is 401; a 404 would mean the route never matched.
+			if rec.Code == http.StatusNotFound {
+				t.Fatalf("%s: route not matched (404)", path)
+			}
+		}
+	}
+
+	t.Run("chi", func(t *testing.T) { mountAndProbe(t, routers.NewChiRouter(chi.NewRouter())) })
+	t.Run("echo", func(t *testing.T) { mountAndProbe(t, routers.NewEchoRouter(echo.New())) })
+	t.Run("gin", func(t *testing.T) { mountAndProbe(t, routers.NewGinRouter(gin.New())) })
 }

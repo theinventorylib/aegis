@@ -1,6 +1,11 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Organizations plugin**: `GET /organizations/:id/permissions` returns the caller's own role, overrides and effective permissions, and `GET /organizations/:id/members/permissions` returns the same per member (paginated) for admin overviews — completing the role/permission listing surface alongside `GET /organizations/:id/roles` (#73).
+
 ## [2.1.0] - 2026-09-25
 
 ### Added
