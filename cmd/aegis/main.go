@@ -45,6 +45,7 @@ import (
 	"github.com/theinventorylib/aegis/v2/plugins/openapi"
 	"github.com/theinventorylib/aegis/v2/plugins/organizations"
 	"github.com/theinventorylib/aegis/v2/plugins/sms"
+	"github.com/theinventorylib/aegis/v2/plugins/totp"
 )
 
 // version is injected by goreleaser at build time via -X internal/version.Version; falls back to build info or "dev".
@@ -300,6 +301,7 @@ func getPluginsForExport(dialect plugins.Dialect, pluginNames []string) []plugin
 		"openapi":       openapi.New(nil),
 		"organizations": organizations.New(nil, nil, dialect),
 		"sms":           sms.New(nil, nil, dialect),
+		"totp":          totp.New(nil, nil, dialect),
 	}
 
 	// If "all" or empty list, return all plugins

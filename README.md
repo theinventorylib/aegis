@@ -21,13 +21,14 @@
 - **Password Authentication**: Argon2id hashing built into core (not a plugin)
 - **Developer Friendly**: No auto-migration magic, fully typed API
 
-### 7 Official Plugins
+### 8 Official Plugins
 - **Email** - Email verification via OTP and email+password auth
 - **SMS** - Phone number verification via OTP
 - **OAuth** - Social login (Google, GitHub, and more)
 - **JWT** - Token generation, validation, and rotation
 - **Admin** - Administrative endpoints for user management
 - **Organizations** - Multi-tenant organization and team support
+- **TOTP** - Time-based one-time password (RFC 6238) two-factor authentication
 - **OpenAPI** - Interactive API documentation with Scalar UI
 
 ### Built-in Features
