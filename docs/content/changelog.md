@@ -1,7 +1,7 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-09-25
 
 ### Added
 - **TOTP plugin** (`plugins/totp`): RFC 6238 authenticator-app two-factor authentication with two-phase enrollment, per-session step-up via `RequireVerification`, hashed single-use recovery codes, and `POST /totp/setup|enable|verify|disable|recovery-codes`, `GET /totp/status`.
