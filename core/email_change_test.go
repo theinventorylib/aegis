@@ -23,8 +23,8 @@ func TestEmailChangeEndToEnd(t *testing.T) {
 		resetFor = email
 		return nil
 	})
-	as.User.setEmailVerifiedMarker(func(_ context.Context, userID string) error {
-		marked = userID
+	as.User.setEmailVerifiedMarker(func(_ context.Context, _, email string) error {
+		marked = email
 		return nil
 	})
 
@@ -46,8 +46,8 @@ func TestEmailChangeEndToEnd(t *testing.T) {
 	if resetFor != "new@example.com" {
 		t.Errorf("verification resetter saw %q, want new@example.com", resetFor)
 	}
-	if marked != user.GetID() {
-		t.Errorf("verified marker saw %q, want %q", marked, user.GetID())
+	if marked != "new@example.com" {
+		t.Errorf("verified marker saw %q, want new@example.com", marked)
 	}
 	if !audit.has(AuditEventEmailChanged) {
 		t.Error("expected email_changed audit event")
@@ -109,7 +109,7 @@ func TestEmailChangeMarkerFailureStillApplies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	as.User.setEmailVerifiedMarker(func(_ context.Context, _ string) error {
+	as.User.setEmailVerifiedMarker(func(_ context.Context, _, _ string) error {
 		return errors.New("plugin unavailable")
 	})
 	token, err := as.User.RequestEmailChange(ctx, user.GetID(), "new@example.com")

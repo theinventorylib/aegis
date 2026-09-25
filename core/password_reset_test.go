@@ -41,20 +41,22 @@ func newSecurityTestAuth() (*AuthService, *mockUserStore, *mockSessionStore, *mo
 	sessions := &mockSessionStore{}
 	verification, vstore := newTestVerificationService()
 	audit := &recordingAuditLogger{}
+	fanout := newFanoutAuditLogger(audit)
 	cfg := DefaultAuthConfig()
 
 	as := &AuthService{
 		hashConfig:        defaultPasswordHasherConfig(),
-		auditLogger:       audit,
+		auditLogger:       fanout,
+		auditFanout:       fanout,
 		authConfig:        cfg,
 		userStore:         users,
 		accountStore:      accounts,
 		sessionStore:      sessions,
 		verificationStore: vstore,
 	}
-	as.User = newUserService(users, accounts, sessions, as.hashConfig, cfg, audit, nil, nil)
-	as.Account = newAccountService(accounts, sessions, as.hashConfig, cfg, audit, nil, nil)
-	as.Session = newSessionService(users, sessions, nil, audit, nil)
+	as.User = newUserService(users, accounts, sessions, as.hashConfig, cfg, fanout, nil, nil)
+	as.Account = newAccountService(accounts, sessions, as.hashConfig, cfg, fanout, nil, nil)
+	as.Session = newSessionService(users, sessions, nil, fanout, nil)
 	as.Verification = verification
 	as.Account.setSecurityStores(users, verification)
 	as.User.setVerificationService(verification)

@@ -636,6 +636,12 @@ func (a *Aegis) GetLogger() config.Logger {
 	return a.config.Logger
 }
 
+// GetAuditLogger returns the configured audit logger so plugins can emit
+// their own security events through the same pipeline.
+func (a *Aegis) GetAuditLogger() core.AuditLogger {
+	return a.auth.AuditLogger()
+}
+
 // ValidateSchemaRequirements validates that the database has the required tables.
 func (a *Aegis) ValidateSchemaRequirements(ctx context.Context, requirements []plugins.SchemaRequirement) error {
 	// new schema validator

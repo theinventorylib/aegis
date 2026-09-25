@@ -45,6 +45,11 @@ type AuthService struct {
 	// auditLogger records security events (logins, failures, etc.)
 	auditLogger AuditLogger
 
+	// auditFanout wraps auditLogger and forwards events to registered sinks.
+	// Nil until the first sink is added (or when the service was built by
+	// hand without going through NewAuthService).
+	auditFanout *fanoutAuditLogger
+
 	// loginAttemptTracker prevents brute force attacks via account lockout
 	loginAttemptTracker *LoginAttemptTracker
 
@@ -94,7 +99,7 @@ func (as *AuthService) SetEmailVerificationResetter(fn func(ctx context.Context,
 // SetEmailVerifiedMarker wires the callback invoked after a confirmed email
 // change, so the email plugin can mark the new address verified. Email plugins
 // call this during Init. Passing nil disables the marker.
-func (as *AuthService) SetEmailVerifiedMarker(fn func(ctx context.Context, userID string) error) {
+func (as *AuthService) SetEmailVerifiedMarker(fn func(ctx context.Context, userID, email string) error) {
 	as.User.setEmailVerifiedMarker(fn)
 }
 
@@ -126,6 +131,8 @@ func NewAuthService(authConfig *AuthConfig, authConn *auth.Auth, hashConfig *Pas
 	if auditLogger == nil {
 		auditLogger = &NoOpAuditLogger{}
 	}
+	fanout := newFanoutAuditLogger(auditLogger)
+	auditLogger = fanout
 	if logger == nil {
 		logger = noopLogger{}
 	}
@@ -133,6 +140,7 @@ func NewAuthService(authConfig *AuthConfig, authConn *auth.Auth, hashConfig *Pas
 	as := &AuthService{
 		hashConfig:          hashConfig,
 		auditLogger:         auditLogger,
+		auditFanout:         fanout,
 		loginAttemptTracker: loginAttemptTracker,
 		authConfig:          authConfig,
 		userStore:           authConn.UserStore(),
@@ -164,4 +172,24 @@ func (as *AuthService) GetUserFieldsConfig() *UserFieldsConfig {
 		return nil
 	}
 	return as.authConfig.UserFields
+}
+
+// AddAuditSink registers a sink that receives a copy of every audit event.
+// Plugins typically call this during Init. Safe to call before any event is
+// emitted; the fan-out is created on first use.
+func (as *AuthService) AddAuditSink(sink AuditSink) {
+	if sink == nil {
+		return
+	}
+	if as.auditFanout == nil {
+		as.auditFanout = newFanoutAuditLogger(as.auditLogger)
+		as.auditLogger = as.auditFanout
+	}
+	as.auditFanout.addSink(sink)
+}
+
+// AuditLogger returns the configured audit logger so plugins can emit their
+// own security events through the same pipeline.
+func (as *AuthService) AuditLogger() AuditLogger {
+	return as.auditLogger
 }

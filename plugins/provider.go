@@ -39,6 +39,7 @@ var (
 type Aegis interface {
 	GetAuthService() *core.AuthService                                                      // Returns the auth service for user operations
 	GetLogger() config.Logger                                                               // Returns the configured logger (may be nil)
+	GetAuditLogger() core.AuditLogger                                                       // Returns the audit logger so plugins can emit security events
 	GetRateLimiter() *core.RateLimiter                                                      // Returns the rate limiter (may be nil)
 	DeriveSecret(purpose string) []byte                                                     // Derives a purpose-specific secret from the master secret
 	DB() *sql.DB                                                                            // Returns the database connection for schema validation

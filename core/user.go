@@ -57,10 +57,10 @@ type UserService struct {
 	// verification issues and redeems email-change tokens. Wired by AuthService.
 	verification *VerificationService
 
-	// emailVerifiedMarker, when set by an email plugin, marks the user's
-	// current email verified. Used after a confirmed email change, where
-	// control of the new address has just been proven.
-	emailVerifiedMarker func(ctx context.Context, userID string) error
+	// emailVerifiedMarker, when set by an email plugin, marks a user's new
+	// address verified. Used after a confirmed email change, where control of
+	// the address has just been proven.
+	emailVerifiedMarker func(ctx context.Context, userID, email string) error
 }
 
 // newUserService creates a new user service with the specified dependencies.
@@ -100,7 +100,7 @@ func (s *UserService) setVerificationService(v *VerificationService) {
 
 // setEmailVerifiedMarker wires the marker run after a confirmed email change.
 // Set by AuthService when an email plugin registers one.
-func (s *UserService) setEmailVerifiedMarker(fn func(ctx context.Context, userID string) error) {
+func (s *UserService) setEmailVerifiedMarker(fn func(ctx context.Context, userID, email string) error) {
 	s.emailVerifiedMarker = fn
 }
 
@@ -118,11 +118,23 @@ func (s *UserService) DeleteUser(ctx context.Context, id string) error {
 		}
 	}
 
+	var err error
 	if s.transactor != nil {
-		return s.deleteUserTx(ctx, id)
+		err = s.deleteUserTx(ctx, id)
+	} else {
+		err = s.deleteUserSequential(ctx, id)
+	}
+	if err != nil {
+		return err
 	}
 
-	// Fallback: sequential deletes, sessions first to satisfy foreign keys.
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventUserDeleted, id, true, nil)
+	return nil
+}
+
+// deleteUserSequential is the non-transactional fallback: sessions first to
+// satisfy foreign keys, then accounts, then the user.
+func (s *UserService) deleteUserSequential(ctx context.Context, id string) error {
 	if err := s.sessionStore.DeleteByUserID(ctx, id); err != nil {
 		return err
 	}
@@ -241,7 +253,12 @@ func (s *UserService) createUser(ctx context.Context, user auth.User, password, 
 	}
 
 	if s.transactor != nil {
-		return s.createUserTx(ctx, user, hashedPassword, username)
+		u, err := s.createUserTx(ctx, user, hashedPassword, username)
+		if err != nil {
+			return auth.User{}, err
+		}
+		logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventUserCreated, u.GetID(), true, nil)
+		return u, nil
 	}
 
 	u, err := s.userStore.Create(ctx, user)
@@ -259,6 +276,7 @@ func (s *UserService) createUser(ctx context.Context, user auth.User, password, 
 		return auth.User{}, err
 	}
 
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventUserCreated, u.GetID(), true, nil)
 	return u, nil
 }
 
@@ -315,7 +333,12 @@ func (s *UserService) CreateUserWithEmail(ctx context.Context, name, email, pass
 // won't be able to log in with email/password until a password account is
 // created separately.
 func (s *UserService) CreateUserWithoutPassword(ctx context.Context, user auth.User) (auth.User, error) {
-	return s.userStore.Create(ctx, sanitizeAndPrepareUser(user))
+	u, err := s.userStore.Create(ctx, sanitizeAndPrepareUser(user))
+	if err != nil {
+		return auth.User{}, err
+	}
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventUserCreated, u.GetID(), true, nil)
+	return u, nil
 }
 
 // GetUserByID retrieves a user by their unique ID.
@@ -335,7 +358,11 @@ func (s *UserService) UpdateUser(ctx context.Context, user auth.User) error {
 	user.Email = SanitizeEmail(user.Email)
 	user.Avatar = SanitizeURL(user.Avatar)
 
-	return s.userStore.Update(ctx, user)
+	if err := s.userStore.Update(ctx, user); err != nil {
+		return err
+	}
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventUserUpdated, user.GetID(), true, nil)
+	return nil
 }
 
 // UpdateUserEmail changes a user's email address.
@@ -375,7 +402,15 @@ func (s *UserService) UpdateUserEmail(ctx context.Context, userID, email string)
 		}
 	}
 
+	previousEmail := user.Email
 	user.Email = email
 	user.UpdatedAt = time.Now()
-	return s.UpdateUser(ctx, user)
+	if err := s.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventEmailChanged, userID, true, map[string]any{
+		"previous_email": redactForLog(previousEmail),
+		"email":          redactForLog(email),
+	})
+	return nil
 }

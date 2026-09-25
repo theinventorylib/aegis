@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -148,4 +149,79 @@ func (n *NoOpAuditLogger) LogEvent(_ context.Context, _ *AuditEvent) error {
 // LogAuthEvent implements AuditLogger.
 func (n *NoOpAuditLogger) LogAuthEvent(_ context.Context, _ AuditEventType, _ string, _ bool, _ map[string]any) error {
 	return nil
+}
+
+// AuditSink receives a copy of every audit event in addition to the configured
+// AuditLogger. Sinks are called after the primary logger and must not block;
+// buffer internally if the sink is slow.
+type AuditSink interface {
+	OnAuthEvent(ctx context.Context, event *AuditEvent)
+}
+
+// fanoutAuditLogger forwards events to the configured AuditLogger and to every
+// registered sink. Sinks can be registered after construction (plugins do it
+// during Init), so the slice is guarded.
+type fanoutAuditLogger struct {
+	primary AuditLogger
+	mu      sync.RWMutex
+	sinks   []AuditSink
+}
+
+func newFanoutAuditLogger(primary AuditLogger) *fanoutAuditLogger {
+	if primary == nil {
+		primary = &NoOpAuditLogger{}
+	}
+	return &fanoutAuditLogger{primary: primary}
+}
+
+func (f *fanoutAuditLogger) addSink(sink AuditSink) {
+	if sink == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sinks = append(f.sinks, sink)
+}
+
+// LogEvent implements AuditLogger.
+func (f *fanoutAuditLogger) LogEvent(ctx context.Context, event *AuditEvent) error {
+	err := f.primary.LogEvent(ctx, event)
+	f.fanout(ctx, event)
+	return err
+}
+
+// LogAuthEvent implements AuditLogger. The primary logger keeps its own
+// convenience semantics; sinks receive a structured event built from the same
+// parameters, enriched with request metadata when present.
+func (f *fanoutAuditLogger) LogAuthEvent(ctx context.Context, eventType AuditEventType, userID string, success bool, details map[string]any) error {
+	err := f.primary.LogAuthEvent(ctx, eventType, userID, success, details)
+	f.fanout(ctx, newAuditEvent(ctx, eventType, userID, success, details))
+	return err
+}
+
+func (f *fanoutAuditLogger) fanout(ctx context.Context, event *AuditEvent) {
+	f.mu.RLock()
+	sinks := append([]AuditSink(nil), f.sinks...)
+	f.mu.RUnlock()
+	for _, sink := range sinks {
+		sink.OnAuthEvent(ctx, event)
+	}
+}
+
+// newAuditEvent builds a structured event from the convenience-form
+// parameters, adding request metadata when the context carries it.
+func newAuditEvent(ctx context.Context, eventType AuditEventType, userID string, success bool, details map[string]any) *AuditEvent {
+	event := &AuditEvent{
+		ID:        GenerateID(),
+		EventType: eventType,
+		UserID:    userID,
+		Details:   details,
+		Timestamp: time.Now(),
+		Success:   success,
+	}
+	if meta := GetRequestMeta(ctx); meta != nil {
+		event.IPAddress = meta.IPAddress
+		event.UserAgent = meta.UserAgent
+	}
+	return event
 }

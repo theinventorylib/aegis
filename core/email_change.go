@@ -96,15 +96,13 @@ func (s *UserService) ConfirmEmailChange(ctx context.Context, userID, token stri
 	_ = s.verification.InvalidateVerification(ctx, v.Identifier, VerificationTypeEmailChange)
 
 	if s.emailVerifiedMarker != nil {
-		if err := s.emailVerifiedMarker(ctx, userID); err != nil {
+		if err := s.emailVerifiedMarker(ctx, userID, v.Identifier); err != nil {
 			s.logger.Error("user: failed to mark changed email verified", "user_id", userID, "error", err)
 		}
 	}
 
-	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventEmailChanged, userID, true, map[string]any{
-		"email": redactForLog(v.Identifier),
-	})
-
+	// The email_changed audit event is emitted by UpdateUserEmail, the single
+	// owner of the address mutation.
 	user, err := s.GetUserByID(ctx, userID)
 	if err != nil {
 		return auth.User{}, err
