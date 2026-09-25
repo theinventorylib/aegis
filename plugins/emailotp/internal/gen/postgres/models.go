@@ -6,6 +6,7 @@ package sqlcpostgres
 
 import (
 	"database/sql"
+	"time"
 )
 
 type User struct {
@@ -13,8 +14,8 @@ type User struct {
 	Avatar        sql.NullString `json:"avatar"`
 	Name          string         `json:"name"`
 	Email         sql.NullString `json:"email"`
-	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 	Disabled      int32          `json:"disabled"`
 	EmailVerified int32          `json:"email_verified"`
 }

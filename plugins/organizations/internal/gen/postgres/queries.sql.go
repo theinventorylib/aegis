@@ -8,6 +8,7 @@ package sqlcpostgres
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const countInvitations = `-- name: CountInvitations :one
@@ -107,9 +108,9 @@ type CreateInvitationParams struct {
 	InviterID      string         `json:"inviter_id"`
 	TokenHash      string         `json:"token_hash"`
 	Status         string         `json:"status"`
-	ExpiresAt      string         `json:"expires_at"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
+	ExpiresAt      time.Time      `json:"expires_at"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 // Invitation queries
@@ -136,12 +137,12 @@ INSERT INTO members (id, user_id, organization_id, role, created_at, updated_at)
 `
 
 type CreateMemberParams struct {
-	ID             string `json:"id"`
-	UserID         string `json:"user_id"`
-	OrganizationID string `json:"organization_id"`
-	Role           string `json:"role"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID             string    `json:"id"`
+	UserID         string    `json:"user_id"`
+	OrganizationID string    `json:"organization_id"`
+	Role           string    `json:"role"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // User Organizations queries
@@ -164,13 +165,13 @@ INSERT INTO member_permission_override (
 `
 
 type CreateMemberPermissionOverrideParams struct {
-	ID             string `json:"id"`
-	OrganizationID string `json:"organization_id"`
-	UserID         string `json:"user_id"`
-	Permission     string `json:"permission"`
-	Effect         string `json:"effect"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID             string    `json:"id"`
+	OrganizationID string    `json:"organization_id"`
+	UserID         string    `json:"user_id"`
+	Permission     string    `json:"permission"`
+	Effect         string    `json:"effect"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 func (q *Queries) CreateMemberPermissionOverride(ctx context.Context, arg CreateMemberPermissionOverrideParams) error {
@@ -192,11 +193,11 @@ INSERT INTO organization (id, name, slug, created_at, updated_at) VALUES ($1, $2
 `
 
 type CreateOrganizationParams struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Organizations queries
@@ -217,12 +218,12 @@ VALUES ($1, $2, $3, $4, $5, $6)
 `
 
 type CreateOrganizationRoleParams struct {
-	ID             string `json:"id"`
-	OrganizationID string `json:"organization_id"`
-	Name           string `json:"name"`
-	Permissions    string `json:"permissions"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID             string    `json:"id"`
+	OrganizationID string    `json:"organization_id"`
+	Name           string    `json:"name"`
+	Permissions    string    `json:"permissions"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 func (q *Queries) CreateOrganizationRole(ctx context.Context, arg CreateOrganizationRoleParams) error {
@@ -247,8 +248,8 @@ type CreateTeamParams struct {
 	OrganizationID string         `json:"organization_id"`
 	Name           string         `json:"name"`
 	Description    sql.NullString `json:"description"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 // Teams queries
@@ -270,12 +271,12 @@ INSERT INTO team_member (id, team_id, user_id, role, created_at, updated_at) VAL
 `
 
 type CreateTeamMemberParams struct {
-	ID        string `json:"id"`
-	TeamID    string `json:"team_id"`
-	UserID    string `json:"user_id"`
-	Role      string `json:"role"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	TeamID    string    `json:"team_id"`
+	UserID    string    `json:"user_id"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Team Members queries
@@ -319,8 +320,8 @@ UPDATE organization SET disabled = 1, updated_at = $2 WHERE id = $1
 `
 
 type DeleteOrganizationParams struct {
-	ID        string `json:"id"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) DeleteOrganization(ctx context.Context, arg DeleteOrganizationParams) error {
@@ -427,11 +428,11 @@ SELECT id, name, slug, created_at, updated_at FROM organization WHERE id = $1 AN
 `
 
 type GetOrganizationRow struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) GetOrganization(ctx context.Context, id string) (GetOrganizationRow, error) {
@@ -452,11 +453,11 @@ SELECT id, name, slug, created_at, updated_at FROM organization WHERE slug = $1 
 `
 
 type GetOrganizationBySlugRow struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) GetOrganizationBySlug(ctx context.Context, slug string) (GetOrganizationBySlugRow, error) {
@@ -856,11 +857,11 @@ type ListUserOrganizationsParams struct {
 }
 
 type ListUserOrganizationsRow struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) ListUserOrganizations(ctx context.Context, arg ListUserOrganizationsParams) ([]ListUserOrganizationsRow, error) {
@@ -925,9 +926,9 @@ UPDATE invitation SET status = $2, updated_at = $3 WHERE id = $1
 `
 
 type UpdateInvitationStatusParams struct {
-	ID        string `json:"id"`
-	Status    string `json:"status"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) UpdateInvitationStatus(ctx context.Context, arg UpdateInvitationStatusParams) error {
@@ -940,10 +941,10 @@ UPDATE members SET role = $3, updated_at = $4 WHERE user_id = $1 AND organizatio
 `
 
 type UpdateMemberRoleParams struct {
-	UserID         string `json:"user_id"`
-	OrganizationID string `json:"organization_id"`
-	Role           string `json:"role"`
-	UpdatedAt      string `json:"updated_at"`
+	UserID         string    `json:"user_id"`
+	OrganizationID string    `json:"organization_id"`
+	Role           string    `json:"role"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 func (q *Queries) UpdateMemberRole(ctx context.Context, arg UpdateMemberRoleParams) error {
@@ -961,10 +962,10 @@ UPDATE organization SET name = $2, slug = $3, updated_at = $4 WHERE id = $1
 `
 
 type UpdateOrganizationParams struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) error {
@@ -984,10 +985,10 @@ WHERE organization_id = $3 AND name = $4
 `
 
 type UpdateOrganizationRoleParams struct {
-	Permissions    string `json:"permissions"`
-	UpdatedAt      string `json:"updated_at"`
-	OrganizationID string `json:"organization_id"`
-	Name           string `json:"name"`
+	Permissions    string    `json:"permissions"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	OrganizationID string    `json:"organization_id"`
+	Name           string    `json:"name"`
 }
 
 func (q *Queries) UpdateOrganizationRole(ctx context.Context, arg UpdateOrganizationRoleParams) error {
@@ -1008,7 +1009,7 @@ type UpdateTeamParams struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
 	Description sql.NullString `json:"description"`
-	UpdatedAt   string         `json:"updated_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) UpdateTeam(ctx context.Context, arg UpdateTeamParams) error {
@@ -1026,10 +1027,10 @@ UPDATE team_member SET role = $3, updated_at = $4 WHERE team_id = $1 AND user_id
 `
 
 type UpdateTeamMemberRoleParams struct {
-	TeamID    string `json:"team_id"`
-	UserID    string `json:"user_id"`
-	Role      string `json:"role"`
-	UpdatedAt string `json:"updated_at"`
+	TeamID    string    `json:"team_id"`
+	UserID    string    `json:"user_id"`
+	Role      string    `json:"role"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) UpdateTeamMemberRole(ctx context.Context, arg UpdateTeamMemberRoleParams) error {

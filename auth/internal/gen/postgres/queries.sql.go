@@ -8,13 +8,14 @@ package sqlcpostgres
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const cleanupExpiredSessions = `-- name: CleanupExpiredSessions :exec
 DELETE FROM session WHERE expires_at <= $1
 `
 
-func (q *Queries) CleanupExpiredSessions(ctx context.Context, expiresAt string) error {
+func (q *Queries) CleanupExpiredSessions(ctx context.Context, expiresAt time.Time) error {
 	_, err := q.db.ExecContext(ctx, cleanupExpiredSessions, expiresAt)
 	return err
 }
@@ -23,7 +24,7 @@ const cleanupExpiredVerifications = `-- name: CleanupExpiredVerifications :exec
 DELETE FROM verification WHERE expires_at <= $1
 `
 
-func (q *Queries) CleanupExpiredVerifications(ctx context.Context, expiresAt string) error {
+func (q *Queries) CleanupExpiredVerifications(ctx context.Context, expiresAt time.Time) error {
 	_, err := q.db.ExecContext(ctx, cleanupExpiredVerifications, expiresAt)
 	return err
 }
@@ -33,8 +34,8 @@ SELECT COUNT(*) FROM session WHERE user_id = $1 AND expires_at > $2
 `
 
 type CountSessionsByUserIDParams struct {
-	UserID    string `json:"user_id"`
-	ExpiresAt string `json:"expires_at"`
+	UserID    string    `json:"user_id"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func (q *Queries) CountSessionsByUserID(ctx context.Context, arg CountSessionsByUserIDParams) (int64, error) {
@@ -67,9 +68,9 @@ type CreateAccountParams struct {
 	PasswordHash      sql.NullString `json:"password_hash"`
 	AccessToken       sql.NullString `json:"access_token"`
 	RefreshToken      sql.NullString `json:"refresh_token"`
-	ExpiresAt         sql.NullString `json:"expires_at"`
-	CreatedAt         string         `json:"created_at"`
-	UpdatedAt         string         `json:"updated_at"`
+	ExpiresAt         sql.NullTime   `json:"expires_at"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
 // Account queries
@@ -98,8 +99,8 @@ type CreateSessionParams struct {
 	UserID       string         `json:"user_id"`
 	Token        string         `json:"token"`
 	RefreshToken sql.NullString `json:"refresh_token"`
-	ExpiresAt    string         `json:"expires_at"`
-	CreatedAt    string         `json:"created_at"`
+	ExpiresAt    time.Time      `json:"expires_at"`
+	CreatedAt    time.Time      `json:"created_at"`
 	IpAddress    sql.NullString `json:"ip_address"`
 	UserAgent    sql.NullString `json:"user_agent"`
 }
@@ -128,8 +129,8 @@ type CreateUserParams struct {
 	Avatar    sql.NullString `json:"avatar"`
 	Name      string         `json:"name"`
 	Email     sql.NullString `json:"email"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 	Disabled  int32          `json:"disabled"`
 }
 
@@ -152,12 +153,12 @@ INSERT INTO verification (id, identifier, token, type, expires_at, created_at) V
 `
 
 type CreateVerificationParams struct {
-	ID         string `json:"id"`
-	Identifier string `json:"identifier"`
-	Token      string `json:"token"`
-	Type       string `json:"type"`
-	ExpiresAt  string `json:"expires_at"`
-	CreatedAt  string `json:"created_at"`
+	ID         string    `json:"id"`
+	Identifier string    `json:"identifier"`
+	Token      string    `json:"token"`
+	Type       string    `json:"type"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Verification queries
@@ -205,8 +206,8 @@ UPDATE "user" SET disabled = 1, updated_at = $2 WHERE id = $1
 `
 
 type DeleteUserParams struct {
-	ID        string `json:"id"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) error {
@@ -315,8 +316,8 @@ SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, us
 `
 
 type GetSessionParams struct {
-	ID        string `json:"id"`
-	ExpiresAt string `json:"expires_at"`
+	ID        string    `json:"id"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (Session, error) {
@@ -341,7 +342,7 @@ SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, us
 
 type GetSessionByRefreshTokenParams struct {
 	RefreshToken sql.NullString `json:"refresh_token"`
-	ExpiresAt    string         `json:"expires_at"`
+	ExpiresAt    time.Time      `json:"expires_at"`
 }
 
 func (q *Queries) GetSessionByRefreshToken(ctx context.Context, arg GetSessionByRefreshTokenParams) (Session, error) {
@@ -365,8 +366,8 @@ SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, us
 `
 
 type GetSessionByTokenParams struct {
-	Token     string `json:"token"`
-	ExpiresAt string `json:"expires_at"`
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func (q *Queries) GetSessionByToken(ctx context.Context, arg GetSessionByTokenParams) (Session, error) {
@@ -390,10 +391,10 @@ SELECT id, user_id, token, refresh_token, expires_at, created_at, ip_address, us
 `
 
 type GetSessionsByUserIDParams struct {
-	UserID    string `json:"user_id"`
-	ExpiresAt string `json:"expires_at"`
-	Limit     int32  `json:"limit"`
-	Offset    int32  `json:"offset"`
+	UserID    string    `json:"user_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Limit     int32     `json:"limit"`
+	Offset    int32     `json:"offset"`
 }
 
 func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUserIDParams) ([]Session, error) {
@@ -476,8 +477,8 @@ SELECT id, identifier, token, type, expires_at, created_at FROM verification WHE
 `
 
 type GetVerificationByTokenParams struct {
-	Token     string `json:"token"`
-	ExpiresAt string `json:"expires_at"`
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func (q *Queries) GetVerificationByToken(ctx context.Context, arg GetVerificationByTokenParams) (Verification, error) {
@@ -499,8 +500,8 @@ SELECT id, identifier, token, type, expires_at, created_at FROM verification WHE
 `
 
 type GetVerificationsByIdentifierParams struct {
-	Identifier string `json:"identifier"`
-	ExpiresAt  string `json:"expires_at"`
+	Identifier string    `json:"identifier"`
+	ExpiresAt  time.Time `json:"expires_at"`
 }
 
 func (q *Queries) GetVerificationsByIdentifier(ctx context.Context, arg GetVerificationsByIdentifierParams) ([]Verification, error) {
@@ -538,9 +539,9 @@ UPDATE verification SET expires_at = $3 WHERE identifier = $1 AND type = $2
 `
 
 type InvalidateVerificationByIdentifierParams struct {
-	Identifier string `json:"identifier"`
-	Type       string `json:"type"`
-	ExpiresAt  string `json:"expires_at"`
+	Identifier string    `json:"identifier"`
+	Type       string    `json:"type"`
+	ExpiresAt  time.Time `json:"expires_at"`
 }
 
 func (q *Queries) InvalidateVerificationByIdentifier(ctx context.Context, arg InvalidateVerificationByIdentifierParams) error {
@@ -596,8 +597,8 @@ type UpdateAccountParams struct {
 	ID           string         `json:"id"`
 	AccessToken  sql.NullString `json:"access_token"`
 	RefreshToken sql.NullString `json:"refresh_token"`
-	ExpiresAt    sql.NullString `json:"expires_at"`
-	UpdatedAt    string         `json:"updated_at"`
+	ExpiresAt    sql.NullTime   `json:"expires_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) error {
@@ -618,7 +619,7 @@ UPDATE session SET refresh_token = $2, expires_at = $3 WHERE id = $1
 type UpdateSessionParams struct {
 	ID           string         `json:"id"`
 	RefreshToken sql.NullString `json:"refresh_token"`
-	ExpiresAt    string         `json:"expires_at"`
+	ExpiresAt    time.Time      `json:"expires_at"`
 }
 
 func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) error {
@@ -635,7 +636,7 @@ type UpdateUserParams struct {
 	Avatar    sql.NullString `json:"avatar"`
 	Name      string         `json:"name"`
 	Email     sql.NullString `json:"email"`
-	UpdatedAt string         `json:"updated_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 	Disabled  int32          `json:"disabled"`
 }
 

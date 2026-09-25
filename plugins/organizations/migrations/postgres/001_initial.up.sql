@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS organization (
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
     disabled INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_organization_slug ON organization(slug);
@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS members (
     user_id TEXT NOT NULL,
     organization_id TEXT NOT NULL,
     role TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     UNIQUE(user_id, organization_id),
     FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE,
     FOREIGN KEY (organization_id) REFERENCES organization(id) ON DELETE CASCADE
@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS team (
     organization_id TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (organization_id) REFERENCES organization(id) ON DELETE CASCADE
 );
 
@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS team_member (
     team_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     role TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     UNIQUE(team_id, user_id),
     FOREIGN KEY (team_id) REFERENCES team(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE

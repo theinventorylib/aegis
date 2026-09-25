@@ -8,6 +8,7 @@ package sqlcpostgres
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const createConnection = `-- name: CreateConnection :exec
@@ -26,10 +27,10 @@ type CreateConnectionParams struct {
 	AvatarUrl      sql.NullString `json:"avatar_url"`
 	AccessToken    string         `json:"access_token"`
 	RefreshToken   sql.NullString `json:"refresh_token"`
-	ExpiresAt      string         `json:"expires_at"`
+	ExpiresAt      time.Time      `json:"expires_at"`
 	ProviderData   sql.NullString `json:"provider_data"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 // OAuth Connection queries
@@ -157,9 +158,9 @@ type UpdateConnectionParams struct {
 	AvatarUrl      sql.NullString `json:"avatar_url"`
 	AccessToken    string         `json:"access_token"`
 	RefreshToken   sql.NullString `json:"refresh_token"`
-	ExpiresAt      string         `json:"expires_at"`
+	ExpiresAt      time.Time      `json:"expires_at"`
 	ProviderData   sql.NullString `json:"provider_data"`
-	UpdatedAt      string         `json:"updated_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) UpdateConnection(ctx context.Context, arg UpdateConnectionParams) error {

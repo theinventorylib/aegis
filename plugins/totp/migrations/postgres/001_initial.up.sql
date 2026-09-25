@@ -10,7 +10,7 @@ ALTER TABLE "user" ADD COLUMN IF NOT EXISTS totp_enabled INTEGER NOT NULL DEFAUL
 CREATE TABLE IF NOT EXISTS totp_session (
     session_id  TEXT PRIMARY KEY,
     user_id     TEXT NOT NULL,
-    verified_at TEXT NOT NULL,
+    verified_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE
 );

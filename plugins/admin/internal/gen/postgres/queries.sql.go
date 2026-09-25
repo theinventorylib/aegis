@@ -8,6 +8,7 @@ package sqlcpostgres
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const banUser = `-- name: BanUser :exec
@@ -17,8 +18,8 @@ UPDATE "user" SET banned = 1, ban_reason = $2, ban_expiry = $3, ban_counter = ba
 type BanUserParams struct {
 	ID        string         `json:"id"`
 	BanReason sql.NullString `json:"ban_reason"`
-	BanExpiry sql.NullString `json:"ban_expiry"`
-	UpdatedAt string         `json:"updated_at"`
+	BanExpiry sql.NullTime   `json:"ban_expiry"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) BanUser(ctx context.Context, arg BanUserParams) error {
@@ -51,13 +52,13 @@ type CreateUserParams struct {
 	Avatar     sql.NullString `json:"avatar"`
 	Name       string         `json:"name"`
 	Email      sql.NullString `json:"email"`
-	CreatedAt  string         `json:"created_at"`
-	UpdatedAt  string         `json:"updated_at"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
 	Disabled   int32          `json:"disabled"`
 	Role       string         `json:"role"`
 	Banned     int32          `json:"banned"`
 	BanReason  sql.NullString `json:"ban_reason"`
-	BanExpiry  sql.NullString `json:"ban_expiry"`
+	BanExpiry  sql.NullTime   `json:"ban_expiry"`
 	BanCounter int32          `json:"ban_counter"`
 }
 
@@ -85,8 +86,8 @@ UPDATE "user" SET disabled = 1, updated_at = $2 WHERE id = $1
 `
 
 type DeleteUserParams struct {
-	ID        string `json:"id"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) error {
@@ -198,12 +199,12 @@ SELECT id, created_at, updated_at, COALESCE(email, '') as email, COALESCE(role, 
 `
 
 type GetUserRawRow struct {
-	ID        string `json:"id"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-	Email     string `json:"email"`
-	Role      string `json:"role"`
-	Disabled  int32  `json:"disabled"`
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	Disabled  int32     `json:"disabled"`
 }
 
 func (q *Queries) GetUserRaw(ctx context.Context, id string) (GetUserRawRow, error) {
@@ -315,12 +316,12 @@ type ListUsersRawParams struct {
 }
 
 type ListUsersRawRow struct {
-	ID        string `json:"id"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-	Email     string `json:"email"`
-	Role      string `json:"role"`
-	Disabled  int32  `json:"disabled"`
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	Disabled  int32     `json:"disabled"`
 }
 
 func (q *Queries) ListUsersRaw(ctx context.Context, arg ListUsersRawParams) ([]ListUsersRawRow, error) {
@@ -358,8 +359,8 @@ UPDATE "user" SET banned = 0, ban_reason = NULL, ban_expiry = NULL, updated_at =
 `
 
 type UnbanUserParams struct {
-	ID        string `json:"id"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) UnbanUser(ctx context.Context, arg UnbanUserParams) error {
@@ -376,7 +377,7 @@ type UpdateUserParams struct {
 	Avatar    sql.NullString `json:"avatar"`
 	Name      string         `json:"name"`
 	Email     sql.NullString `json:"email"`
-	UpdatedAt string         `json:"updated_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 	Disabled  int32          `json:"disabled"`
 }
 
@@ -397,9 +398,9 @@ UPDATE "user" SET role = $2, updated_at = $3 WHERE id = $1
 `
 
 type UpdateUserRoleParams struct {
-	ID        string `json:"id"`
-	Role      string `json:"role"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	Role      string    `json:"role"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error {

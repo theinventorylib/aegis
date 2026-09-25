@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS "user" (
     avatar TEXT,
     name TEXT NOT NULL,
     email TEXT UNIQUE,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     disabled INTEGER NOT NULL DEFAULT 0
 );
 

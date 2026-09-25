@@ -7,6 +7,7 @@ package defaultstore
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	sqlcpostgres "github.com/theinventorylib/aegis/v2/plugins/admin/internal/gen/postgres"
 )
@@ -20,7 +21,7 @@ func newPostgresQuerier(db *sql.DB) *postgresQuerier {
 func (p *postgresQuerier) createUser(ctx context.Context, id string, avatar sql.NullString, name string, email sql.NullString, createdAt, updatedAt string, disabled bool, role sql.NullString) error {
 	return p.q.CreateUser(ctx, sqlcpostgres.CreateUserParams{
 		ID: id, Avatar: avatar, Name: name, Email: email,
-		CreatedAt: createdAt, UpdatedAt: updatedAt,
+		CreatedAt: pgParseTime(createdAt), UpdatedAt: pgParseTime(updatedAt),
 		Disabled: boolToInt[int32](disabled), Role: fromNullString(role),
 	})
 }
@@ -32,9 +33,9 @@ func (p *postgresQuerier) getUserByEmail(ctx context.Context, email sql.NullStri
 	}
 	return adminUserRow{
 		ID: u.ID, Avatar: u.Avatar, Name: u.Name, Email: u.Email,
-		CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
+		CreatedAt: pgFormatTime(u.CreatedAt), UpdatedAt: pgFormatTime(u.UpdatedAt),
 		Disabled: u.Disabled != 0, Role: toNullString(u.Role), Banned: u.Banned != 0,
-		BanReason: u.BanReason, BanExpiry: u.BanExpiry, BanCounter: int(u.BanCounter),
+		BanReason: u.BanReason, BanExpiry: pgFormatNullTime(u.BanExpiry), BanCounter: int(u.BanCounter),
 	}, nil
 }
 
@@ -45,21 +46,21 @@ func (p *postgresQuerier) getUserByID(ctx context.Context, id string) (adminUser
 	}
 	return adminUserRow{
 		ID: u.ID, Avatar: u.Avatar, Name: u.Name, Email: u.Email,
-		CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
+		CreatedAt: pgFormatTime(u.CreatedAt), UpdatedAt: pgFormatTime(u.UpdatedAt),
 		Disabled: u.Disabled != 0, Role: toNullString(u.Role), Banned: u.Banned != 0,
-		BanReason: u.BanReason, BanExpiry: u.BanExpiry, BanCounter: int(u.BanCounter),
+		BanReason: u.BanReason, BanExpiry: pgFormatNullTime(u.BanExpiry), BanCounter: int(u.BanCounter),
 	}, nil
 }
 
 func (p *postgresQuerier) updateUser(ctx context.Context, id string, avatar sql.NullString, name string, email sql.NullString, updatedAt string, disabled bool) error {
 	return p.q.UpdateUser(ctx, sqlcpostgres.UpdateUserParams{
 		ID: id, Avatar: avatar, Name: name, Email: email,
-		UpdatedAt: updatedAt, Disabled: boolToInt[int32](disabled),
+		UpdatedAt: pgParseTime(updatedAt), Disabled: boolToInt[int32](disabled),
 	})
 }
 
 func (p *postgresQuerier) deleteUser(ctx context.Context, id, updatedAt string) error {
-	return p.q.DeleteUser(ctx, sqlcpostgres.DeleteUserParams{ID: id, UpdatedAt: updatedAt})
+	return p.q.DeleteUser(ctx, sqlcpostgres.DeleteUserParams{ID: id, UpdatedAt: pgParseTime(updatedAt)})
 }
 
 func (p *postgresQuerier) listUsers(ctx context.Context, offset, limit int32) ([]adminUserRow, error) {
@@ -71,9 +72,9 @@ func (p *postgresQuerier) listUsers(ctx context.Context, offset, limit int32) ([
 	for i, u := range rows {
 		out[i] = adminUserRow{
 			ID: u.ID, Avatar: u.Avatar, Name: u.Name, Email: u.Email,
-			CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
+			CreatedAt: pgFormatTime(u.CreatedAt), UpdatedAt: pgFormatTime(u.UpdatedAt),
 			Disabled: u.Disabled != 0, Role: toNullString(u.Role), Banned: u.Banned != 0,
-			BanReason: u.BanReason, BanExpiry: u.BanExpiry, BanCounter: int(u.BanCounter),
+			BanReason: u.BanReason, BanExpiry: pgFormatNullTime(u.BanExpiry), BanCounter: int(u.BanCounter),
 		}
 	}
 	return out, nil
@@ -86,7 +87,7 @@ func (p *postgresQuerier) listUsersRaw(ctx context.Context, offset, limit int32)
 	}
 	out := make([]adminRawRow, len(rows))
 	for i, u := range rows {
-		out[i] = adminRawRow{ID: u.ID, CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt, Email: u.Email, Role: u.Role, Disabled: u.Disabled != 0}
+		out[i] = adminRawRow{ID: u.ID, CreatedAt: pgFormatTime(u.CreatedAt), UpdatedAt: pgFormatTime(u.UpdatedAt), Email: u.Email, Role: u.Role, Disabled: u.Disabled != 0}
 	}
 	return out, nil
 }
@@ -96,13 +97,13 @@ func (p *postgresQuerier) getUserRaw(ctx context.Context, id string) (adminRawRo
 	if err != nil {
 		return adminRawRow{}, err
 	}
-	return adminRawRow{ID: u.ID, CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt, Email: u.Email, Role: u.Role, Disabled: u.Disabled != 0}, nil
+	return adminRawRow{ID: u.ID, CreatedAt: pgFormatTime(u.CreatedAt), UpdatedAt: pgFormatTime(u.UpdatedAt), Email: u.Email, Role: u.Role, Disabled: u.Disabled != 0}, nil
 }
 
 func (p *postgresQuerier) countUsers(ctx context.Context) (int64, error) { return p.q.CountUsers(ctx) }
 
 func (p *postgresQuerier) updateUserRole(ctx context.Context, id string, role sql.NullString, updatedAt string) error {
-	return p.q.UpdateUserRole(ctx, sqlcpostgres.UpdateUserRoleParams{ID: id, Role: fromNullString(role), UpdatedAt: updatedAt})
+	return p.q.UpdateUserRole(ctx, sqlcpostgres.UpdateUserRoleParams{ID: id, Role: fromNullString(role), UpdatedAt: pgParseTime(updatedAt)})
 }
 
 func (p *postgresQuerier) getRole(ctx context.Context, id string) (string, error) {
@@ -110,9 +111,38 @@ func (p *postgresQuerier) getRole(ctx context.Context, id string) (string, error
 }
 
 func (p *postgresQuerier) banUser(ctx context.Context, id string, banReason, banExpiry sql.NullString, updatedAt string) error {
-	return p.q.BanUser(ctx, sqlcpostgres.BanUserParams{ID: id, BanReason: banReason, BanExpiry: banExpiry, UpdatedAt: updatedAt})
+	return p.q.BanUser(ctx, sqlcpostgres.BanUserParams{ID: id, BanReason: banReason, BanExpiry: pgParseNullTime(banExpiry), UpdatedAt: pgParseTime(updatedAt)})
 }
 
 func (p *postgresQuerier) unbanUser(ctx context.Context, id, updatedAt string) error {
-	return p.q.UnbanUser(ctx, sqlcpostgres.UnbanUserParams{ID: id, UpdatedAt: updatedAt})
+	return p.q.UnbanUser(ctx, sqlcpostgres.UnbanUserParams{ID: id, UpdatedAt: pgParseTime(updatedAt)})
+}
+
+// pgParseTime converts a canonical RFC3339 string to the time.Time the
+// generated postgres queries expect.
+func pgParseTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// pgFormatTime converts a time.Time back to the canonical RFC3339 string.
+func pgFormatTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
+// pgParseNullTime converts a nullable canonical string to sql.NullTime.
+func pgParseNullTime(ns sql.NullString) sql.NullTime {
+	if !ns.Valid {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: pgParseTime(ns.String), Valid: true}
+}
+
+// pgFormatNullTime converts sql.NullTime back to a nullable canonical string.
+func pgFormatNullTime(nt sql.NullTime) sql.NullString {
+	if !nt.Valid {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: pgFormatTime(nt.Time), Valid: true}
 }

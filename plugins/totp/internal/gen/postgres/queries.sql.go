@@ -8,6 +8,7 @@ package sqlcpostgres
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const deleteSessionVerification = `-- name: DeleteSessionVerification :exec
@@ -56,9 +57,9 @@ SELECT EXISTS(
 `
 
 type IsSessionVerifiedParams struct {
-	SessionID  string `json:"session_id"`
-	UserID     string `json:"user_id"`
-	VerifiedAt string `json:"verified_at"`
+	SessionID  string    `json:"session_id"`
+	UserID     string    `json:"user_id"`
+	VerifiedAt time.Time `json:"verified_at"`
 }
 
 func (q *Queries) IsSessionVerified(ctx context.Context, arg IsSessionVerifiedParams) (bool, error) {
@@ -75,9 +76,9 @@ ON CONFLICT (session_id) DO UPDATE SET verified_at = EXCLUDED.verified_at
 `
 
 type MarkSessionVerifiedParams struct {
-	SessionID  string `json:"session_id"`
-	UserID     string `json:"user_id"`
-	VerifiedAt string `json:"verified_at"`
+	SessionID  string    `json:"session_id"`
+	UserID     string    `json:"user_id"`
+	VerifiedAt time.Time `json:"verified_at"`
 }
 
 func (q *Queries) MarkSessionVerified(ctx context.Context, arg MarkSessionVerifiedParams) error {
@@ -95,7 +96,7 @@ type UpdateCredentialParams struct {
 	ID          string         `json:"id"`
 	TotpSecret  sql.NullString `json:"totp_secret"`
 	TotpEnabled int32          `json:"totp_enabled"`
-	UpdatedAt   string         `json:"updated_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) UpdateCredential(ctx context.Context, arg UpdateCredentialParams) error {

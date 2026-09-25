@@ -6,6 +6,7 @@ package defaultstore
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	sqlcpostgres "github.com/theinventorylib/aegis/v2/plugins/emailotp/internal/gen/postgres"
 )
@@ -22,8 +23,8 @@ func (p *postgresQuerier) createUser(ctx context.Context, id, name, createdAt, u
 		Avatar:        avatar,
 		Name:          name,
 		Email:         email,
-		CreatedAt:     createdAt,
-		UpdatedAt:     updatedAt,
+		CreatedAt:     pgParseTime(createdAt),
+		UpdatedAt:     pgParseTime(updatedAt),
 		Disabled:      boolToInt[int32](disabled),
 		EmailVerified: boolToInt[int32](emailVerified),
 	})
@@ -39,8 +40,8 @@ func (p *postgresQuerier) getUserByEmail(ctx context.Context, email sql.NullStri
 		Avatar:        u.Avatar,
 		Name:          u.Name,
 		Email:         u.Email,
-		CreatedAt:     u.CreatedAt,
-		UpdatedAt:     u.UpdatedAt,
+		CreatedAt:     pgFormatTime(u.CreatedAt),
+		UpdatedAt:     pgFormatTime(u.UpdatedAt),
 		Disabled:      u.Disabled != 0,
 		EmailVerified: u.EmailVerified != 0,
 	}, nil
@@ -51,6 +52,35 @@ func (p *postgresQuerier) updateUserEmail(ctx context.Context, userID string, em
 		ID:            userID,
 		Email:         email,
 		EmailVerified: boolToInt[int32](verified),
-		UpdatedAt:     updatedAt,
+		UpdatedAt:     pgParseTime(updatedAt),
 	})
+}
+
+// pgParseTime converts a canonical RFC3339 string to the time.Time the
+// generated postgres queries expect.
+func pgParseTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// pgFormatTime converts a time.Time back to the canonical RFC3339 string.
+func pgFormatTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
+// pgParseNullTime converts a nullable canonical string to sql.NullTime.
+func pgParseNullTime(ns sql.NullString) sql.NullTime {
+	if !ns.Valid {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: pgParseTime(ns.String), Valid: true}
+}
+
+// pgFormatNullTime converts sql.NullTime back to a nullable canonical string.
+func pgFormatNullTime(nt sql.NullTime) sql.NullString {
+	if !nt.Valid {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: pgFormatTime(nt.Time), Valid: true}
 }

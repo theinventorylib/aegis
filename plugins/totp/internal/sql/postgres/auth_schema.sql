@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS "user" (
     avatar TEXT,
     name TEXT NOT NULL,
     email TEXT UNIQUE,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     disabled INTEGER NOT NULL DEFAULT 0
 );
 
@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS session (
     user_id TEXT NOT NULL,
     token TEXT UNIQUE NOT NULL,
     refresh_token TEXT UNIQUE,
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
     ip_address TEXT,
     user_agent TEXT,
     FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE

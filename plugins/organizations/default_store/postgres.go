@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	sqlcpostgres "github.com/theinventorylib/aegis/v2/plugins/organizations/internal/gen/postgres"
 )
@@ -20,7 +21,7 @@ func newPostgresQuerier(db *sql.DB) *postgresQuerier {
 
 func (p *postgresQuerier) createOrganization(ctx context.Context, id, name, slug, createdAt, updatedAt string) error {
 	return p.q.CreateOrganization(ctx, sqlcpostgres.CreateOrganizationParams{
-		ID: id, Name: name, Slug: slug, CreatedAt: createdAt, UpdatedAt: updatedAt,
+		ID: id, Name: name, Slug: slug, CreatedAt: pgParseTime(createdAt), UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -29,7 +30,7 @@ func (p *postgresQuerier) getOrganization(ctx context.Context, id string) (orgRo
 	if err != nil {
 		return orgRow{}, err
 	}
-	return orgRow{ID: o.ID, Name: o.Name, Slug: o.Slug, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt}, nil
+	return orgRow{ID: o.ID, Name: o.Name, Slug: o.Slug, CreatedAt: pgFormatTime(o.CreatedAt), UpdatedAt: pgFormatTime(o.UpdatedAt)}, nil
 }
 
 func (p *postgresQuerier) getOrganizationBySlug(ctx context.Context, slug string) (orgRow, error) {
@@ -37,17 +38,17 @@ func (p *postgresQuerier) getOrganizationBySlug(ctx context.Context, slug string
 	if err != nil {
 		return orgRow{}, err
 	}
-	return orgRow{ID: o.ID, Name: o.Name, Slug: o.Slug, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt}, nil
+	return orgRow{ID: o.ID, Name: o.Name, Slug: o.Slug, CreatedAt: pgFormatTime(o.CreatedAt), UpdatedAt: pgFormatTime(o.UpdatedAt)}, nil
 }
 
 func (p *postgresQuerier) updateOrganization(ctx context.Context, id, name, slug, updatedAt string) error {
 	return p.q.UpdateOrganization(ctx, sqlcpostgres.UpdateOrganizationParams{
-		ID: id, Name: name, Slug: slug, UpdatedAt: updatedAt,
+		ID: id, Name: name, Slug: slug, UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
 func (p *postgresQuerier) deleteOrganization(ctx context.Context, id, updatedAt string) error {
-	return p.q.DeleteOrganization(ctx, sqlcpostgres.DeleteOrganizationParams{ID: id, UpdatedAt: updatedAt})
+	return p.q.DeleteOrganization(ctx, sqlcpostgres.DeleteOrganizationParams{ID: id, UpdatedAt: pgParseTime(updatedAt)})
 }
 
 func (p *postgresQuerier) listUserOrganizations(ctx context.Context, userID string, offset, limit int32) ([]listOrgRow, error) {
@@ -59,7 +60,7 @@ func (p *postgresQuerier) listUserOrganizations(ctx context.Context, userID stri
 	}
 	result := make([]listOrgRow, len(rows))
 	for i, o := range rows {
-		result[i] = listOrgRow{ID: o.ID, Name: o.Name, Slug: o.Slug, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt}
+		result[i] = listOrgRow{ID: o.ID, Name: o.Name, Slug: o.Slug, CreatedAt: pgFormatTime(o.CreatedAt), UpdatedAt: pgFormatTime(o.UpdatedAt)}
 	}
 	return result, nil
 }
@@ -70,7 +71,7 @@ func (p *postgresQuerier) countUserOrganizations(ctx context.Context, userID str
 
 func (p *postgresQuerier) createMember(ctx context.Context, id, userID, orgID, role, createdAt, updatedAt string) error {
 	return p.q.CreateMember(ctx, sqlcpostgres.CreateMemberParams{
-		ID: id, UserID: userID, OrganizationID: orgID, Role: role, CreatedAt: createdAt, UpdatedAt: updatedAt,
+		ID: id, UserID: userID, OrganizationID: orgID, Role: role, CreatedAt: pgParseTime(createdAt), UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -79,7 +80,7 @@ func (p *postgresQuerier) getMember(ctx context.Context, userID, orgID string) (
 	if err != nil {
 		return memberRow{}, err
 	}
-	return memberRow{ID: m.ID, UserID: m.UserID, OrganizationID: m.OrganizationID, Role: m.Role, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}, nil
+	return memberRow{ID: m.ID, UserID: m.UserID, OrganizationID: m.OrganizationID, Role: m.Role, CreatedAt: pgFormatTime(m.CreatedAt), UpdatedAt: pgFormatTime(m.UpdatedAt)}, nil
 }
 
 func (p *postgresQuerier) isOrganizationMember(ctx context.Context, userID, orgID string) (bool, error) {
@@ -96,7 +97,7 @@ func (p *postgresQuerier) isOwner(ctx context.Context, userID, orgID string) (bo
 
 func (p *postgresQuerier) updateMemberRole(ctx context.Context, userID, orgID, role, updatedAt string) error {
 	return p.q.UpdateMemberRole(ctx, sqlcpostgres.UpdateMemberRoleParams{
-		UserID: userID, OrganizationID: orgID, Role: role, UpdatedAt: updatedAt,
+		UserID: userID, OrganizationID: orgID, Role: role, UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -113,7 +114,7 @@ func (p *postgresQuerier) listOrganizationMembers(ctx context.Context, orgID str
 	}
 	result := make([]memberRow, len(rows))
 	for i, m := range rows {
-		result[i] = memberRow{ID: m.ID, UserID: m.UserID, OrganizationID: m.OrganizationID, Role: m.Role, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}
+		result[i] = memberRow{ID: m.ID, UserID: m.UserID, OrganizationID: m.OrganizationID, Role: m.Role, CreatedAt: pgFormatTime(m.CreatedAt), UpdatedAt: pgFormatTime(m.UpdatedAt)}
 	}
 	return result, nil
 }
@@ -124,7 +125,7 @@ func (p *postgresQuerier) countOrganizationMembers(ctx context.Context, orgID st
 
 func (p *postgresQuerier) createTeam(ctx context.Context, id, orgID, name string, description sql.NullString, createdAt, updatedAt string) error {
 	return p.q.CreateTeam(ctx, sqlcpostgres.CreateTeamParams{
-		ID: id, OrganizationID: orgID, Name: name, Description: description, CreatedAt: createdAt, UpdatedAt: updatedAt,
+		ID: id, OrganizationID: orgID, Name: name, Description: description, CreatedAt: pgParseTime(createdAt), UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -133,7 +134,7 @@ func (p *postgresQuerier) getTeam(ctx context.Context, id string) (teamRow, erro
 	if err != nil {
 		return teamRow{}, err
 	}
-	return teamRow{ID: t.ID, OrganizationID: t.OrganizationID, Name: t.Name, Description: t.Description, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}, nil
+	return teamRow{ID: t.ID, OrganizationID: t.OrganizationID, Name: t.Name, Description: t.Description, CreatedAt: pgFormatTime(t.CreatedAt), UpdatedAt: pgFormatTime(t.UpdatedAt)}, nil
 }
 
 func (p *postgresQuerier) listTeams(ctx context.Context, orgID string, offset, limit int32) ([]teamRow, error) {
@@ -145,7 +146,7 @@ func (p *postgresQuerier) listTeams(ctx context.Context, orgID string, offset, l
 	}
 	result := make([]teamRow, len(rows))
 	for i, t := range rows {
-		result[i] = teamRow{ID: t.ID, OrganizationID: t.OrganizationID, Name: t.Name, Description: t.Description, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}
+		result[i] = teamRow{ID: t.ID, OrganizationID: t.OrganizationID, Name: t.Name, Description: t.Description, CreatedAt: pgFormatTime(t.CreatedAt), UpdatedAt: pgFormatTime(t.UpdatedAt)}
 	}
 	return result, nil
 }
@@ -156,7 +157,7 @@ func (p *postgresQuerier) countTeams(ctx context.Context, orgID string) (int64, 
 
 func (p *postgresQuerier) updateTeam(ctx context.Context, id, name string, description sql.NullString, updatedAt string) error {
 	return p.q.UpdateTeam(ctx, sqlcpostgres.UpdateTeamParams{
-		ID: id, Name: name, Description: description, UpdatedAt: updatedAt,
+		ID: id, Name: name, Description: description, UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -170,7 +171,7 @@ func (p *postgresQuerier) createInvitation(ctx context.Context, id, organization
 		TeamID: sql.NullString{String: teamID, Valid: teamID != ""},
 		Email:  email, Role: role, InviterID: inviterID,
 		TokenHash: tokenHash, Status: status,
-		ExpiresAt: expiresAt, CreatedAt: createdAt, UpdatedAt: updatedAt,
+		ExpiresAt: pgParseTime(expiresAt), CreatedAt: pgParseTime(createdAt), UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -183,7 +184,7 @@ func (p *postgresQuerier) getInvitationByID(ctx context.Context, id string) (inv
 		ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
 		Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
 		TokenHash: inv.TokenHash, Status: inv.Status,
-		ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+		ExpiresAt: pgFormatTime(inv.ExpiresAt), CreatedAt: pgFormatTime(inv.CreatedAt), UpdatedAt: pgFormatTime(inv.UpdatedAt),
 	}, nil
 }
 
@@ -196,7 +197,7 @@ func (p *postgresQuerier) getInvitationByTokenHash(ctx context.Context, tokenHas
 		ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
 		Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
 		TokenHash: inv.TokenHash, Status: inv.Status,
-		ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+		ExpiresAt: pgFormatTime(inv.ExpiresAt), CreatedAt: pgFormatTime(inv.CreatedAt), UpdatedAt: pgFormatTime(inv.UpdatedAt),
 	}, nil
 }
 
@@ -213,7 +214,7 @@ func (p *postgresQuerier) listInvitations(ctx context.Context, orgID string, tea
 			ID: inv.ID, OrganizationID: inv.OrganizationID, TeamID: inv.TeamID,
 			Email: inv.Email, Role: inv.Role, InviterID: inv.InviterID,
 			TokenHash: inv.TokenHash, Status: inv.Status,
-			ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt,
+			ExpiresAt: pgFormatTime(inv.ExpiresAt), CreatedAt: pgFormatTime(inv.CreatedAt), UpdatedAt: pgFormatTime(inv.UpdatedAt),
 		}
 	}
 	return result, nil
@@ -227,7 +228,7 @@ func (p *postgresQuerier) countInvitations(ctx context.Context, orgID string, te
 
 func (p *postgresQuerier) updateInvitationStatus(ctx context.Context, id, status, updatedAt string) error {
 	return p.q.UpdateInvitationStatus(ctx, sqlcpostgres.UpdateInvitationStatusParams{
-		ID: id, Status: status, UpdatedAt: updatedAt,
+		ID: id, Status: status, UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -237,7 +238,7 @@ func (p *postgresQuerier) deleteInvitation(ctx context.Context, id string) error
 
 func (p *postgresQuerier) createTeamMember(ctx context.Context, id, teamID, userID, role, createdAt, updatedAt string) error {
 	return p.q.CreateTeamMember(ctx, sqlcpostgres.CreateTeamMemberParams{
-		ID: id, TeamID: teamID, UserID: userID, Role: role, CreatedAt: createdAt, UpdatedAt: updatedAt,
+		ID: id, TeamID: teamID, UserID: userID, Role: role, CreatedAt: pgParseTime(createdAt), UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -246,7 +247,7 @@ func (p *postgresQuerier) getTeamMember(ctx context.Context, teamID, userID stri
 	if err != nil {
 		return teamMemberRow{}, err
 	}
-	return teamMemberRow{ID: m.ID, TeamID: m.TeamID, UserID: m.UserID, Role: m.Role, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}, nil
+	return teamMemberRow{ID: m.ID, TeamID: m.TeamID, UserID: m.UserID, Role: m.Role, CreatedAt: pgFormatTime(m.CreatedAt), UpdatedAt: pgFormatTime(m.UpdatedAt)}, nil
 }
 
 func (p *postgresQuerier) listTeamMembers(ctx context.Context, teamID string, offset, limit int32) ([]teamMemberRow, error) {
@@ -258,7 +259,7 @@ func (p *postgresQuerier) listTeamMembers(ctx context.Context, teamID string, of
 	}
 	result := make([]teamMemberRow, len(rows))
 	for i, m := range rows {
-		result[i] = teamMemberRow{ID: m.ID, TeamID: m.TeamID, UserID: m.UserID, Role: m.Role, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}
+		result[i] = teamMemberRow{ID: m.ID, TeamID: m.TeamID, UserID: m.UserID, Role: m.Role, CreatedAt: pgFormatTime(m.CreatedAt), UpdatedAt: pgFormatTime(m.UpdatedAt)}
 	}
 	return result, nil
 }
@@ -269,7 +270,7 @@ func (p *postgresQuerier) countTeamMembers(ctx context.Context, teamID string) (
 
 func (p *postgresQuerier) updateTeamMemberRole(ctx context.Context, teamID, userID, role, updatedAt string) error {
 	return p.q.UpdateTeamMemberRole(ctx, sqlcpostgres.UpdateTeamMemberRoleParams{
-		TeamID: teamID, UserID: userID, Role: role, UpdatedAt: updatedAt,
+		TeamID: teamID, UserID: userID, Role: role, UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -292,7 +293,7 @@ func (x *postgresQuerier) listMemberPermissionOverrides(ctx context.Context, org
 	for _, r := range rows {
 		out = append(out, permissionOverrideRow{
 			ID: r.ID, OrganizationID: r.OrganizationID, UserID: r.UserID,
-			Permission: r.Permission, Effect: r.Effect, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			Permission: r.Permission, Effect: r.Effect, CreatedAt: pgFormatTime(r.CreatedAt), UpdatedAt: pgFormatTime(r.UpdatedAt),
 		})
 	}
 	return out, nil
@@ -301,7 +302,7 @@ func (x *postgresQuerier) listMemberPermissionOverrides(ctx context.Context, org
 func (x *postgresQuerier) createMemberPermissionOverride(ctx context.Context, id, orgID, userID, permission, effect, createdAt, updatedAt string) error {
 	return x.q.CreateMemberPermissionOverride(ctx, sqlcpostgres.CreateMemberPermissionOverrideParams{
 		ID: id, OrganizationID: orgID, UserID: userID, Permission: permission,
-		Effect: effect, CreatedAt: createdAt, UpdatedAt: updatedAt,
+		Effect: effect, CreatedAt: pgParseTime(createdAt), UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -318,7 +319,7 @@ func (x *postgresQuerier) listOrganizationRoles(ctx context.Context, orgID strin
 	for _, r := range rows {
 		out = append(out, organizationRoleRow{
 			ID: r.ID, OrganizationID: r.OrganizationID, Name: r.Name,
-			Permissions: r.Permissions, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			Permissions: r.Permissions, CreatedAt: pgFormatTime(r.CreatedAt), UpdatedAt: pgFormatTime(r.UpdatedAt),
 		})
 	}
 	return out, nil
@@ -331,20 +332,20 @@ func (x *postgresQuerier) getOrganizationRole(ctx context.Context, orgID, name s
 	}
 	return organizationRoleRow{
 		ID: r.ID, OrganizationID: r.OrganizationID, Name: r.Name,
-		Permissions: r.Permissions, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		Permissions: r.Permissions, CreatedAt: pgFormatTime(r.CreatedAt), UpdatedAt: pgFormatTime(r.UpdatedAt),
 	}, nil
 }
 
 func (x *postgresQuerier) createOrganizationRole(ctx context.Context, id, orgID, name, permissions, createdAt, updatedAt string) error {
 	return x.q.CreateOrganizationRole(ctx, sqlcpostgres.CreateOrganizationRoleParams{
 		ID: id, OrganizationID: orgID, Name: name, Permissions: permissions,
-		CreatedAt: createdAt, UpdatedAt: updatedAt,
+		CreatedAt: pgParseTime(createdAt), UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
 func (x *postgresQuerier) updateOrganizationRole(ctx context.Context, orgID, name, permissions, updatedAt string) error {
 	return x.q.UpdateOrganizationRole(ctx, sqlcpostgres.UpdateOrganizationRoleParams{
-		OrganizationID: orgID, Name: name, Permissions: permissions, UpdatedAt: updatedAt,
+		OrganizationID: orgID, Name: name, Permissions: permissions, UpdatedAt: pgParseTime(updatedAt),
 	})
 }
 
@@ -354,4 +355,33 @@ func (x *postgresQuerier) deleteOrganizationRole(ctx context.Context, orgID, nam
 
 func (x *postgresQuerier) countOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int64, error) {
 	return x.q.CountOrganizationMembersWithRole(ctx, sqlcpostgres.CountOrganizationMembersWithRoleParams{OrganizationID: orgID, Role: role})
+}
+
+// pgParseTime converts a canonical RFC3339 string to the time.Time the
+// generated postgres queries expect.
+func pgParseTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// pgFormatTime converts a time.Time back to the canonical RFC3339 string.
+func pgFormatTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
+// pgParseNullTime converts a nullable canonical string to sql.NullTime.
+func pgParseNullTime(ns sql.NullString) sql.NullTime {
+	if !ns.Valid {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: pgParseTime(ns.String), Valid: true}
+}
+
+// pgFormatNullTime converts sql.NullTime back to a nullable canonical string.
+func pgFormatNullTime(nt sql.NullTime) sql.NullString {
+	if !nt.Valid {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: pgFormatTime(nt.Time), Valid: true}
 }

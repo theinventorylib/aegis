@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS member_permission_override (
     user_id         TEXT NOT NULL,
     permission      TEXT NOT NULL,
     effect          TEXT NOT NULL CHECK (effect IN ('grant', 'deny')),
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     UNIQUE (organization_id, user_id, permission),
     FOREIGN KEY (organization_id) REFERENCES organization(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE

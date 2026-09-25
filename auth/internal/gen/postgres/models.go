@@ -6,6 +6,7 @@ package sqlcpostgres
 
 import (
 	"database/sql"
+	"time"
 )
 
 type Account struct {
@@ -16,9 +17,9 @@ type Account struct {
 	PasswordHash      sql.NullString `json:"password_hash"`
 	AccessToken       sql.NullString `json:"access_token"`
 	RefreshToken      sql.NullString `json:"refresh_token"`
-	ExpiresAt         sql.NullString `json:"expires_at"`
-	CreatedAt         string         `json:"created_at"`
-	UpdatedAt         string         `json:"updated_at"`
+	ExpiresAt         sql.NullTime   `json:"expires_at"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
 type Session struct {
@@ -26,8 +27,8 @@ type Session struct {
 	UserID       string         `json:"user_id"`
 	Token        string         `json:"token"`
 	RefreshToken sql.NullString `json:"refresh_token"`
-	ExpiresAt    string         `json:"expires_at"`
-	CreatedAt    string         `json:"created_at"`
+	ExpiresAt    time.Time      `json:"expires_at"`
+	CreatedAt    time.Time      `json:"created_at"`
 	IpAddress    sql.NullString `json:"ip_address"`
 	UserAgent    sql.NullString `json:"user_agent"`
 }
@@ -37,16 +38,16 @@ type User struct {
 	Avatar    sql.NullString `json:"avatar"`
 	Name      string         `json:"name"`
 	Email     sql.NullString `json:"email"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 	Disabled  int32          `json:"disabled"`
 }
 
 type Verification struct {
-	ID         string `json:"id"`
-	Identifier string `json:"identifier"`
-	Token      string `json:"token"`
-	Type       string `json:"type"`
-	ExpiresAt  string `json:"expires_at"`
-	CreatedAt  string `json:"created_at"`
+	ID         string    `json:"id"`
+	Identifier string    `json:"identifier"`
+	Token      string    `json:"token"`
+	Type       string    `json:"type"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	CreatedAt  time.Time `json:"created_at"`
 }

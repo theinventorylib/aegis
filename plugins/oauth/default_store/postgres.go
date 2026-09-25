@@ -6,6 +6,7 @@ package defaultstore
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	sqlcpostgres "github.com/theinventorylib/aegis/v2/plugins/oauth/internal/gen/postgres"
 )
@@ -27,10 +28,10 @@ func (p *postgresQuerier) createConnection(ctx context.Context, r connectionRow)
 		AvatarUrl:      r.AvatarURL,
 		AccessToken:    r.AccessToken,
 		RefreshToken:   r.RefreshToken,
-		ExpiresAt:      r.ExpiresAt,
+		ExpiresAt:      pgParseTime(r.ExpiresAt),
 		ProviderData:   r.ProviderData,
-		CreatedAt:      r.CreatedAt,
-		UpdatedAt:      r.UpdatedAt,
+		CreatedAt:      pgParseTime(r.CreatedAt),
+		UpdatedAt:      pgParseTime(r.UpdatedAt),
 	})
 }
 
@@ -46,8 +47,8 @@ func (p *postgresQuerier) getConnectionByProviderUserID(ctx context.Context, pro
 		ID: c.ID, UserID: c.UserID, Provider: c.Provider, ProviderUserID: c.ProviderUserID,
 		Email: c.Email, Name: c.Name, AvatarURL: c.AvatarUrl,
 		AccessToken: c.AccessToken, RefreshToken: c.RefreshToken,
-		ExpiresAt: c.ExpiresAt, ProviderData: c.ProviderData,
-		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		ExpiresAt: pgFormatTime(c.ExpiresAt), ProviderData: c.ProviderData,
+		CreatedAt: pgFormatTime(c.CreatedAt), UpdatedAt: pgFormatTime(c.UpdatedAt),
 	}, nil
 }
 
@@ -62,8 +63,8 @@ func (p *postgresQuerier) getConnectionsByUserID(ctx context.Context, userID str
 			ID: c.ID, UserID: c.UserID, Provider: c.Provider, ProviderUserID: c.ProviderUserID,
 			Email: c.Email, Name: c.Name, AvatarURL: c.AvatarUrl,
 			AccessToken: c.AccessToken, RefreshToken: c.RefreshToken,
-			ExpiresAt: c.ExpiresAt, ProviderData: c.ProviderData,
-			CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+			ExpiresAt: pgFormatTime(c.ExpiresAt), ProviderData: c.ProviderData,
+			CreatedAt: pgFormatTime(c.CreatedAt), UpdatedAt: pgFormatTime(c.UpdatedAt),
 		}
 	}
 	return result, nil
@@ -80,9 +81,9 @@ func (p *postgresQuerier) updateConnection(ctx context.Context, r connectionRow)
 		AvatarUrl:      r.AvatarURL,
 		AccessToken:    r.AccessToken,
 		RefreshToken:   r.RefreshToken,
-		ExpiresAt:      r.ExpiresAt,
+		ExpiresAt:      pgParseTime(r.ExpiresAt),
 		ProviderData:   r.ProviderData,
-		UpdatedAt:      r.UpdatedAt,
+		UpdatedAt:      pgParseTime(r.UpdatedAt),
 	})
 }
 
@@ -91,4 +92,33 @@ func (p *postgresQuerier) deleteConnection(ctx context.Context, provider, userID
 		Provider: provider,
 		UserID:   userID,
 	})
+}
+
+// pgParseTime converts a canonical RFC3339 string to the time.Time the
+// generated postgres queries expect.
+func pgParseTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// pgFormatTime converts a time.Time back to the canonical RFC3339 string.
+func pgFormatTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
+// pgParseNullTime converts a nullable canonical string to sql.NullTime.
+func pgParseNullTime(ns sql.NullString) sql.NullTime {
+	if !ns.Valid {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: pgParseTime(ns.String), Valid: true}
+}
+
+// pgFormatNullTime converts sql.NullTime back to a nullable canonical string.
+func pgFormatNullTime(nt sql.NullTime) sql.NullString {
+	if !nt.Valid {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: pgFormatTime(nt.Time), Valid: true}
 }

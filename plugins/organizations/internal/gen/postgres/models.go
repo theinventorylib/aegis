@@ -6,6 +6,7 @@ package sqlcpostgres
 
 import (
 	"database/sql"
+	"time"
 )
 
 type Invitation struct {
@@ -17,46 +18,46 @@ type Invitation struct {
 	InviterID      string         `json:"inviter_id"`
 	TokenHash      string         `json:"token_hash"`
 	Status         string         `json:"status"`
-	ExpiresAt      string         `json:"expires_at"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
+	ExpiresAt      time.Time      `json:"expires_at"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 type Member struct {
-	ID             string `json:"id"`
-	UserID         string `json:"user_id"`
-	OrganizationID string `json:"organization_id"`
-	Role           string `json:"role"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID             string    `json:"id"`
+	UserID         string    `json:"user_id"`
+	OrganizationID string    `json:"organization_id"`
+	Role           string    `json:"role"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type MemberPermissionOverride struct {
-	ID             string `json:"id"`
-	OrganizationID string `json:"organization_id"`
-	UserID         string `json:"user_id"`
-	Permission     string `json:"permission"`
-	Effect         string `json:"effect"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID             string    `json:"id"`
+	OrganizationID string    `json:"organization_id"`
+	UserID         string    `json:"user_id"`
+	Permission     string    `json:"permission"`
+	Effect         string    `json:"effect"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type Organization struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	Disabled  int32  `json:"disabled"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	Disabled  int32     `json:"disabled"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type OrganizationRole struct {
-	ID             string `json:"id"`
-	OrganizationID string `json:"organization_id"`
-	Name           string `json:"name"`
-	Permissions    string `json:"permissions"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID             string    `json:"id"`
+	OrganizationID string    `json:"organization_id"`
+	Name           string    `json:"name"`
+	Permissions    string    `json:"permissions"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type Team struct {
@@ -64,17 +65,17 @@ type Team struct {
 	OrganizationID string         `json:"organization_id"`
 	Name           string         `json:"name"`
 	Description    sql.NullString `json:"description"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 type TeamMember struct {
-	ID        string `json:"id"`
-	TeamID    string `json:"team_id"`
-	UserID    string `json:"user_id"`
-	Role      string `json:"role"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string    `json:"id"`
+	TeamID    string    `json:"team_id"`
+	UserID    string    `json:"user_id"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type User struct {
@@ -82,7 +83,7 @@ type User struct {
 	Avatar    sql.NullString `json:"avatar"`
 	Name      string         `json:"name"`
 	Email     sql.NullString `json:"email"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 	Disabled  int32          `json:"disabled"`
 }

@@ -8,6 +8,7 @@ package sqlcpostgres
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const createUser = `-- name: CreateUser :exec
@@ -21,8 +22,8 @@ type CreateUserParams struct {
 	Avatar        sql.NullString `json:"avatar"`
 	Name          string         `json:"name"`
 	Email         sql.NullString `json:"email"`
-	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 	Disabled      int32          `json:"disabled"`
 	PhoneNumber   sql.NullString `json:"phone_number"`
 	PhoneVerified int32          `json:"phone_verified"`
@@ -102,7 +103,7 @@ type UpdateUserPhoneParams struct {
 	ID            string         `json:"id"`
 	PhoneNumber   sql.NullString `json:"phone_number"`
 	PhoneVerified int32          `json:"phone_verified"`
-	UpdatedAt     string         `json:"updated_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) UpdateUserPhone(ctx context.Context, arg UpdateUserPhoneParams) error {

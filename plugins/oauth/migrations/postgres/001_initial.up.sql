@@ -11,10 +11,10 @@ CREATE TABLE IF NOT EXISTS oauth_connection (
     avatar_url TEXT,
     access_token TEXT NOT NULL,
     refresh_token TEXT,
-    expires_at TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
     provider_data TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE
 );
 

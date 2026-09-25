@@ -8,6 +8,7 @@ package sqlcpostgres
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const createUser = `-- name: CreateUser :exec
@@ -21,8 +22,8 @@ type CreateUserParams struct {
 	Avatar        sql.NullString `json:"avatar"`
 	Name          string         `json:"name"`
 	Email         sql.NullString `json:"email"`
-	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 	Disabled      int32          `json:"disabled"`
 	EmailVerified int32          `json:"email_verified"`
 }
@@ -54,8 +55,8 @@ type GetUserByEmailRow struct {
 	Avatar        sql.NullString `json:"avatar"`
 	Name          string         `json:"name"`
 	Email         sql.NullString `json:"email"`
-	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 	Disabled      int32          `json:"disabled"`
 	Email_2       sql.NullString `json:"email_2"`
 	EmailVerified int32          `json:"email_verified"`
@@ -90,8 +91,8 @@ type GetUserByIDRow struct {
 	Avatar        sql.NullString `json:"avatar"`
 	Name          string         `json:"name"`
 	Email         sql.NullString `json:"email"`
-	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 	Disabled      int32          `json:"disabled"`
 	Email_2       sql.NullString `json:"email_2"`
 	EmailVerified int32          `json:"email_verified"`
@@ -124,7 +125,7 @@ type UpdateUserEmailParams struct {
 	ID            string         `json:"id"`
 	Email         sql.NullString `json:"email"`
 	EmailVerified int32          `json:"email_verified"`
-	UpdatedAt     string         `json:"updated_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) UpdateUserEmail(ctx context.Context, arg UpdateUserEmailParams) error {

@@ -10,9 +10,9 @@ CREATE TABLE IF NOT EXISTS invitation (
     inviter_id TEXT NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
     status TEXT NOT NULL DEFAULT 'pending',
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (organization_id) REFERENCES organization(id) ON DELETE CASCADE,
     FOREIGN KEY (team_id) REFERENCES team(id) ON DELETE CASCADE,
     FOREIGN KEY (inviter_id) REFERENCES "user"(id) ON DELETE CASCADE

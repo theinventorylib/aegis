@@ -6,6 +6,7 @@ package sqlcpostgres
 
 import (
 	"database/sql"
+	"time"
 )
 
 type Session struct {
@@ -13,16 +14,16 @@ type Session struct {
 	UserID       string         `json:"user_id"`
 	Token        string         `json:"token"`
 	RefreshToken sql.NullString `json:"refresh_token"`
-	ExpiresAt    string         `json:"expires_at"`
-	CreatedAt    string         `json:"created_at"`
+	ExpiresAt    time.Time      `json:"expires_at"`
+	CreatedAt    time.Time      `json:"created_at"`
 	IpAddress    sql.NullString `json:"ip_address"`
 	UserAgent    sql.NullString `json:"user_agent"`
 }
 
 type TotpSession struct {
-	SessionID  string `json:"session_id"`
-	UserID     string `json:"user_id"`
-	VerifiedAt string `json:"verified_at"`
+	SessionID  string    `json:"session_id"`
+	UserID     string    `json:"user_id"`
+	VerifiedAt time.Time `json:"verified_at"`
 }
 
 type User struct {
@@ -30,8 +31,8 @@ type User struct {
 	Avatar      sql.NullString `json:"avatar"`
 	Name        string         `json:"name"`
 	Email       sql.NullString `json:"email"`
-	CreatedAt   string         `json:"created_at"`
-	UpdatedAt   string         `json:"updated_at"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 	Disabled    int32          `json:"disabled"`
 	TotpSecret  sql.NullString `json:"totp_secret"`
 	TotpEnabled int32          `json:"totp_enabled"`

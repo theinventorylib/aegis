@@ -6,6 +6,7 @@ package sqlcpostgres
 
 import (
 	"database/sql"
+	"time"
 )
 
 type OauthConnection struct {
@@ -18,10 +19,10 @@ type OauthConnection struct {
 	AvatarUrl      sql.NullString `json:"avatar_url"`
 	AccessToken    string         `json:"access_token"`
 	RefreshToken   sql.NullString `json:"refresh_token"`
-	ExpiresAt      string         `json:"expires_at"`
+	ExpiresAt      time.Time      `json:"expires_at"`
 	ProviderData   sql.NullString `json:"provider_data"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 type User struct {
@@ -29,7 +30,7 @@ type User struct {
 	Avatar    sql.NullString `json:"avatar"`
 	Name      string         `json:"name"`
 	Email     sql.NullString `json:"email"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 	Disabled  int32          `json:"disabled"`
 }
