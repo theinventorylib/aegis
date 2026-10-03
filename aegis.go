@@ -373,17 +373,16 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 //
 // This function registers HTTP handlers for:
 //
-// Core Routes:
+// Core Routes (mounted under {prefix}/default by default):
 //
-//	POST {prefix}/login - Email+password login (if enabled)
-//	POST {prefix}/signup - Email+password registration (if enabled)
-//	POST {prefix}/logout - Logout and invalidate session
-//	GET  {prefix}/user - Get current user data
-//	GET  {prefix}/session - Get current session info
-//	GET  {prefix}/sessions - List all user sessions
-//	POST {prefix}/session/refresh - Refresh session with refresh token
-//	DELETE {prefix}/sessions/:id - Revoke specific session
-//	DELETE {prefix}/sessions - Revoke all sessions
+//	POST {prefix}/default/login - Email+password login (if enabled)
+//	POST {prefix}/default/signup - Email+password registration (if enabled)
+//	POST {prefix}/default/logout - Logout and invalidate session
+//	GET  {prefix}/default/session - Get current session info
+//	GET  {prefix}/default/sessions - List all user sessions
+//	POST {prefix}/default/session/refresh - Refresh session with refresh token
+//	DELETE {prefix}/default/sessions/:id - Revoke specific session
+//	DELETE {prefix}/default/sessions - Revoke all sessions
 //
 // Plugin Routes:
 //
@@ -407,6 +406,8 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 //
 // Parameters:
 //   - prefix: URL prefix for all routes (e.g., "/auth", "/api/v1/auth")
+//   - opts: optional MountOptions overriding the placement of core routes
+//     and individual plugins (see WithCorePath and WithPluginPrefix)
 //
 // Example:
 //
@@ -416,14 +417,33 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 //	a.MountRoutes("/auth")      // Core routes at /auth/*
 //
 //	// Routes available:
-//	// POST /auth/login
-//	// POST /auth/signup
-//	// POST /auth/logout
-//	// GET  /auth/user
+//	// POST /auth/default/login
+//	// POST /auth/default/signup
+//	// POST /auth/default/logout
+//	// GET  /auth/default/session
 //	// POST /auth/oauth/google/login
 //	// POST /auth/jwt/token
 //	// etc.
-func (a *Aegis) MountRoutes(prefix string) {
+//
+// Route placement can be customized per call with MountOptions. This is
+// useful for plugins that are not authentication endpoints (e.g. the
+// organizations, admin and openapi plugins) so they do not have to live
+// under the auth prefix:
+//
+//	a.MountRoutes("/auth",
+//		aegis.WithCorePath(""),                       // /auth/login
+//		aegis.WithPluginPrefix("admin", "/admin"),    // /admin/*
+//		aegis.WithPluginPrefix("organizations", "/orgs"),
+//		aegis.WithPluginPrefix("openapi", "/"),       // /docs, /openapi.json
+//	)
+func (a *Aegis) MountRoutes(prefix string, opts ...MountOption) {
+	var mount mountConfig
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&mount)
+		}
+	}
+
 	// Mount core routes under the "Default" subpath with optional rate limiter
 	var coreAuth *core.AuthConfig
 	if a.config != nil {
@@ -445,15 +465,34 @@ func (a *Aegis) MountRoutes(prefix string) {
 		}
 	}
 
-	corePrefix := prefix + "/default"
-	coreRecRouter := router.NewRecorder(a.router, a.routes, "core", corePrefix, onConflict)
-	defaults.MountRoutes(coreRecRouter, a.auth, coreAuth, corePrefix, a.rateLimiter)
-
 	// Get sorted plugins for mounting
 	sortedPlugins := a.GetPlugins()
+
+	// Warn about overrides that name a plugin that isn't registered; the
+	// typo would otherwise silently have no effect.
+	if len(mount.pluginPaths) > 0 && a.config != nil && a.config.Logger != nil {
+		known := make(map[string]struct{}, len(sortedPlugins))
+		for _, p := range sortedPlugins {
+			known[p.Name()] = struct{}{}
+		}
+		for name := range mount.pluginPaths {
+			if _, ok := known[name]; !ok {
+				a.config.Logger.Info(
+					"MountRoutes: ignoring prefix override for unknown plugin",
+					"plugin", name)
+			}
+		}
+	}
+
+	// The recorders are given an empty base prefix because core and plugins
+	// pass absolute paths (directly or via Group) to the underlying router.
+	corePrefix := mount.corePrefix(prefix)
+	coreRecRouter := router.NewRecorder(a.router, a.routes, "core", "", onConflict)
+	defaults.MountRoutes(coreRecRouter, a.auth, coreAuth, corePrefix, a.rateLimiter)
+
 	for _, p := range sortedPlugins {
-		pluginPrefix := prefix + "/" + p.Name()
-		pluginRouter := router.NewRecorder(a.router, a.routes, p.Name(), pluginPrefix, onConflict)
+		pluginPrefix := mount.pluginPrefix(prefix, p.Name())
+		pluginRouter := router.NewRecorder(a.router, a.routes, p.Name(), "", onConflict)
 		p.MountRoutes(pluginRouter, pluginPrefix)
 	}
 }

@@ -137,6 +137,10 @@ func (r *ChiRouter) Use(middleware func(http.Handler) http.Handler) {
 // Implements Router.Group.
 func (r *ChiRouter) Group(path string, groupName string) aegisrouter.GroupRouter {
 	norm := aegisrouter.NormalizePath(path)
+	if norm == "" {
+		// chi's Route() panics on an empty pattern; the root group is "/".
+		norm = "/"
+	}
 	if sub, ok := r.groups[norm]; ok {
 		return &ChiGroupRouter{groupName: groupName, router: sub, groups: make(map[string]chi.Router)}
 	}
@@ -213,6 +217,10 @@ func (g *ChiGroupRouter) Use(middleware func(http.Handler) http.Handler) {
 // Uses chi's Route() so the nested group inherits this group's middleware chain.
 func (g *ChiGroupRouter) Group(path string, groupName string) aegisrouter.GroupRouter {
 	norm := aegisrouter.NormalizePath(path)
+	if norm == "" {
+		// chi's Route() panics on an empty pattern; the root group is "/".
+		norm = "/"
+	}
 	if sub, ok := g.groups[norm]; ok {
 		return &ChiGroupRouter{groupName: groupName, router: sub, groups: make(map[string]chi.Router)}
 	}
