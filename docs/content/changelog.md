@@ -1,6 +1,15 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Per-call route placement** for `Aegis.MountRoutes`: `aegis.WithCorePath(sub)` moves the core email/password + session routes (e.g. `""` for `POST /auth/login` instead of `/auth/default/login`), and `aegis.WithPluginPrefix(name, path)` moves an individual plugin off the shared prefix (absolute, relative, prefix root, or server root). Defaults are unchanged when no options are passed.
+
+### Fixed
+- `Aegis.Routes()` now reports the real mounted paths; previously group-registered routes were recorded with the mount prefix twice (e.g. `/auth/admin/auth/admin/users`).
+- The chi adapter handles an empty group prefix (`Group("")`) by routing at `/` instead of panicking, enabling server-root mounts for plugins that use groups.
+
 ## [2.1.1] - 2026-09-25
 
 ### Added
