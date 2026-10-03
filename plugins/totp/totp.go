@@ -20,7 +20,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1" //nolint:gosec // RFC 6238 mandates HMAC-SHA1 for authenticator compatibility
+	"crypto/sha1" // #nosec G505 -- RFC 6238 mandates HMAC-SHA1 for authenticator compatibility
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/binary"
@@ -428,7 +428,7 @@ func (p *Plugin) validCode(secret, code string, now time.Time) bool {
 		if unix < 0 {
 			continue
 		}
-		want, err := hotp(secret, uint64(unix/int64(p.period.Seconds())), p.digits) //nolint:gosec // unix >= 0 checked above
+		want, err := hotp(secret, uint64(unix/int64(p.period.Seconds())), p.digits) // #nosec G115 -- unix >= 0 checked above
 		if err != nil {
 			return false
 		}
