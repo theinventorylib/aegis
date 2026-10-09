@@ -10,7 +10,7 @@ require (
 	github.com/lestrrat-go/jwx/v3 v3.3.0
 	github.com/markbates/goth v1.82.0
 	github.com/nyaruka/phonenumbers v1.8.1
-	github.com/oklog/ulid/v2 v2.1.1
+	github.com/oklog/ulid/v2 v2.1.2
 	github.com/redis/go-redis/v9 v9.19.0
 	golang.org/x/crypto v0.57.0
 )
