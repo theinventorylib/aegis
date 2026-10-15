@@ -54,6 +54,17 @@ type MemberPermissionOverride struct {
 	UpdatedAt      string `json:"updated_at"`
 }
 
+type MemberRoleAssignment struct {
+	ID             string `json:"id"`
+	OrganizationID string `json:"organization_id"`
+	UserID         string `json:"user_id"`
+	Role           string `json:"role"`
+	ScopeType      string `json:"scope_type"`
+	ScopeID        string `json:"scope_id"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+}
+
 type Organization struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`

@@ -47,6 +47,10 @@ type organizationRoleRow struct {
 	ID, OrganizationID, Name, Permissions, CreatedAt, UpdatedAt string
 }
 
+type roleAssignmentRow struct {
+	ID, OrganizationID, UserID, Role, ScopeType, ScopeID, CreatedAt, UpdatedAt string
+}
+
 // listOrgRow is the reduced row returned by ListUserOrganizations
 // (same fields as orgRow but kept separate for clarity).
 type listOrgRow = orgRow
@@ -112,4 +116,11 @@ type querier interface {
 	updateOrganizationRole(ctx context.Context, orgID, name, permissions, updatedAt string) error
 	deleteOrganizationRole(ctx context.Context, orgID, name string) error
 	countOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int64, error)
+
+	// Member role assignment queries
+	createMemberRoleAssignment(ctx context.Context, id, orgID, userID, role, scopeType, scopeID, createdAt, updatedAt string) error
+	listMemberRoleAssignments(ctx context.Context, orgID, userID string) ([]roleAssignmentRow, error)
+	deleteMemberRoleAssignment(ctx context.Context, orgID, userID, id string) (int64, error)
+	deleteMemberRoleAssignments(ctx context.Context, orgID, userID string) error
+	countMemberRoleAssignmentsWithRole(ctx context.Context, orgID, role string) (int64, error)
 }

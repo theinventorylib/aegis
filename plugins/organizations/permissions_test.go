@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	orgtypes "github.com/theinventorylib/aegis/v2/plugins/organizations/types"
 )
@@ -18,13 +20,50 @@ type fakeStore struct {
 	overrides       []orgtypes.MemberPermissionOverride
 	customRoles     map[string]orgtypes.OrganizationRole
 	roleMemberCount int
+	assignments     []orgtypes.RoleAssignment
+	assignmentsErr  error
 }
 
-func (f *fakeStore) GetMember(_ context.Context, _, _ string) (orgtypes.Member, error) {
+func (f *fakeStore) GetMember(_ context.Context, userID, orgID string) (orgtypes.Member, error) {
 	if f.memberOrgRole == "" {
 		return orgtypes.Member{}, sql.ErrNoRows
 	}
-	return orgtypes.Member{Role: f.memberOrgRole}, nil
+	return orgtypes.Member{ID: "m1", UserID: userID, OrganizationID: orgID, Role: f.memberOrgRole}, nil
+}
+
+func (f *fakeStore) UpdateMemberRole(_ context.Context, _, _, role string, _ time.Time) error {
+	f.memberOrgRole = role
+	return nil
+}
+
+func (f *fakeStore) ListMemberRoleAssignments(_ context.Context, _, _ string) ([]orgtypes.RoleAssignment, error) {
+	if f.assignmentsErr != nil {
+		return nil, f.assignmentsErr
+	}
+	return f.assignments, nil
+}
+
+func (f *fakeStore) CreateMemberRoleAssignment(_ context.Context, id, orgID, userID, role, scopeType, scopeID string, createdAt, updatedAt time.Time) error {
+	var scope *orgtypes.Scope
+	if scopeType != "" || scopeID != "" {
+		scope = &orgtypes.Scope{Type: scopeType, ID: scopeID}
+	}
+	f.assignments = append(f.assignments, orgtypes.RoleAssignment{
+		ID: id, OrganizationID: orgID, UserID: userID, Role: role,
+		Scope:     scope,
+		CreatedAt: createdAt, UpdatedAt: updatedAt,
+	})
+	return nil
+}
+
+func (f *fakeStore) DeleteMemberRoleAssignment(_ context.Context, _, _, id string) error {
+	for i, a := range f.assignments {
+		if a.ID == id {
+			f.assignments = append(f.assignments[:i], f.assignments[i+1:]...)
+			return nil
+		}
+	}
+	return sql.ErrNoRows
 }
 
 func (f *fakeStore) GetTeamMember(_ context.Context, _, _ string) (orgtypes.TeamMember, error) {
@@ -460,5 +499,370 @@ func TestSetMemberPermissionOverrides(t *testing.T) {
 	nonMember := New(nil, &fakeStore{})
 	if err := nonMember.SetMemberPermissionOverrides(ctx, "o1", "u1", nil); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("non-member: got %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestUngrantableRole(t *testing.T) {
+	ctx := context.Background()
+	p := New(&Config{OrgRoles: map[string]RoleDefinition{
+		"superadmin": {Permissions: []Permission{PermOrgView, PermOrgDelete}},
+	}}, &fakeStore{memberOrgRole: orgtypes.RoleAdmin})
+
+	// An admin cannot assign a role carrying org:delete...
+	if bad, err := p.ungrantableOrgRole(ctx, "u1", "o1", "superadmin"); err != nil || bad != PermOrgDelete {
+		t.Fatalf("org role carrying org:delete: bad=%q err=%v, want %q", bad, err, PermOrgDelete)
+	}
+	// ...but roles within the actor's own authority are assignable.
+	if bad, err := p.ungrantableOrgRole(ctx, "u1", "o1", orgtypes.RoleAdmin); err != nil || bad != "" {
+		t.Fatalf("role within authority: bad=%q err=%v, want grantable", bad, err)
+	}
+
+	// An org admin holds the team permissions, so team roles are grantable
+	// even without a team membership.
+	if bad, err := p.ungrantableTeamRoleOnTeam(ctx, "u1", "o1", "team-1", orgtypes.RoleTeamLead); err != nil || bad != "" {
+		t.Fatalf("team role within org authority: bad=%q err=%v, want grantable", bad, err)
+	}
+
+	// A team lead's authority is their org role plus their team role: they can
+	// keep granting roles within it...
+	lead := New(&Config{TeamRoles: map[string]RoleDefinition{
+		"co-lead": {Permissions: []Permission{PermTeamManage}},
+	}}, &fakeStore{memberOrgRole: orgtypes.RoleMember, teamRole: orgtypes.RoleTeamLead})
+	if bad, err := lead.ungrantableTeamRoleOnTeam(ctx, "u1", "o1", "team-1", orgtypes.RoleTeamLead); err != nil || bad != "" {
+		t.Fatalf("team lead granting lead: bad=%q err=%v, want grantable", bad, err)
+	}
+	// ...but not a team role carrying a permission they do not hold.
+	if bad, err := lead.ungrantableTeamRoleOnTeam(ctx, "u1", "o1", "team-1", "co-lead"); err != nil || bad != PermTeamManage {
+		t.Fatalf("team lead granting co-lead: bad=%q err=%v, want %q", bad, err, PermTeamManage)
+	}
+
+	// The owner holds org:delete, so the same role is grantable by them.
+	owner := New(nil, &fakeStore{memberOrgRole: orgtypes.RoleOwner})
+	if bad, err := owner.ungrantableOrgRole(ctx, "u1", "o1", "superadmin"); err != nil || bad != "" {
+		t.Fatalf("owner assigning superadmin: bad=%q err=%v, want grantable", bad, err)
+	}
+}
+
+func TestHasOrgPermissionOn(t *testing.T) {
+	ctx := context.Background()
+	grant := func(perm Permission) []orgtypes.MemberPermissionOverride {
+		return []orgtypes.MemberPermissionOverride{{Permission: string(perm), Effect: orgtypes.PermissionEffectGrant}}
+	}
+	deny := func(perm Permission) []orgtypes.MemberPermissionOverride {
+		return []orgtypes.MemberPermissionOverride{{Permission: string(perm), Effect: orgtypes.PermissionEffectDeny}}
+	}
+	scoped := func(role, typ, id string) []orgtypes.RoleAssignment {
+		return []orgtypes.RoleAssignment{{ID: "a1", Role: role, Scope: &orgtypes.Scope{Type: typ, ID: id}}}
+	}
+	unscoped := func(role string) []orgtypes.RoleAssignment {
+		return []orgtypes.RoleAssignment{{ID: "a2", Role: role}}
+	}
+
+	cases := []struct {
+		name           string
+		role           string
+		assignments    []orgtypes.RoleAssignment
+		assignmentsErr error
+		overrides      []orgtypes.MemberPermissionOverride
+		scopeType      string
+		scopeID        string
+		perm           Permission
+		want           bool
+	}{
+		{name: "unscoped role answers every scope", role: orgtypes.RoleAdmin, scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: true},
+		{name: "scoped assignment answers its scope", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: true},
+		{name: "scoped assignment ignored outside its scope", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), scopeType: "campus", scopeID: "c2", perm: PermMemberManage, want: false},
+		{name: "scope type must match", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), scopeType: "service", scopeID: "c1", perm: PermMemberManage, want: false},
+		{name: "scoped role must grant the permission", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), scopeType: "campus", scopeID: "c1", perm: PermOrgDelete, want: false},
+		{name: "deny override beats a scoped grant", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), overrides: deny(PermMemberManage), scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: false},
+		{name: "grant override applies", role: orgtypes.RoleMember, overrides: grant(PermMemberManage), scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: true},
+		{name: "scoped assignments do not answer the unscoped check", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), perm: PermMemberManage, want: false},
+		{name: "additional org-wide assignment answers the unscoped check", role: orgtypes.RoleMember, assignments: unscoped("campus-pastor"), perm: PermMemberManage, want: true},
+		{name: "additional org-wide assignment answers any scope", role: orgtypes.RoleMember, assignments: unscoped("campus-pastor"), scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: true},
+		{name: "non-member has no reach", assignments: scoped("campus-pastor", "campus", "c1"), scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: false},
+		{name: "no-rows assignment listing means no scoped grant", role: orgtypes.RoleMember, assignmentsErr: sql.ErrNoRows, scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := New(&Config{OrgRoles: map[string]RoleDefinition{
+				"campus-pastor": {Permissions: []Permission{PermOrgView, PermMemberManage}},
+			}}, &fakeStore{memberOrgRole: tc.role, assignments: tc.assignments, assignmentsErr: tc.assignmentsErr, overrides: tc.overrides})
+			got, err := p.HasOrgPermissionOn(ctx, "u1", "o1", tc.perm, tc.scopeType, tc.scopeID)
+			if err != nil {
+				t.Fatalf("HasOrgPermissionOn: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("HasOrgPermissionOn(%s @ %s/%s) = %v, want %v", tc.perm, tc.scopeType, tc.scopeID, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRoleAssignmentAPI(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{memberOrgRole: orgtypes.RoleMember}
+	p := New(nil, store)
+
+	// A nil scope replaces the organization-wide role.
+	if err := p.AssignRole(ctx, "o1", "u1", orgtypes.RoleAdmin, nil); err != nil {
+		t.Fatalf("assign unscoped: %v", err)
+	}
+	if store.memberOrgRole != orgtypes.RoleAdmin {
+		t.Fatalf("unscoped role = %q, want admin", store.memberOrgRole)
+	}
+
+	// A scoped assignment is stored with its opaque scope.
+	if err := p.AssignRole(ctx, "o1", "u1", "campus-pastor", &orgtypes.Scope{Type: "campus", ID: "c1"}); err != nil {
+		t.Fatalf("assign scoped: %v", err)
+	}
+	if len(store.assignments) != 1 {
+		t.Fatalf("assignments = %d, want 1", len(store.assignments))
+	}
+	a := store.assignments[0]
+	if a.ID == "" || a.OrganizationID != "o1" || a.UserID != "u1" || a.Role != "campus-pastor" ||
+		a.Scope == nil || a.Scope.Type != "campus" || a.Scope.ID != "c1" || a.CreatedAt.IsZero() || a.UpdatedAt.IsZero() {
+		t.Fatalf("assignment not filled in: %+v", a)
+	}
+
+	// Assigning the same role and scope again is idempotent.
+	if err := p.AssignRole(ctx, "o1", "u1", "campus-pastor", &orgtypes.Scope{Type: "campus", ID: "c1"}); err != nil {
+		t.Fatalf("re-assign scoped: %v", err)
+	}
+	if len(store.assignments) != 1 {
+		t.Fatalf("assignments after re-assign = %d, want 1", len(store.assignments))
+	}
+
+	// List returns the organization-wide assignment first, then scoped ones.
+	list, err := p.ListRoleAssignments(ctx, "o1", "u1")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list) != 2 || list[0].Scope != nil || list[0].Role != orgtypes.RoleAdmin || list[0].ID != "m1" || !list[0].Primary || list[1].Primary || list[1].ID != a.ID {
+		t.Fatalf("list = %+v, want [primary admin, scoped %s]", list, a.ID)
+	}
+
+	// Remove drops the scoped assignment.
+	if err := p.RemoveRoleAssignment(ctx, "o1", "u1", a.ID); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if len(store.assignments) != 0 {
+		t.Fatalf("assignments after remove = %d, want 0", len(store.assignments))
+	}
+}
+
+func TestRoleAssignmentAPIValidation(t *testing.T) {
+	ctx := context.Background()
+	p := New(nil, &fakeStore{memberOrgRole: orgtypes.RoleMember})
+
+	// A scope missing either half is rejected before anything is written.
+	if err := p.AssignRole(ctx, "o1", "u1", "campus-pastor", &orgtypes.Scope{Type: "campus"}); err == nil {
+		t.Fatal("scope without an id must be rejected")
+	}
+	// Scopes longer than the cross-dialect limit are rejected too.
+	if err := p.AssignRole(ctx, "o1", "u1", "campus-pastor", &orgtypes.Scope{Type: "campus", ID: strings.Repeat("x", maxScopeLen+1)}); err == nil {
+		t.Fatal("over-long scope id must be rejected")
+	}
+
+	// Removing an unknown (or primary) ID surfaces sql.ErrNoRows.
+	if err := p.RemoveRoleAssignment(ctx, "o1", "u1", "missing"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("remove unknown: got %v, want sql.ErrNoRows", err)
+	}
+
+	// Assignments require membership, on both paths.
+	if err := New(nil, &fakeStore{}).AssignRole(ctx, "o1", "u1", "member", &orgtypes.Scope{Type: "campus", ID: "c1"}); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("non-member scoped assign: got %v, want sql.ErrNoRows", err)
+	}
+	if err := New(nil, &fakeStore{}).AssignRole(ctx, "o1", "u1", orgtypes.RoleMember, nil); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("non-member unscoped assign: got %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestAddRoleAssignmentAndUnscopedReach(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{memberOrgRole: orgtypes.RoleMember}
+	p := New(&Config{OrgRoles: map[string]RoleDefinition{
+		"finance-admin": {Permissions: []Permission{PermOrgView, PermOrgManage}},
+	}}, store)
+
+	// Adding the membership's current primary role organization-wide is a
+	// no-op: the member already holds it.
+	if err := p.AddRoleAssignment(ctx, "o1", "u1", orgtypes.RoleMember, nil); err != nil {
+		t.Fatalf("add primary role: %v", err)
+	}
+	if len(store.assignments) != 0 {
+		t.Fatalf("assignments = %d, want 0 (primary role already grants it)", len(store.assignments))
+	}
+
+	// An additional organization-wide assignment...
+	if err := p.AddRoleAssignment(ctx, "o1", "u1", "finance-admin", nil); err != nil {
+		t.Fatalf("add unscoped: %v", err)
+	}
+	if len(store.assignments) != 1 || store.assignments[0].Scope != nil {
+		t.Fatalf("assignments = %+v, want one with nil scope", store.assignments)
+	}
+	// ...is idempotent...
+	if err := p.AddRoleAssignment(ctx, "o1", "u1", "finance-admin", nil); err != nil {
+		t.Fatalf("re-add unscoped: %v", err)
+	}
+	if len(store.assignments) != 1 {
+		t.Fatalf("assignments after re-add = %d, want 1", len(store.assignments))
+	}
+	// ...a scoped add is the same thing with a scope...
+	if err := p.AddRoleAssignment(ctx, "o1", "u1", "campus-pastor", &orgtypes.Scope{Type: "campus", ID: "c1"}); err != nil {
+		t.Fatalf("add scoped: %v", err)
+	}
+	if len(store.assignments) != 2 || store.assignments[1].Scope == nil {
+		t.Fatalf("assignments = %+v, want a second scoped entry", store.assignments)
+	}
+
+	// ...entitles the member organization-wide even though the primary role
+	// does not...
+	ok, err := p.HasOrgPermission(ctx, "u1", "o1", PermOrgManage)
+	if err != nil || !ok {
+		t.Fatalf("HasOrgPermission(org:manage) = %v, %v; want true", ok, err)
+	}
+	// ...answers every scope...
+	ok, err = p.HasOrgPermissionOn(ctx, "u1", "o1", PermOrgManage, "campus", "c1")
+	if err != nil || !ok {
+		t.Fatalf("HasOrgPermissionOn(org:manage @ campus/c1) = %v, %v; want true", ok, err)
+	}
+	// ...and appears in the effective permission set.
+	perms, err := p.GetMemberPermissions(ctx, "o1", "u1")
+	if err != nil {
+		t.Fatalf("GetMemberPermissions: %v", err)
+	}
+	found := false
+	for _, perm := range perms.Permissions {
+		if perm == PermOrgManage {
+			found = true
+		}
+	}
+	if !found || perms.Role != orgtypes.RoleMember {
+		t.Fatalf("effective perms = %+v (role %q), want org:manage included and primary role untouched", perms.Permissions, perms.Role)
+	}
+
+	// The listing marks the membership entry as primary.
+	list, err := p.ListRoleAssignments(ctx, "o1", "u1")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list) != 3 || !list[0].Primary || list[0].Scope != nil || list[1].Scope != nil || list[1].Primary || list[2].Scope == nil {
+		t.Fatalf("list = %+v, want [primary, unscoped extra, scoped extra]", list)
+	}
+
+	// The reserved owner role cannot be granted through either API.
+	if err := p.AddRoleAssignment(ctx, "o1", "u1", orgtypes.RoleOwner, nil); !errors.Is(err, ErrOwnerNotAssignable) {
+		t.Fatalf("add owner: got %v, want ErrOwnerNotAssignable", err)
+	}
+	if err := p.AssignRole(ctx, "o1", "u1", orgtypes.RoleOwner, &orgtypes.Scope{Type: "campus", ID: "c1"}); !errors.Is(err, ErrOwnerNotAssignable) {
+		t.Fatalf("assign owner scoped: got %v, want ErrOwnerNotAssignable", err)
+	}
+
+	// Non-members cannot receive assignments.
+	if err := New(nil, &fakeStore{}).AddRoleAssignment(ctx, "o1", "u1", "member", nil); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("non-member add: got %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestPermissionCatalog(t *testing.T) {
+	p := New(&Config{Permissions: map[Permission]PermissionDefinition{
+		"billing:view":    {Description: "View invoices", Module: "billing"},
+		"billing:approve": {Description: "Approve invoices", Module: "billing", Sensitive: true},
+	}}, &fakeStore{})
+
+	byPerm := map[Permission]PermissionInfo{}
+	for _, info := range p.PermissionCatalog() {
+		byPerm[info.Permission] = info
+	}
+	if len(byPerm) != len(frameworkPermissions)+2 {
+		t.Fatalf("catalog size = %d, want %d", len(byPerm), len(frameworkPermissions)+2)
+	}
+	if info := byPerm[PermOrgDelete]; !info.Framework || !info.Sensitive {
+		t.Errorf("framework permission = %+v, want Framework and Sensitive", info)
+	}
+	if info := byPerm["billing:view"]; info.Framework || info.Sensitive || info.Module != "billing" || info.Description != "View invoices" {
+		t.Errorf("app permission = %+v", info)
+	}
+	if info := byPerm["billing:approve"]; !info.Sensitive {
+		t.Errorf("sensitive app permission not flagged: %+v", info)
+	}
+
+	// Registering a framework permission supplies metadata without changing
+	// its flags.
+	p2 := New(&Config{Permissions: map[Permission]PermissionDefinition{
+		PermOrgView: {Description: "See the org", Module: "core"},
+	}}, &fakeStore{})
+	for _, info := range p2.PermissionCatalog() {
+		if info.Permission != PermOrgView {
+			continue
+		}
+		if !info.Framework || !info.Sensitive || info.Module != "core" || info.Description != "See the org" {
+			t.Errorf("registered framework entry = %+v", info)
+		}
+	}
+}
+
+func TestPermissionCatalogValidation(t *testing.T) {
+	ctx := context.Background()
+
+	// Without a catalog every permission string is accepted (unchanged).
+	open := New(nil, &fakeStore{memberOrgRole: orgtypes.RoleOwner})
+	if _, err := open.CreateRole(ctx, "o1", "custom", []Permission{"anything:goes"}); err != nil {
+		t.Fatalf("no catalog: %v", err)
+	}
+
+	cfg := &Config{Permissions: map[Permission]PermissionDefinition{
+		"billing:view":    {Module: "billing"},
+		"billing:approve": {Module: "billing", Sensitive: true},
+	}}
+	p := New(cfg, &fakeStore{memberOrgRole: orgtypes.RoleOwner})
+
+	if _, err := p.CreateRole(ctx, "o1", "custom", []Permission{"billing:view", "ghost"}); !errors.Is(err, ErrUnknownPermission) {
+		t.Fatalf("create role with unknown permission: got %v, want ErrUnknownPermission", err)
+	}
+	if _, err := p.UpdateRole(ctx, "o1", "billing", []Permission{"ghost"}); !errors.Is(err, ErrUnknownPermission) {
+		t.Fatalf("update role with unknown permission: got %v, want ErrUnknownPermission", err)
+	}
+	if err := p.SetMemberPermissionOverrides(ctx, "o1", "u1", []orgtypes.MemberPermissionOverride{
+		{Permission: "ghost", Effect: orgtypes.PermissionEffectGrant},
+	}); !errors.Is(err, ErrUnknownPermission) {
+		t.Fatalf("override with unknown permission: got %v, want ErrUnknownPermission", err)
+	}
+	// Framework and cataloged permissions are accepted.
+	if _, err := p.CreateRole(ctx, "o1", "billing", []Permission{PermOrgView, "billing:approve"}); err != nil {
+		t.Fatalf("known permissions: %v", err)
+	}
+}
+
+func TestSensitivePermissionIsCapped(t *testing.T) {
+	ctx := context.Background()
+	cfg := &Config{
+		Permissions: map[Permission]PermissionDefinition{
+			"billing:approve": {Sensitive: true},
+			"billing:view":    {},
+			PermOrgDelete:     {}, // cannot loosen a framework permission
+		},
+		OrgRoles: map[string]RoleDefinition{
+			"billing-holder": {Permissions: []Permission{"billing:approve"}},
+		},
+	}
+	admin := New(cfg, &fakeStore{memberOrgRole: orgtypes.RoleAdmin})
+
+	// A sensitive app permission is capped like a framework one.
+	if bad, err := admin.ungrantablePermission(ctx, "u1", "o1", []Permission{"billing:approve"}); err != nil || bad != "billing:approve" {
+		t.Fatalf("sensitive permission: bad=%q err=%v, want capped", bad, err)
+	}
+	// Non-sensitive app permissions stay uncapped.
+	if bad, err := admin.ungrantablePermission(ctx, "u1", "o1", []Permission{"billing:view"}); err != nil || bad != "" {
+		t.Fatalf("plain app permission: bad=%q err=%v, want grantable", bad, err)
+	}
+	// Registering a framework permission never loosens its cap.
+	if bad, err := admin.ungrantablePermission(ctx, "u1", "o1", []Permission{PermOrgDelete}); err != nil || bad != PermOrgDelete {
+		t.Fatalf("framework permission: bad=%q err=%v, want capped", bad, err)
+	}
+	// A member holding the sensitive permission may grant it.
+	holder := New(cfg, &fakeStore{memberOrgRole: "billing-holder"})
+	if bad, err := holder.ungrantablePermission(ctx, "u1", "o1", []Permission{"billing:approve"}); err != nil || bad != "" {
+		t.Fatalf("holder granting sensitive permission: bad=%q err=%v, want grantable", bad, err)
 	}
 }

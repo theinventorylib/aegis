@@ -589,10 +589,11 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 }
 
 const updateAccount = `-- name: UpdateAccount :exec
-UPDATE accounts SET access_token = ?, refresh_token = ?, expires_at = ?, updated_at = ? WHERE id = ?
+UPDATE accounts SET password_hash = COALESCE(?, password_hash), access_token = ?, refresh_token = ?, expires_at = ?, updated_at = ? WHERE id = ?
 `
 
 type UpdateAccountParams struct {
+	PasswordHash sql.NullString `json:"password_hash"`
 	AccessToken  sql.NullString `json:"access_token"`
 	RefreshToken sql.NullString `json:"refresh_token"`
 	ExpiresAt    sql.NullString `json:"expires_at"`
@@ -602,12 +603,28 @@ type UpdateAccountParams struct {
 
 func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) error {
 	_, err := q.db.ExecContext(ctx, updateAccount,
+		arg.PasswordHash,
 		arg.AccessToken,
 		arg.RefreshToken,
 		arg.ExpiresAt,
 		arg.UpdatedAt,
 		arg.ID,
 	)
+	return err
+}
+
+const updateAccountPassword = `-- name: UpdateAccountPassword :exec
+UPDATE accounts SET password_hash = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateAccountPasswordParams struct {
+	PasswordHash sql.NullString `json:"password_hash"`
+	UpdatedAt    string         `json:"updated_at"`
+	ID           string         `json:"id"`
+}
+
+func (q *Queries) UpdateAccountPassword(ctx context.Context, arg UpdateAccountPasswordParams) error {
+	_, err := q.db.ExecContext(ctx, updateAccountPassword, arg.PasswordHash, arg.UpdatedAt, arg.ID)
 	return err
 }
 

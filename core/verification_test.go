@@ -63,7 +63,16 @@ func (m *mockVerificationStore) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-func (m *mockVerificationStore) CleanupExpired(_ context.Context) error { return nil }
+func (m *mockVerificationStore) CleanupExpired(_ context.Context) error {
+	now := time.Now()
+	for k, v := range m.byTok {
+		if now.After(v.ExpiresAt) {
+			delete(m.byTok, k)
+			delete(m.byID, v.ID)
+		}
+	}
+	return nil
+}
 
 func newTestVerificationService() (*VerificationService, *mockVerificationStore) {
 	store := newMockVerificationStore()
@@ -147,5 +156,32 @@ func TestCreateVerificationCustomToken(t *testing.T) {
 	}
 	if _, err := svc.ValidateVerificationFor(ctx, "+15551234567", "otp", code); err != nil {
 		t.Fatalf("scoped validate: %v", err)
+	}
+}
+
+// TestVerificationServiceCleanupExpired pins the wiring behind
+// VerificationService.CleanupExpired: expired tokens are removed, live ones
+// survive.
+func TestVerificationServiceCleanupExpired(t *testing.T) {
+	svc, store := newTestVerificationService()
+	ctx := context.Background()
+
+	expired, err := svc.CreateVerification(ctx, "user@example.com", "reset", -time.Hour, nil)
+	if err != nil {
+		t.Fatalf("create expired: %v", err)
+	}
+	live, err := svc.CreateVerification(ctx, "user@example.com", "email", time.Hour, nil)
+	if err != nil {
+		t.Fatalf("create live: %v", err)
+	}
+
+	if err := svc.CleanupExpired(ctx); err != nil {
+		t.Fatalf("CleanupExpired: %v", err)
+	}
+	if _, err := store.GetByToken(ctx, hashTokenHex(expired.Token)); err == nil {
+		t.Error("expired verification still present after cleanup")
+	}
+	if _, err := store.GetByToken(ctx, hashTokenHex(live.Token)); err != nil {
+		t.Errorf("live verification was removed by cleanup: %v", err)
 	}
 }

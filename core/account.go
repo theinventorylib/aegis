@@ -119,6 +119,8 @@ func (s *AccountService) CreateAccount(ctx context.Context, account auth.Account
 }
 
 // UpdatePassword changes a user's password and invalidates existing sessions.
+// Recovery flows should call ResetPassword instead, which records
+// AuditEventPasswordReset in place of AuditEventPasswordChanged.
 //
 // Security considerations:
 //   - The new password is hashed with Argon2id before storage.
@@ -139,6 +141,22 @@ func (s *AccountService) CreateAccount(ctx context.Context, account auth.Account
 //     account in the dangerous half-rotated state where the password
 //     changed but old sessions remain valid.
 func (s *AccountService) UpdatePassword(ctx context.Context, userID, newPassword string) error {
+	return s.updatePassword(ctx, AuditEventPasswordChanged, userID, newPassword)
+}
+
+// ResetPassword performs the same account and session changes as
+// UpdatePassword — identical password policy, hashing, session purge, and
+// atomicity guarantees — and differs only in the audit event recorded on
+// success: AuditEventPasswordReset instead of AuditEventPasswordChanged.
+// Call it from password-recovery flows once the user's control of the
+// account identifier (reset token, OTP) has been verified.
+func (s *AccountService) ResetPassword(ctx context.Context, userID, newPassword string) error {
+	return s.updatePassword(ctx, AuditEventPasswordReset, userID, newPassword)
+}
+
+// updatePassword is the shared implementation behind UpdatePassword and
+// ResetPassword; event selects the audit event recorded on success.
+func (s *AccountService) updatePassword(ctx context.Context, event AuditEventType, userID, newPassword string) error {
 	if err := validatePassword(newPassword, s.authConfig.PasswordPolicy); err != nil {
 		return err
 	}
@@ -193,8 +211,20 @@ func (s *AccountService) UpdatePassword(ctx context.Context, userID, newPassword
 		}
 	}
 
-	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventPasswordChanged, userID, true, nil)
+	logAuthEvent(ctx, s.logger, s.auditLogger, event, userID, true, nil)
 	return nil
+}
+
+// writePasswordHash persists account.PasswordHash, preferring the optional
+// PasswordHashUpdater capability so a password write touches only the hash
+// column and cannot clobber tokens written by a concurrent OAuth refresh.
+// The default SQL stores expose the capability; custom stores without it fall
+// back to the full-row Update.
+func writePasswordHash(ctx context.Context, store auth.AccountStore, account auth.Account) error {
+	if updater, ok := store.(auth.PasswordHashUpdater); ok {
+		return updater.UpdatePasswordHash(ctx, account.ID, account.PasswordHash)
+	}
+	return store.Update(ctx, account)
 }
 
 // updatePasswordTx runs the account update + session purge in a single
@@ -207,7 +237,7 @@ func (s *AccountService) updatePasswordTx(ctx context.Context, account auth.Acco
 	// Rollback after Commit is a no-op, so this defer is always safe.
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck
 
-	if err := tx.AccountStore().Update(ctx, account); err != nil {
+	if err := writePasswordHash(ctx, tx.AccountStore(), account); err != nil {
 		return err
 	}
 	if err := tx.SessionStore().DeleteByUserID(ctx, userID); err != nil {
@@ -225,7 +255,7 @@ func (s *AccountService) updatePasswordTx(ctx context.Context, account auth.Acco
 // so the account is not left half-rotated, and we always return the
 // original error to the caller.
 func (s *AccountService) updatePasswordSequential(ctx context.Context, account auth.Account, previousHash, userID string) error {
-	if err := s.accountStore.Update(ctx, account); err != nil {
+	if err := writePasswordHash(ctx, s.accountStore, account); err != nil {
 		return err
 	}
 	if err := s.sessionStore.DeleteByUserID(ctx, userID); err != nil {
@@ -235,7 +265,7 @@ func (s *AccountService) updatePasswordSequential(ctx context.Context, account a
 		// purge failed; we must surface the session-purge error.
 		account.PasswordHash = previousHash
 		account.UpdatedAt = time.Now()
-		if restoreErr := s.accountStore.Update(ctx, account); restoreErr != nil {
+		if restoreErr := writePasswordHash(ctx, s.accountStore, account); restoreErr != nil {
 			s.logger.Error("account: failed to roll back password after session-purge failure",
 				"user_id", userID, "session_purge_error", err, "restore_error", restoreErr)
 		}

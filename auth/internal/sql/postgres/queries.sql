@@ -34,7 +34,10 @@ SELECT id, user_id, provider, provider_account_id, password_hash, access_token, 
 SELECT id, user_id, provider, provider_account_id, password_hash, access_token, refresh_token, expires_at, created_at, updated_at FROM accounts WHERE provider = $1 AND provider_account_id = $2;
 
 -- name: UpdateAccount :exec
-UPDATE accounts SET access_token = $2, refresh_token = $3, expires_at = $4, updated_at = $5 WHERE id = $1;
+UPDATE accounts SET password_hash = COALESCE(sqlc.narg('password_hash'), password_hash), access_token = sqlc.narg('access_token'), refresh_token = sqlc.narg('refresh_token'), expires_at = sqlc.narg('expires_at'), updated_at = sqlc.arg('updated_at') WHERE id = sqlc.arg('id');
+
+-- name: UpdateAccountPassword :exec
+UPDATE accounts SET password_hash = sqlc.narg('password_hash'), updated_at = sqlc.arg('updated_at') WHERE id = sqlc.arg('id');
 
 -- name: DeleteAccount :exec
 DELETE FROM accounts WHERE id = $1;

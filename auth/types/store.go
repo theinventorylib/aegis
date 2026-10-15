@@ -65,11 +65,41 @@ type AccountStore interface {
 
 	// Update modifies an existing account's data (e.g., updating OAuth tokens).
 	// Returns an error if the account does not exist.
+	//
+	// Implementations MUST persist a non-empty PasswordHash: password changes
+	// and resets route through this interface, and a store that drops the
+	// field reports success while the previous password keeps working. The
+	// default SQL store treats an empty PasswordHash as "leave the stored
+	// hash unchanged" so partial updates cannot wipe credentials; custom
+	// stores should do the same, or expose the PasswordHashUpdater
+	// capability, which the core services prefer for password writes.
+	//
+	// Update is a last-write-wins replacement of the mutable fields, not a
+	// merge: callers should load the account, modify it, and save it back,
+	// and must not save an account captured before a concurrent password
+	// change if they intend to preserve that change.
 	Update(ctx context.Context, account Account) error
 
 	// Delete removes an account from storage.
 	// Returns an error if the account does not exist.
 	Delete(ctx context.Context, id string) error
+}
+
+// PasswordHashUpdater is an optional capability that AccountStore
+// implementations may expose to rotate or clear a single account's password
+// hash without rewriting the rest of the row. Full-row Update is a
+// last-write-wins replacement, so on a row that also carries OAuth tokens it
+// would write the tokens captured at load time over any refresh that happened
+// in between; this capability confines a password rotation to the hash.
+//
+// The core AccountService (UpdatePassword / ResetPassword) prefers this
+// capability when present and falls back to AccountStore.Update otherwise.
+// The default SQL stores implement it.
+type PasswordHashUpdater interface {
+	// UpdatePasswordHash replaces the stored password hash for accountID and
+	// bumps the account's updated_at. An empty passwordHash clears the
+	// stored hash, leaving the account without password login.
+	UpdatePasswordHash(ctx context.Context, accountID, passwordHash string) error
 }
 
 // VerificationStore defines the interface for verification token storage operations.

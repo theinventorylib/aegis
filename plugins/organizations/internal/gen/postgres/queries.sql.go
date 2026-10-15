@@ -30,6 +30,24 @@ func (q *Queries) CountInvitations(ctx context.Context, arg CountInvitationsPara
 	return count, err
 }
 
+const countMemberRoleAssignmentsWithRole = `-- name: CountMemberRoleAssignmentsWithRole :one
+
+SELECT COUNT(*) FROM member_role_assignment WHERE organization_id = $1 AND role = $2
+`
+
+type CountMemberRoleAssignmentsWithRoleParams struct {
+	OrganizationID string `json:"organization_id"`
+	Role           string `json:"role"`
+}
+
+// Member role assignment queries
+func (q *Queries) CountMemberRoleAssignmentsWithRole(ctx context.Context, arg CountMemberRoleAssignmentsWithRoleParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countMemberRoleAssignmentsWithRole, arg.OrganizationID, arg.Role)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countOrganizationMembers = `-- name: CountOrganizationMembers :one
 SELECT COUNT(*) FROM members WHERE organization_id = $1
 `
@@ -187,6 +205,36 @@ func (q *Queries) CreateMemberPermissionOverride(ctx context.Context, arg Create
 	return err
 }
 
+const createMemberRoleAssignment = `-- name: CreateMemberRoleAssignment :exec
+INSERT INTO member_role_assignment (id, organization_id, user_id, role, scope_type, scope_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`
+
+type CreateMemberRoleAssignmentParams struct {
+	ID             string    `json:"id"`
+	OrganizationID string    `json:"organization_id"`
+	UserID         string    `json:"user_id"`
+	Role           string    `json:"role"`
+	ScopeType      string    `json:"scope_type"`
+	ScopeID        string    `json:"scope_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+func (q *Queries) CreateMemberRoleAssignment(ctx context.Context, arg CreateMemberRoleAssignmentParams) error {
+	_, err := q.db.ExecContext(ctx, createMemberRoleAssignment,
+		arg.ID,
+		arg.OrganizationID,
+		arg.UserID,
+		arg.Role,
+		arg.ScopeType,
+		arg.ScopeID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const createOrganization = `-- name: CreateOrganization :exec
 
 INSERT INTO organization (id, name, slug, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)
@@ -312,6 +360,38 @@ type DeleteMemberPermissionOverridesParams struct {
 
 func (q *Queries) DeleteMemberPermissionOverrides(ctx context.Context, arg DeleteMemberPermissionOverridesParams) error {
 	_, err := q.db.ExecContext(ctx, deleteMemberPermissionOverrides, arg.OrganizationID, arg.UserID)
+	return err
+}
+
+const deleteMemberRoleAssignment = `-- name: DeleteMemberRoleAssignment :execrows
+DELETE FROM member_role_assignment WHERE organization_id = $1 AND user_id = $2 AND id = $3
+`
+
+type DeleteMemberRoleAssignmentParams struct {
+	OrganizationID string `json:"organization_id"`
+	UserID         string `json:"user_id"`
+	ID             string `json:"id"`
+}
+
+func (q *Queries) DeleteMemberRoleAssignment(ctx context.Context, arg DeleteMemberRoleAssignmentParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteMemberRoleAssignment, arg.OrganizationID, arg.UserID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteMemberRoleAssignments = `-- name: DeleteMemberRoleAssignments :exec
+DELETE FROM member_role_assignment WHERE organization_id = $1 AND user_id = $2
+`
+
+type DeleteMemberRoleAssignmentsParams struct {
+	OrganizationID string `json:"organization_id"`
+	UserID         string `json:"user_id"`
+}
+
+func (q *Queries) DeleteMemberRoleAssignments(ctx context.Context, arg DeleteMemberRoleAssignmentsParams) error {
+	_, err := q.db.ExecContext(ctx, deleteMemberRoleAssignments, arg.OrganizationID, arg.UserID)
 	return err
 }
 
@@ -669,6 +749,50 @@ func (q *Queries) ListMemberPermissionOverrides(ctx context.Context, arg ListMem
 			&i.UserID,
 			&i.Permission,
 			&i.Effect,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMemberRoleAssignments = `-- name: ListMemberRoleAssignments :many
+SELECT id, organization_id, user_id, role, scope_type, scope_id, created_at, updated_at
+FROM member_role_assignment
+WHERE organization_id = $1 AND user_id = $2
+ORDER BY created_at ASC
+`
+
+type ListMemberRoleAssignmentsParams struct {
+	OrganizationID string `json:"organization_id"`
+	UserID         string `json:"user_id"`
+}
+
+func (q *Queries) ListMemberRoleAssignments(ctx context.Context, arg ListMemberRoleAssignmentsParams) ([]MemberRoleAssignment, error) {
+	rows, err := q.db.QueryContext(ctx, listMemberRoleAssignments, arg.OrganizationID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MemberRoleAssignment
+	for rows.Next() {
+		var i MemberRoleAssignment
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.UserID,
+			&i.Role,
+			&i.ScopeType,
+			&i.ScopeID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

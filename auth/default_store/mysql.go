@@ -104,8 +104,12 @@ func (m *mysqlQuerier) getAccountByProvider(ctx context.Context, provider string
 	return accountRow{ID: r.ID, UserID: r.UserID, Provider: r.Provider, ProviderAccountID: r.ProviderAccountID, PasswordHash: r.PasswordHash, AccessToken: r.AccessToken, RefreshToken: r.RefreshToken, ExpiresAt: r.ExpiresAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
 }
 
-func (m *mysqlQuerier) updateAccount(ctx context.Context, id string, accessToken, refreshToken, expiresAt sql.NullString, updatedAt string) error {
-	return m.q.UpdateAccount(ctx, sqlcmysql.UpdateAccountParams{ID: id, AccessToken: accessToken, RefreshToken: refreshToken, ExpiresAt: expiresAt, UpdatedAt: updatedAt})
+func (m *mysqlQuerier) updateAccount(ctx context.Context, id string, passwordHash, accessToken, refreshToken, expiresAt sql.NullString, updatedAt string) error {
+	return m.q.UpdateAccount(ctx, sqlcmysql.UpdateAccountParams{ID: id, PasswordHash: passwordHash, AccessToken: accessToken, RefreshToken: refreshToken, ExpiresAt: expiresAt, UpdatedAt: updatedAt})
+}
+
+func (m *mysqlQuerier) updateAccountPassword(ctx context.Context, id string, passwordHash sql.NullString, updatedAt string) error {
+	return m.q.UpdateAccountPassword(ctx, sqlcmysql.UpdateAccountPasswordParams{ID: id, PasswordHash: passwordHash, UpdatedAt: updatedAt})
 }
 
 func (m *mysqlQuerier) deleteAccount(ctx context.Context, id string) error {

@@ -361,3 +361,39 @@ func (x *mysqlQuerier) deleteOrganizationRole(ctx context.Context, orgID, name s
 func (x *mysqlQuerier) countOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int64, error) {
 	return x.q.CountOrganizationMembersWithRole(ctx, sqlcmysql.CountOrganizationMembersWithRoleParams{OrganizationID: orgID, Role: role})
 }
+
+func (x *mysqlQuerier) createMemberRoleAssignment(ctx context.Context, id, orgID, userID, role, scopeType, scopeID, createdAt, updatedAt string) error {
+	return x.q.CreateMemberRoleAssignment(ctx, sqlcmysql.CreateMemberRoleAssignmentParams{
+		ID: id, OrganizationID: orgID, UserID: userID, Role: role,
+		ScopeType: scopeType, ScopeID: scopeID,
+		CreatedAt: createdAt, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *mysqlQuerier) listMemberRoleAssignments(ctx context.Context, orgID, userID string) ([]roleAssignmentRow, error) {
+	rows, err := x.q.ListMemberRoleAssignments(ctx, sqlcmysql.ListMemberRoleAssignmentsParams{OrganizationID: orgID, UserID: userID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]roleAssignmentRow, len(rows))
+	for i, r := range rows {
+		out[i] = roleAssignmentRow{
+			ID: r.ID, OrganizationID: r.OrganizationID, UserID: r.UserID, Role: r.Role,
+			ScopeType: r.ScopeType, ScopeID: r.ScopeID,
+			CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		}
+	}
+	return out, nil
+}
+
+func (x *mysqlQuerier) deleteMemberRoleAssignment(ctx context.Context, orgID, userID, id string) (int64, error) {
+	return x.q.DeleteMemberRoleAssignment(ctx, sqlcmysql.DeleteMemberRoleAssignmentParams{OrganizationID: orgID, UserID: userID, ID: id})
+}
+
+func (x *mysqlQuerier) deleteMemberRoleAssignments(ctx context.Context, orgID, userID string) error {
+	return x.q.DeleteMemberRoleAssignments(ctx, sqlcmysql.DeleteMemberRoleAssignmentsParams{OrganizationID: orgID, UserID: userID})
+}
+
+func (x *mysqlQuerier) countMemberRoleAssignmentsWithRole(ctx context.Context, orgID, role string) (int64, error) {
+	return x.q.CountMemberRoleAssignmentsWithRole(ctx, sqlcmysql.CountMemberRoleAssignmentsWithRoleParams{OrganizationID: orgID, Role: role})
+}

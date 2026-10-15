@@ -136,6 +136,8 @@ func (s *DefaultOrganizationStore) GetMember(ctx context.Context, userID, orgID 
 }
 
 // HasOrgRole checks whether the user has any of the given org-level roles.
+// The membership role is checked first; additional organization-wide
+// assignments (empty scope) count too.
 func (s *DefaultOrganizationStore) HasOrgRole(ctx context.Context, userID, orgID string, roles ...string) (bool, error) {
 	m, err := s.q.getMember(ctx, userID, orgID)
 	if err != nil {
@@ -146,6 +148,15 @@ func (s *DefaultOrganizationStore) HasOrgRole(ctx context.Context, userID, orgID
 	}
 	if slices.Contains(roles, m.Role) {
 		return true, nil
+	}
+	rows, err := s.q.listMemberRoleAssignments(ctx, orgID, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, a := range rows {
+		if a.ScopeType == "" && a.ScopeID == "" && slices.Contains(roles, a.Role) {
+			return true, nil
+		}
 	}
 	return false, nil
 }
@@ -221,7 +232,18 @@ func (s *DefaultOrganizationStore) UpdateMemberRole(ctx context.Context, userID,
 }
 
 // RemoveMember removes a user from an organization.
+//
+// The two deletes are not wrapped in a transaction (this store has no
+// transaction handle). Assignment rows go first: if the membership delete
+// then fails, the member keeps their membership but loses their assignment
+// grants — the fail-closed direction. The reverse order could resurrect stale
+// grants if the user rejoins the organization.
 func (s *DefaultOrganizationStore) RemoveMember(ctx context.Context, userID, orgID string) error {
+	// Assignment rows are keyed by (organization, user), not by a foreign
+	// key to the membership row, so they must be dropped explicitly.
+	if err := s.q.deleteMemberRoleAssignments(ctx, orgID, userID); err != nil {
+		return err
+	}
 	return s.q.removeMember(ctx, userID, orgID)
 }
 
@@ -590,10 +612,70 @@ func (s *DefaultOrganizationStore) DeleteOrganizationRole(ctx context.Context, o
 	return s.q.deleteOrganizationRole(ctx, orgID, name)
 }
 
-// CountOrganizationMembersWithRole counts members holding a role.
+// CountOrganizationMembersWithRole counts members holding a role, across both
+// the membership role and assignment rows, so a role in use cannot be
+// deleted out from under its holders.
 func (s *DefaultOrganizationStore) CountOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int, error) {
-	n, err := s.q.countOrganizationMembersWithRole(ctx, orgID, role)
-	return int(n), err
+	members, err := s.q.countOrganizationMembersWithRole(ctx, orgID, role)
+	if err != nil {
+		return 0, err
+	}
+	assignments, err := s.q.countMemberRoleAssignmentsWithRole(ctx, orgID, role)
+	if err != nil {
+		return 0, err
+	}
+	return int(members + assignments), nil
+}
+
+// CreateMemberRoleAssignment stores an assignment. An empty scopeType/scopeID
+// pair stores an organization-wide assignment; anything else stores a scoped
+// one.
+func (s *DefaultOrganizationStore) CreateMemberRoleAssignment(ctx context.Context, id, orgID, userID, role, scopeType, scopeID string, createdAt, updatedAt time.Time) error {
+	return s.q.createMemberRoleAssignment(ctx, id, orgID, userID, role, scopeType, scopeID,
+		createdAt.Format(time.RFC3339),
+		updatedAt.Format(time.RFC3339),
+	)
+}
+
+// ListMemberRoleAssignments lists a member's assignments. Organization-wide
+// rows (empty scope) are returned with a nil Scope.
+func (s *DefaultOrganizationStore) ListMemberRoleAssignments(ctx context.Context, orgID, userID string) ([]orgtypes.RoleAssignment, error) {
+	rows, err := s.q.listMemberRoleAssignments(ctx, orgID, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]orgtypes.RoleAssignment, len(rows))
+	for i, r := range rows {
+		var scope *orgtypes.Scope
+		if r.ScopeType != "" || r.ScopeID != "" {
+			scope = &orgtypes.Scope{Type: r.ScopeType, ID: r.ScopeID}
+		}
+		out[i] = orgtypes.RoleAssignment{
+			ID:             r.ID,
+			OrganizationID: r.OrganizationID,
+			UserID:         r.UserID,
+			Role:           r.Role,
+			Scope:          scope,
+			CreatedAt:      parseOrgTime(r.CreatedAt),
+			UpdatedAt:      parseOrgTime(r.UpdatedAt),
+		}
+	}
+	return out, nil
+}
+
+// DeleteMemberRoleAssignment removes one role assignment.
+//
+// Returns sql.ErrNoRows when no assignment matched, so callers can tell an
+// unknown ID from a successful removal.
+func (s *DefaultOrganizationStore) DeleteMemberRoleAssignment(ctx context.Context, orgID, userID, id string) error {
+	rows, err := s.q.deleteMemberRoleAssignment(ctx, orgID, userID, id)
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // buildOrganizationRole converts a canonical row into the public model.

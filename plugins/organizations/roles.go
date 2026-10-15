@@ -106,6 +106,9 @@ func (p *Plugin) CreateRole(ctx context.Context, orgID, name string, permissions
 	if p.IsCompiledRole(name) {
 		return RoleInfo{}, ErrRoleReserved
 	}
+	if err := p.validatePermissions(permissions); err != nil {
+		return RoleInfo{}, err
+	}
 	if _, err := p.store.GetOrganizationRole(ctx, orgID, name); err == nil {
 		return RoleInfo{}, ErrRoleExists
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -132,6 +135,9 @@ func (p *Plugin) CreateRole(ctx context.Context, orgID, name string, permissions
 func (p *Plugin) UpdateRole(ctx context.Context, orgID, name string, permissions []Permission) (RoleInfo, error) {
 	if p.IsCompiledRole(name) {
 		return RoleInfo{}, ErrRoleReserved
+	}
+	if err := p.validatePermissions(permissions); err != nil {
+		return RoleInfo{}, err
 	}
 	role, err := p.store.GetOrganizationRole(ctx, orgID, name)
 	if err != nil {

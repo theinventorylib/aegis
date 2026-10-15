@@ -557,3 +557,33 @@ func TestMigrateHashSessionTokensForUser_MigratesAllPages(t *testing.T) {
 		t.Errorf("migrated = %d, want %d", migrated, n)
 	}
 }
+
+// TestSessionServiceCleanupExpired pins the wiring behind
+// SessionService.CleanupExpired: expired rows are removed, live ones survive.
+func TestSessionServiceCleanupExpired(t *testing.T) {
+	ctx := context.Background()
+	store := &mockSessionStore{}
+	if err := store.Create(ctx, auth.Session{
+		ID: "expired", UserID: "u1", Token: "t-expired",
+		ExpiresAt: time.Now().Add(-time.Hour),
+	}); err != nil {
+		t.Fatalf("create expired: %v", err)
+	}
+	if err := store.Create(ctx, auth.Session{
+		ID: "live", UserID: "u1", Token: "t-live",
+		ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("create live: %v", err)
+	}
+	svc := newSessionService(&mockUserStore{}, store, nil, nil, nil)
+
+	if err := svc.CleanupExpired(ctx); err != nil {
+		t.Fatalf("CleanupExpired: %v", err)
+	}
+	if _, err := store.Get(ctx, "expired"); err == nil {
+		t.Error("expired session still present after cleanup")
+	}
+	if _, err := store.Get(ctx, "live"); err != nil {
+		t.Errorf("live session was removed by cleanup: %v", err)
+	}
+}

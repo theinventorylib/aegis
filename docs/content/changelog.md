@@ -1,6 +1,24 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Scoped organization-role assignments** (`plugins/organizations`): `AssignRole` / `ListRoleAssignments` / `RemoveRoleAssignment`, plus `HasOrgPermissionOn` and `RequireOrgPermissionOn(perm, scopeFn)` for resource-scoped authority. Scopes are opaque app-defined `scope_type` / `scope_id` strings (at most 128 characters each); a member's membership role stays organization-wide, and several scoped assignments may coexist per member. Backed by the new `member_role_assignment` table (migration 006 on postgres, 005 on mysql/sqlite); the plugin's `Init` requires that table, so apply migrations before upgrading.
+- **Multiple organization-role assignments**: `AddRoleAssignment` adds organization-wide or scoped assignments on top of the membership's primary role without changing it; `ListRoleAssignments` flags the primary entry with `Primary`, and the reserved owner role cannot be granted through the assignment APIs.
+- **Permission catalog** (`Config.Permissions`): optional app-defined permission registry with `Module`/`Description` metadata and `Sensitive` capping. When configured, `CreateRole` / `UpdateRole` and member overrides reject permissions outside the catalog (`ErrUnknownPermission`), and `PermissionCatalog()` returns the merged framework + app catalog for UIs.
+- **Assignment-time authority cap for organization roles**: adding a member, changing a member's role, creating an invitation, and adding/updating a team member now refuse a role that carries framework (or catalog-`Sensitive`) permissions the actor does not hold. Team roles are capped against the actor's org role plus their own team role.
+- **Session and verification cleanup API**: `SessionService.CleanupExpired(ctx)` and `VerificationService.CleanupExpired(ctx)` expose the store-level sweeps; hosts schedule them (Aegis runs no background janitor).
+- `AccountService.ResetPassword`: same behavior as `UpdatePassword`, but records `AuditEventPasswordReset` so recovery flows are distinguishable in the audit log.
+- Optional `auth.PasswordHashUpdater` account-store capability: password rotation rewrites only the hash column (the default stores implement it), so it cannot clobber tokens written by a concurrent OAuth refresh.
+
+### Changed
+- `orgtypes.OrganizationStore` gained `CreateMemberRoleAssignment`, `ListMemberRoleAssignments`, and `DeleteMemberRoleAssignment`; custom store implementations must add them. `RemoveMember` must now also remove the member's role assignments, and `CountOrganizationMembersWithRole` should count assignment rows so a role in use cannot be deleted while it is still granted.
+- Permission resolution (`HasOrgPermission`, `HasOrgPermissionOn`, `GetMemberPermissions`, and `HasOrgRole` on the default store) includes additional organization-wide assignments.
+
+### Fixed
+- **Password updates and resets now persist the new hash.** The default account store's `Update` did not write `password_hash`, so `UpdatePassword` and the recovery flows built on it reported success while the previous password stayed in effect. The store now persists the hash and treats an empty value as "leave unchanged", so partial updates cannot wipe it.
+
 ## [2.1.2] - 2026-10-03
 
 ### Added

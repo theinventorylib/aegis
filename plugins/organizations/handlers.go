@@ -293,6 +293,35 @@ func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 
 // ========== ORGANIZATION MEMBER HANDLERS ==========
 
+// checkRoleAssignable applies the assignment-time authority cap: a role may
+// only be assigned (member add, role change, invitation, team member add or
+// role change) when every framework permission it carries is one the actor
+// holds. Organization roles are checked against the actor's organization-wide
+// authority; team roles against the actor's authority on that team (their org
+// role plus their own team role). It writes the shared refusal response — the
+// same 403 shape as permission-edit caps — and reports whether the caller must
+// return early.
+func (p *Plugin) checkRoleAssignable(w http.ResponseWriter, r *http.Request, actorID, orgID, role string, teamID *string) bool {
+	var (
+		bad Permission
+		err error
+	)
+	if teamID != nil {
+		bad, err = p.ungrantableTeamRoleOnTeam(r.Context(), actorID, orgID, *teamID, role)
+	} else {
+		bad, err = p.ungrantableOrgRole(r.Context(), actorID, orgID, role)
+	}
+	if err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
+		return true
+	}
+	if bad != "" {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden: cannot grant a permission you do not hold: "+string(bad))
+		return true
+	}
+	return false
+}
+
 // AddOrganizationMemberHandler adds a member to an organization
 func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())
@@ -330,6 +359,10 @@ func (p *Plugin) AddOrganizationMemberHandler(w http.ResponseWriter, r *http.Req
 
 	if req.Role == "owner" {
 		core.WriteJSONError(w, http.StatusBadRequest, "Cannot assign owner role")
+		return
+	}
+
+	if p.checkRoleAssignable(w, r, user.ID, orgID, req.Role, nil) {
 		return
 	}
 
@@ -414,6 +447,10 @@ func (p *Plugin) UpdateMemberRoleHandler(w http.ResponseWriter, r *http.Request)
 
 	if req.Role == "owner" {
 		core.WriteJSONError(w, http.StatusBadRequest, "Cannot assign owner role")
+		return
+	}
+
+	if p.checkRoleAssignable(w, r, user.ID, orgID, req.Role, nil) {
 		return
 	}
 
@@ -612,7 +649,8 @@ func (p *Plugin) UpdateMemberPermissionsHandler(w http.ResponseWriter, r *http.R
 			core.WriteJSONError(w, http.StatusNotFound, "Member not found")
 		case errors.Is(err, ErrPermissionRequired),
 			errors.Is(err, ErrInvalidEffect),
-			errors.Is(err, ErrDuplicatePermission):
+			errors.Is(err, ErrDuplicatePermission),
+			errors.Is(err, ErrUnknownPermission):
 			core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
 		default:
 			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to save permissions")
@@ -693,6 +731,9 @@ func (p *Plugin) CreateRoleHandler(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrRoleReserved):
 		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
+	case errors.Is(err, ErrUnknownPermission):
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
 	case errors.Is(err, ErrRoleExists):
 		core.WriteJSONError(w, http.StatusConflict, err.Error())
 		return
@@ -739,6 +780,9 @@ func (p *Plugin) UpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
 	info, err := p.UpdateRole(r.Context(), orgID, name, perms)
 	switch {
 	case errors.Is(err, ErrRoleReserved):
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	case errors.Is(err, ErrUnknownPermission):
 		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	case errors.Is(err, sql.ErrNoRows):
@@ -1061,6 +1105,11 @@ func (p *Plugin) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The team role is a grant: cap it by the actor's authority on this team.
+	if p.checkRoleAssignable(w, r, user.ID, team.OrganizationID, req.Role, &teamID) {
+		return
+	}
+
 	// User must be organization member before joining team
 	if !p.IsOrganizationMember(r.Context(), req.UserID, team.OrganizationID) {
 		core.WriteJSONError(w, http.StatusBadRequest, "User must be organization member first")
@@ -1159,6 +1208,11 @@ func (p *Plugin) UpdateTeamMemberRoleHandler(w http.ResponseWriter, r *http.Requ
 
 	if err := p.ValidateUpdateTeamMemberRole(req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	// The team role is a grant: cap it by the actor's authority on this team.
+	if p.checkRoleAssignable(w, r, user.ID, team.OrganizationID, req.Role, &teamID) {
 		return
 	}
 
@@ -1289,6 +1343,12 @@ func (p *Plugin) CreateInvitationHandler(w http.ResponseWriter, r *http.Request)
 
 	if err := p.ValidateCreateInvitation(r.Context(), orgID, req); err != nil {
 		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	// The invited role is a grant like any other: it is capped by the
+	// inviter's own authority (team role set for team invites).
+	if p.checkRoleAssignable(w, r, user.ID, orgID, req.Role, teamID) {
 		return
 	}
 

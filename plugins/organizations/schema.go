@@ -11,7 +11,8 @@ import (
 // to function correctly. The Init() method validates these requirements at startup.
 //
 // Validation Checks:
-//   - Table existence: organization, members, team, team_member
+//   - Table existence: organization, members, team, team_member, invitation,
+//     member_role_assignment
 //   - Column existence: All required columns in each table
 //   - Security-critical role columns are checked with ColumnSpec to detect
 //     type/nullability drift that could cause silent privilege confusion.
@@ -67,6 +68,19 @@ func GetSchemaRequirements(dialect plugins.Dialect) []plugins.SchemaRequirement 
 			plugins.ValidateColumnExistsForDialect(d, "invitation", "expires_at"),
 			plugins.ValidateColumnExistsForDialect(d, "invitation", "created_at"),
 			plugins.ValidateColumnExistsForDialect(d, "invitation", "updated_at"),
+			plugins.ValidateTableExistsForDialect(d, "member_role_assignment"),
+			plugins.ValidateColumnExistsForDialect(d, "member_role_assignment", "id"),
+			plugins.ValidateColumnSpecForDialect(d, "member_role_assignment", "organization_id", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnSpecForDialect(d, "member_role_assignment", "user_id", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnSpecForDialect(d, "member_role_assignment", "role", core.ColumnSpec{Nullable: notNull}),
+			// scope_type/scope_id must stay NOT NULL: the empty-string sentinel
+			// for organization-wide assignments relies on the unique key
+			// treating rows with the same scope as duplicates, which NULLs
+			// would not.
+			plugins.ValidateColumnSpecForDialect(d, "member_role_assignment", "scope_type", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnSpecForDialect(d, "member_role_assignment", "scope_id", core.ColumnSpec{Nullable: notNull}),
+			plugins.ValidateColumnExistsForDialect(d, "member_role_assignment", "created_at"),
+			plugins.ValidateColumnExistsForDialect(d, "member_role_assignment", "updated_at"),
 		}
 	default:
 		return []plugins.SchemaRequirement{}

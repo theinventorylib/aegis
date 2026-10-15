@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-chi/chi/v5"
@@ -24,6 +25,7 @@ import (
 type keyedStore struct {
 	orgtypes.OrganizationStore
 	roles     map[string]string
+	teamRoles map[string]string
 	overrides []orgtypes.MemberPermissionOverride
 }
 
@@ -72,6 +74,50 @@ func (s *keyedStore) ListOrganizationMembers(_ context.Context, _ string, _, _ i
 
 func (s *keyedStore) CountOrganizationMembers(_ context.Context, _ string) (int, error) {
 	return len(s.roles), nil
+}
+
+func (s *keyedStore) ListOrganizationRoles(_ context.Context, _ string) ([]orgtypes.OrganizationRole, error) {
+	return nil, nil
+}
+
+func (s *keyedStore) GetTeam(_ context.Context, id string) (orgtypes.Team, error) {
+	return orgtypes.Team{ID: id, OrganizationID: "o1"}, nil
+}
+
+func (s *keyedStore) ListMemberRoleAssignments(_ context.Context, _, _ string) ([]orgtypes.RoleAssignment, error) {
+	return nil, nil
+}
+
+func (s *keyedStore) CreateMember(_ context.Context, _, userID, _, role string, _, _ time.Time) error {
+	s.roles[userID] = role
+	return nil
+}
+
+func (s *keyedStore) UpdateMemberRole(_ context.Context, userID, _, role string, _ time.Time) error {
+	s.roles[userID] = role
+	return nil
+}
+
+func (s *keyedStore) CreateInvitation(_ context.Context, _ orgtypes.Invitation) error {
+	return nil
+}
+
+func (s *keyedStore) GetTeamMember(_ context.Context, teamID, userID string) (orgtypes.TeamMember, error) {
+	role, ok := s.teamRoles[userID]
+	if !ok {
+		return orgtypes.TeamMember{}, sql.ErrNoRows
+	}
+	return orgtypes.TeamMember{TeamID: teamID, UserID: userID, Role: role}, nil
+}
+
+func (s *keyedStore) CreateTeamMember(_ context.Context, _, userID, _, role string, _, _ time.Time) error {
+	s.teamRoles[userID] = role
+	return nil
+}
+
+func (s *keyedStore) UpdateTeamMemberRole(_ context.Context, _, userID, role string, _ time.Time) error {
+	s.teamRoles[userID] = role
+	return nil
 }
 
 func putMemberPermissions(t *testing.T, p *Plugin, targetID, body string) *httptest.ResponseRecorder {
@@ -136,6 +182,204 @@ func TestUngrantablePermission(t *testing.T) {
 	// App-defined permissions are not capped by the framework.
 	if bad, err := p.ungrantablePermission(ctx, "u1", "o1", []Permission{"billing:manage"}); err != nil || bad != "" {
 		t.Fatalf("app permission: bad=%q err=%v, want grantable", bad, err)
+	}
+}
+
+// TestAssignRoleCapsActorAuthority pins the assignment-time cap: the same
+// authority rule that guards permission edits must guard role assignment on
+// member add, member role change and invitation creation.
+func TestAssignRoleCapsActorAuthority(t *testing.T) {
+	store := &keyedStore{roles: map[string]string{
+		"admin":   orgtypes.RoleAdmin,
+		"member":  orgtypes.RoleMember,
+		"inviter": "inviter",
+		"target":  orgtypes.RoleMember,
+	}}
+	p := New(&Config{OrgRoles: map[string]RoleDefinition{
+		// Carries org:delete, which the built-in admin role lacks.
+		"superadmin": {Permissions: []Permission{PermOrgView, PermOrgDelete}},
+		// Can invite, but holds only read permissions beyond that.
+		"inviter": {Permissions: []Permission{PermInvitationManage, PermOrgView, PermMemberView, PermTeamView}},
+	}}, store)
+
+	addMember := func(actor, role string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/organizations/o1/members",
+			strings.NewReader(`{"userId":"target","role":"`+role+`"}`))
+		req.SetPathValue("id", "o1")
+		req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: actor}))
+		rec := httptest.NewRecorder()
+		p.AddOrganizationMemberHandler(rec, req)
+		return rec
+	}
+	changeRole := func(actor, role string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPatch, "/organizations/o1/members/target",
+			strings.NewReader(`{"role":"`+role+`"}`))
+		req.SetPathValue("id", "o1")
+		req.SetPathValue("userId", "target")
+		req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: actor}))
+		rec := httptest.NewRecorder()
+		p.UpdateMemberRoleHandler(rec, req)
+		return rec
+	}
+	invite := func(actor, path, body string, pathParams map[string]string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		for k, v := range pathParams {
+			req.SetPathValue(k, v)
+		}
+		req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: actor}))
+		rec := httptest.NewRecorder()
+		p.CreateInvitationHandler(rec, req)
+		return rec
+	}
+
+	// Member add: an admin cannot grant a role carrying org:delete...
+	rec := addMember("admin", "superadmin")
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "org:delete") {
+		t.Fatalf("add superadmin: status = %d body = %s, want 403 naming org:delete", rec.Code, rec.Body.String())
+	}
+	// ...but may grant a role within its own authority.
+	if rec := addMember("admin", "member"); rec.Code != http.StatusCreated {
+		t.Fatalf("add member: status = %d, want 201 (%s)", rec.Code, rec.Body.String())
+	}
+	if store.roles["target"] != "member" {
+		t.Fatalf("target role = %q, want member", store.roles["target"])
+	}
+
+	// Role change: same cap.
+	rec = changeRole("admin", "superadmin")
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "org:delete") {
+		t.Fatalf("update to superadmin: status = %d body = %s, want 403 naming org:delete", rec.Code, rec.Body.String())
+	}
+	if rec := changeRole("admin", "admin"); rec.Code != http.StatusOK {
+		t.Fatalf("update to admin: status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+
+	// Invitations: the invited role is capped as a grant.
+	rec = invite("inviter", "/organizations/o1/invitations", `{"email":"invitee@example.com","role":"superadmin"}`, map[string]string{"id": "o1"})
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "org:delete") {
+		t.Fatalf("invite superadmin: status = %d body = %s, want 403 naming org:delete", rec.Code, rec.Body.String())
+	}
+	if rec := invite("inviter", "/organizations/o1/invitations", `{"email":"invitee@example.com","role":"member"}`, map[string]string{"id": "o1"}); rec.Code != http.StatusCreated {
+		t.Fatalf("invite member: status = %d, want 201 (%s)", rec.Code, rec.Body.String())
+	}
+	// Team invitations use the team role set: the inviter may grant a
+	// member-viewing team role but not a lead role they cannot grant themselves.
+	rec = invite("inviter", "/teams/t1/invitations", `{"email":"invitee@example.com","teamId":"t1","role":"lead"}`, map[string]string{"teamId": "t1"})
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "team_member:manage") {
+		t.Fatalf("invite team lead: status = %d body = %s, want 403 naming team_member:manage", rec.Code, rec.Body.String())
+	}
+	if rec := invite("inviter", "/teams/t1/invitations", `{"email":"invitee@example.com","teamId":"t1","role":"member"}`, map[string]string{"teamId": "t1"}); rec.Code != http.StatusCreated {
+		t.Fatalf("invite team member: status = %d, want 201 (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequireOrgPermissionOn(t *testing.T) {
+	p := New(&Config{OrgRoles: map[string]RoleDefinition{
+		"campus-pastor": {Permissions: []Permission{PermOrgView, PermMemberManage}},
+	}}, &fakeStore{
+		memberOrgRole: orgtypes.RoleMember,
+		assignments: []orgtypes.RoleAssignment{{
+			ID: "a1", Role: "campus-pastor", Scope: &orgtypes.Scope{Type: "campus", ID: "c1"},
+		}},
+	})
+
+	called := false
+	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true })
+	h := p.RequireOrgPermissionOn(PermMemberManage, func(r *http.Request) (string, string) {
+		return "campus", r.PathValue("campusID")
+	})(next)
+
+	do := func(campusID string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/organizations/o1/campuses/"+campusID+"/reports", nil)
+		req.SetPathValue("id", "o1")
+		req.SetPathValue("campusID", campusID)
+		req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: "u1"}))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// The scoped assignment grants the permission on its own scope only.
+	if rec := do("c1"); rec.Code != http.StatusOK || !called {
+		t.Fatalf("scoped holder: status = %d called = %v, want 200 and next", rec.Code, called)
+	}
+	if rec := do("c2"); rec.Code != http.StatusForbidden {
+		t.Fatalf("other scope: status = %d, want 403 (%s)", rec.Code, rec.Body.String())
+	}
+	// An unresolvable scope is a bad request, not a permission failure.
+	called = false
+	if rec := do(""); rec.Code != http.StatusBadRequest || called {
+		t.Fatalf("missing scope: status = %d called = %v, want 400", rec.Code, called)
+	}
+}
+
+// TestTeamMemberRoleCapsActorAuthority pins the cap on the team membership
+// paths: a team lead keeps managing team roles within their own authority but
+// cannot grant a team role carrying a permission they do not hold.
+func TestTeamMemberRoleCapsActorAuthority(t *testing.T) {
+	store := &keyedStore{
+		roles:     map[string]string{"admin": orgtypes.RoleAdmin, "lead-user": orgtypes.RoleMember, "target": orgtypes.RoleMember},
+		teamRoles: map[string]string{"lead-user": orgtypes.RoleTeamLead},
+	}
+	p := New(&Config{TeamRoles: map[string]RoleDefinition{
+		"co-lead": {Permissions: []Permission{PermTeamManage}},
+	}}, store)
+
+	add := func(actor, role string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/teams/t1/members",
+			strings.NewReader(`{"userId":"target","role":"`+role+`"}`))
+		req.SetPathValue("teamId", "t1")
+		req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: actor}))
+		rec := httptest.NewRecorder()
+		p.AddTeamMemberHandler(rec, req)
+		return rec
+	}
+	update := func(actor, role string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPatch, "/teams/t1/members/target",
+			strings.NewReader(`{"role":"`+role+`"}`))
+		req.SetPathValue("teamId", "t1")
+		req.SetPathValue("userId", "target")
+		req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: actor}))
+		rec := httptest.NewRecorder()
+		p.UpdateTeamMemberRoleHandler(rec, req)
+		return rec
+	}
+
+	// A team lead may grant roles within their own (org + team) authority.
+	if rec := add("lead-user", orgtypes.RoleTeamLead); rec.Code != http.StatusCreated {
+		t.Fatalf("lead grants lead: status = %d, want 201 (%s)", rec.Code, rec.Body.String())
+	}
+	// ...but not a team role carrying a permission they do not hold.
+	rec := add("lead-user", "co-lead")
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "team:manage") {
+		t.Fatalf("lead grants co-lead: status = %d body = %s, want 403 naming team:manage", rec.Code, rec.Body.String())
+	}
+	rec = update("lead-user", "co-lead")
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "team:manage") {
+		t.Fatalf("lead updates to co-lead: status = %d body = %s, want 403 naming team:manage", rec.Code, rec.Body.String())
+	}
+	// Org admins hold the team permissions and may grant them.
+	if rec := update("admin", "co-lead"); rec.Code != http.StatusOK {
+		t.Fatalf("admin updates to co-lead: status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+// TestCreateRoleRejectsUnknownPermissionFromCatalog pins the 400 mapping for
+// catalog validation failures.
+func TestCreateRoleRejectsUnknownPermissionFromCatalog(t *testing.T) {
+	p := New(&Config{Permissions: map[Permission]PermissionDefinition{
+		"billing:view": {},
+	}}, &keyedStore{roles: map[string]string{"admin": orgtypes.RoleAdmin}})
+
+	req := httptest.NewRequest(http.MethodPost, "/organizations/o1/roles",
+		strings.NewReader(`{"name":"billing","permissions":["ghost"]}`))
+	req.SetPathValue("id", "o1")
+	req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: "admin"}))
+	rec := httptest.NewRecorder()
+	p.CreateRoleHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "unknown permission") {
+		t.Fatalf("status = %d body = %s, want 400 naming the unknown permission", rec.Code, rec.Body.String())
 	}
 }
 
