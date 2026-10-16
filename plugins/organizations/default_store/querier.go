@@ -123,4 +123,17 @@ type querier interface {
 	deleteMemberRoleAssignment(ctx context.Context, orgID, userID, id string) (int64, error)
 	deleteMemberRoleAssignments(ctx context.Context, orgID, userID string) error
 	countMemberRoleAssignmentsWithRole(ctx context.Context, orgID, role string) (int64, error)
+
+	// Role rename queries: one transaction carries the new name to the role
+	// row, its assignments, any member whose primary role it is, and
+	// organization-level invitations referencing it.
+	renameOrganizationRole(ctx context.Context, orgID, oldName, newName, updatedAt string) (int64, error)
+	renameMemberRoleAssignments(ctx context.Context, orgID, oldName, newName, updatedAt string) error
+	renameMembersRole(ctx context.Context, orgID, oldName, newName, updatedAt string) error
+	renameInvitationsRole(ctx context.Context, orgID, oldName, newName, updatedAt string) error
+
+	// withTx returns a copy of this querier bound to the provided transaction.
+	// All subsequent calls on the returned querier execute on the transaction;
+	// the caller is responsible for committing or rolling back the transaction.
+	withTx(tx *sql.Tx) querier
 }

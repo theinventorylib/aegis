@@ -275,24 +275,24 @@ func TestAssignRoleCapsActorAuthority(t *testing.T) {
 
 func TestRequireOrgPermissionOn(t *testing.T) {
 	p := New(&Config{OrgRoles: map[string]RoleDefinition{
-		"campus-pastor": {Permissions: []Permission{PermOrgView, PermMemberManage}},
+		"regional-lead": {Permissions: []Permission{PermOrgView, PermMemberManage}},
 	}}, &fakeStore{
 		memberOrgRole: orgtypes.RoleMember,
 		assignments: []orgtypes.RoleAssignment{{
-			ID: "a1", Role: "campus-pastor", Scope: &orgtypes.Scope{Type: "campus", ID: "c1"},
+			ID: "a1", Role: "regional-lead", Scope: &orgtypes.Scope{Type: "region", ID: "r1"},
 		}},
 	})
 
 	called := false
 	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true })
 	h := p.RequireOrgPermissionOn(PermMemberManage, func(r *http.Request) (string, string) {
-		return "campus", r.PathValue("campusID")
+		return "region", r.PathValue("regionID")
 	})(next)
 
-	do := func(campusID string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodGet, "/organizations/o1/campuses/"+campusID+"/reports", nil)
+	do := func(regionID string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/organizations/o1/regions/"+regionID+"/reports", nil)
 		req.SetPathValue("id", "o1")
-		req.SetPathValue("campusID", campusID)
+		req.SetPathValue("regionID", regionID)
 		req = req.WithContext(core.WithUser(req.Context(), &auth.User{ID: "u1"}))
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
@@ -300,10 +300,10 @@ func TestRequireOrgPermissionOn(t *testing.T) {
 	}
 
 	// The scoped assignment grants the permission on its own scope only.
-	if rec := do("c1"); rec.Code != http.StatusOK || !called {
+	if rec := do("r1"); rec.Code != http.StatusOK || !called {
 		t.Fatalf("scoped holder: status = %d called = %v, want 200 and next", rec.Code, called)
 	}
-	if rec := do("c2"); rec.Code != http.StatusForbidden {
+	if rec := do("r2"); rec.Code != http.StatusForbidden {
 		t.Fatalf("other scope: status = %d, want 403 (%s)", rec.Code, rec.Body.String())
 	}
 	// An unresolvable scope is a bad request, not a permission failure.
@@ -444,8 +444,9 @@ func TestListMembersPermissionsHandler(t *testing.T) {
 	}
 }
 
-// The new permission routes must coexist with the :userId variants on every
-// supported router (static segment wins over the parameter).
+// The permission, role-assignment and rename routes must coexist with the
+// :userId/:name variants on every supported router (static segment wins over
+// the parameter).
 func TestOrganizationPermissionRoutesRegisterOnAllRouters(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -453,16 +454,20 @@ func TestOrganizationPermissionRoutesRegisterOnAllRouters(t *testing.T) {
 		t.Helper()
 		p := New(nil, nil)
 		p.MountRoutes(r, "/auth/organizations")
-		for _, path := range []string{
-			"/auth/organizations/o1/permissions",
-			"/auth/organizations/o1/members/permissions",
+		for _, route := range []struct{ method, path string }{
+			{http.MethodGet, "/auth/organizations/o1/permissions"},
+			{http.MethodGet, "/auth/organizations/o1/members/permissions"},
+			{http.MethodGet, "/auth/organizations/o1/members/u1/role-assignments"},
+			{http.MethodPost, "/auth/organizations/o1/members/u1/role-assignments"},
+			{http.MethodDelete, "/auth/organizations/o1/members/u1/role-assignments/a1"},
+			{http.MethodPost, "/auth/organizations/o1/roles/lorem/rename"},
 		} {
 			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+			r.ServeHTTP(rec, httptest.NewRequest(route.method, route.path, nil))
 			// Registered behind RequireAuthMiddleware, so an anonymous request
 			// is 401; a 404 would mean the route never matched.
 			if rec.Code == http.StatusNotFound {
-				t.Fatalf("%s: route not matched (404)", path)
+				t.Fatalf("%s %s: route not matched (404)", route.method, route.path)
 			}
 		}
 	}

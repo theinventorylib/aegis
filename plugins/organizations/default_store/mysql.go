@@ -397,3 +397,32 @@ func (x *mysqlQuerier) deleteMemberRoleAssignments(ctx context.Context, orgID, u
 func (x *mysqlQuerier) countMemberRoleAssignmentsWithRole(ctx context.Context, orgID, role string) (int64, error) {
 	return x.q.CountMemberRoleAssignmentsWithRole(ctx, sqlcmysql.CountMemberRoleAssignmentsWithRoleParams{OrganizationID: orgID, Role: role})
 }
+
+// Role rename translators. The three statements run inside one transaction
+// (see DefaultOrganizationStore.RenameOrganizationRole).
+
+func (x *mysqlQuerier) renameOrganizationRole(ctx context.Context, orgID, oldName, newName, updatedAt string) (int64, error) {
+	return x.q.RenameOrganizationRole(ctx, sqlcmysql.RenameOrganizationRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *mysqlQuerier) renameMemberRoleAssignments(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameMemberRoleAssignments(ctx, sqlcmysql.RenameMemberRoleAssignmentsParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *mysqlQuerier) renameMembersRole(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameMembersRole(ctx, sqlcmysql.RenameMembersRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *mysqlQuerier) renameInvitationsRole(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameInvitationsRole(ctx, sqlcmysql.RenameInvitationsRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *mysqlQuerier) withTx(tx *sql.Tx) querier { return &mysqlQuerier{q: x.q.WithTx(tx)} }

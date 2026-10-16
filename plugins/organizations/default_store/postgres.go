@@ -394,6 +394,35 @@ func (x *postgresQuerier) countMemberRoleAssignmentsWithRole(ctx context.Context
 	return x.q.CountMemberRoleAssignmentsWithRole(ctx, sqlcpostgres.CountMemberRoleAssignmentsWithRoleParams{OrganizationID: orgID, Role: role})
 }
 
+// Role rename translators. The three statements run inside one transaction
+// (see DefaultOrganizationStore.RenameOrganizationRole).
+
+func (x *postgresQuerier) renameOrganizationRole(ctx context.Context, orgID, oldName, newName, updatedAt string) (int64, error) {
+	return x.q.RenameOrganizationRole(ctx, sqlcpostgres.RenameOrganizationRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: pgParseTime(updatedAt),
+	})
+}
+
+func (x *postgresQuerier) renameMemberRoleAssignments(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameMemberRoleAssignments(ctx, sqlcpostgres.RenameMemberRoleAssignmentsParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: pgParseTime(updatedAt),
+	})
+}
+
+func (x *postgresQuerier) renameMembersRole(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameMembersRole(ctx, sqlcpostgres.RenameMembersRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: pgParseTime(updatedAt),
+	})
+}
+
+func (x *postgresQuerier) renameInvitationsRole(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameInvitationsRole(ctx, sqlcpostgres.RenameInvitationsRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: pgParseTime(updatedAt),
+	})
+}
+
+func (x *postgresQuerier) withTx(tx *sql.Tx) querier { return &postgresQuerier{q: x.q.WithTx(tx)} }
+
 // pgParseTime converts a canonical RFC3339 string to the time.Time the
 // generated postgres queries expect.
 func pgParseTime(s string) time.Time {

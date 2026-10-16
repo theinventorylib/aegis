@@ -692,6 +692,97 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
+	// Additional role assignments: the membership's primary role is managed by
+	// PATCH /{id}/members/{userId}; these grant, list and revoke the extra
+	// organization-wide and scoped ones.
+	membersGroup.GET("/:userId/role-assignments", requireAuth(http.HandlerFunc(p.ListRoleAssignmentsHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "GET",
+		Path:        prefix + "/{id}/members/{userId}/role-assignments",
+		Summary:     "List a member's role assignments",
+		Description: "Requires member:assign_roles — the membership's primary role (flagged) followed by the additional organization-wide and scoped assignments.",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[[]orgtypes.RoleAssignment]("Role assignments"),
+			400: openapi.RefResponse("Invalid organization or user ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Member not found", "Error"),
+		},
+	})
+
+	membersGroup.POST("/:userId/role-assignments", requireAuth(http.HandlerFunc(p.AddRoleAssignmentHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/{id}/members/{userId}/role-assignments",
+		Summary:     "Grant an additional role to a member",
+		Description: "Adds an organization-wide or scoped assignment on top of the member's primary role. The caller must hold every permission the role grants, and the reserved owner role cannot be assigned.",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[AddRoleAssignmentRequest](),
+		Responses: openapi.Responses{
+			201: openapi.RefResponse("Role assigned", "Success"),
+			400: openapi.RefResponse("Unknown role, invalid scope, or unassignable role", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Member not found", "Error"),
+		},
+	})
+
+	membersGroup.DELETE("/:userId/role-assignments/:assignmentId", requireAuth(http.HandlerFunc(p.RemoveRoleAssignmentHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "DELETE",
+		Path:        prefix + "/{id}/members/{userId}/role-assignments/{assignmentId}",
+		Summary:     "Revoke a role assignment",
+		Description: "Removes one additional assignment by ID. The primary role is changed through the member's role endpoint instead.",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+			{Name: "assignmentId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Role assignment removed", "Success"),
+			400: openapi.RefResponse("Invalid IDs", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Role assignment not found", "Error"),
+		},
+	})
+
+	rolesGroup.POST("/:name/rename", requireAuth(http.HandlerFunc(p.RenameRoleHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/{id}/roles/{name}/rename",
+		Summary:     "Rename a custom role",
+		Description: "Renames a custom role, carrying its assignments, any member whose primary role it is, and organization-level invitations referencing it. Compiled roles cannot be renamed and the new name must be free.",
+		Tags:        []string{"Roles"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "name", In: "path", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[RenameRoleRequest](),
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[RoleInfo]("Role renamed"),
+			400: openapi.RefResponse("Reserved name or invalid request", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Role not found", "Error"),
+			409: openapi.RefResponse("Role name already in use", "Error"),
+		},
+	})
+
 	teamsGroup := orgGroup.Group("/teams", "Teams")
 
 	teamsGroup.GET("/:teamId", requireAuth(http.HandlerFunc(p.GetTeamHandler)).ServeHTTP)
@@ -1212,6 +1303,10 @@ const maxScopeLen = 128
 // through an assignment API. Ownership transfer needs its own flow.
 var ErrOwnerNotAssignable = errors.New("the owner role cannot be assigned; ownership transfer needs its own flow")
 
+// ErrInvalidScope means an assignment scope is incomplete (only one half) or
+// exceeds maxScopeLen characters.
+var ErrInvalidScope = errors.New("invalid scope")
+
 // AssignRole grants an organization role to a member.
 //
 // A nil scope assigns (or replaces) the member's primary organization-wide
@@ -1240,10 +1335,10 @@ func (p *Plugin) AssignRole(ctx context.Context, orgID, userID, role string, sco
 		scopeType = core.SanitizeString(scope.Type, nil)
 		scopeID = core.SanitizeString(scope.ID, nil)
 		if scopeType == "" || scopeID == "" {
-			return fmt.Errorf("scope requires both a type and an id")
+			return fmt.Errorf("%w: scope requires both a type and an id", ErrInvalidScope)
 		}
 		if utf8.RuneCountInString(scopeType) > maxScopeLen || utf8.RuneCountInString(scopeID) > maxScopeLen {
-			return fmt.Errorf("scope type and id must be at most %d characters", maxScopeLen)
+			return fmt.Errorf("%w: scope type and id must be at most %d characters", ErrInvalidScope, maxScopeLen)
 		}
 	}
 
@@ -1292,10 +1387,10 @@ func (p *Plugin) AddRoleAssignment(ctx context.Context, orgID, userID, role stri
 		scopeType = core.SanitizeString(scope.Type, nil)
 		scopeID = core.SanitizeString(scope.ID, nil)
 		if scopeType == "" || scopeID == "" {
-			return fmt.Errorf("scope requires both a type and an id")
+			return fmt.Errorf("%w: scope requires both a type and an id", ErrInvalidScope)
 		}
 		if utf8.RuneCountInString(scopeType) > maxScopeLen || utf8.RuneCountInString(scopeID) > maxScopeLen {
-			return fmt.Errorf("scope type and id must be at most %d characters", maxScopeLen)
+			return fmt.Errorf("%w: scope type and id must be at most %d characters", ErrInvalidScope, maxScopeLen)
 		}
 	}
 

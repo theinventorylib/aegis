@@ -186,7 +186,7 @@ func (p *Plugin) HasOrgPermission(ctx context.Context, userID, orgID string, per
 }
 
 // HasOrgPermissionOn reports whether the user may exercise perm on the scoped
-// resource (scopeType, scopeID) — for example one campus or service. The
+// resource (scopeType, scopeID) — for example one region or project. The
 // member's organization-wide reach (the membership role plus any additional
 // organization-wide assignments) answers every scope; a scoped assignment
 // answers only its own scope. Per-member overrides adjust the result exactly

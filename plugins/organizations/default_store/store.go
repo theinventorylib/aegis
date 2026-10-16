@@ -23,18 +23,19 @@ import (
 // All dialect logic is confined to the querier: this struct holds only the
 // single chosen querier and delegates every operation to it.
 type DefaultOrganizationStore struct {
-	q querier
+	q  querier
+	db *sql.DB
 }
 
 // NewDefaultOrganizationStore creates a DefaultOrganizationStore for the given dialect.
 func NewDefaultOrganizationStore(db *sql.DB, dialect plugins.Dialect) (*DefaultOrganizationStore, error) {
 	switch dialect {
 	case plugins.DialectPostgres:
-		return &DefaultOrganizationStore{q: newPostgresQuerier(db)}, nil
+		return &DefaultOrganizationStore{q: newPostgresQuerier(db), db: db}, nil
 	case plugins.DialectMySQL:
-		return &DefaultOrganizationStore{q: newMysqlQuerier(db)}, nil
+		return &DefaultOrganizationStore{q: newMysqlQuerier(db), db: db}, nil
 	case plugins.DialectSQLite:
-		return &DefaultOrganizationStore{q: newSqliteQuerier(db)}, nil
+		return &DefaultOrganizationStore{q: newSqliteQuerier(db), db: db}, nil
 	default:
 		return nil, fmt.Errorf("organizations: unsupported dialect %q", dialect)
 	}
@@ -610,6 +611,43 @@ func (s *DefaultOrganizationStore) UpdateOrganizationRole(ctx context.Context, r
 // DeleteOrganizationRole removes a custom role.
 func (s *DefaultOrganizationStore) DeleteOrganizationRole(ctx context.Context, orgID, name string) error {
 	return s.q.deleteOrganizationRole(ctx, orgID, name)
+}
+
+// RenameOrganizationRole renames a custom role, carrying the new name to its
+// assignments, to any member whose primary role it is, and to organization-
+// level invitations referencing it. The statements run in one transaction: a
+// partial rename would leave references to a role name that no longer exists.
+// Team-level invitations are untouched — their role column holds team role
+// names, not org roles. Returns sql.ErrNoRows when the organization has no
+// role named oldName.
+func (s *DefaultOrganizationStore) RenameOrganizationRole(ctx context.Context, orgID, oldName, newName string, updatedAt time.Time) error {
+	ts := updatedAt.UTC().Format(time.RFC3339)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	// Rollback after Commit is a no-op.
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck
+
+	q := s.q.withTx(tx)
+	rows, err := q.renameOrganizationRole(ctx, orgID, oldName, newName, ts)
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	if err := q.renameMemberRoleAssignments(ctx, orgID, oldName, newName, ts); err != nil {
+		return err
+	}
+	if err := q.renameMembersRole(ctx, orgID, oldName, newName, ts); err != nil {
+		return err
+	}
+	if err := q.renameInvitationsRole(ctx, orgID, oldName, newName, ts); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // CountOrganizationMembersWithRole counts members holding a role, across both

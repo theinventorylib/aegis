@@ -292,7 +292,7 @@ func TestGetMemberPermissionsResolvesOverrides(t *testing.T) {
 		memberOrgRole: orgtypes.RoleAdmin,
 		overrides: []orgtypes.MemberPermissionOverride{
 			{Permission: string(PermMemberManage), Effect: orgtypes.PermissionEffectDeny},
-			{Permission: "view_giving", Effect: orgtypes.PermissionEffectGrant},
+			{Permission: "view_reports", Effect: orgtypes.PermissionEffectGrant},
 		},
 	})
 
@@ -320,7 +320,7 @@ func TestGetMemberPermissionsResolvesOverrides(t *testing.T) {
 	if !has(PermOrgView) {
 		t.Error("untouched role permission should remain")
 	}
-	if !has("view_giving") {
+	if !has("view_reports") {
 		t.Error("granted app permission should be present")
 	}
 
@@ -334,7 +334,7 @@ func TestCustomRoleGrantsPermissions(t *testing.T) {
 	store := &fakeStore{
 		memberOrgRole: "billing",
 		customRoles: map[string]orgtypes.OrganizationRole{
-			"billing": {Name: "billing", Permissions: []string{string(PermOrgView), "view_giving"}},
+			"billing": {Name: "billing", Permissions: []string{string(PermOrgView), "view_reports"}},
 		},
 	}
 	p := New(nil, store)
@@ -342,7 +342,7 @@ func TestCustomRoleGrantsPermissions(t *testing.T) {
 	if ok, err := p.HasOrgPermission(ctx, "u1", "o1", PermOrgView); err != nil || !ok {
 		t.Errorf("custom role should grant org:view (ok=%v err=%v)", ok, err)
 	}
-	if ok, err := p.HasOrgPermission(ctx, "u1", "o1", "view_giving"); err != nil || !ok {
+	if ok, err := p.HasOrgPermission(ctx, "u1", "o1", "view_reports"); err != nil || !ok {
 		t.Errorf("custom role should grant app permission (ok=%v err=%v)", ok, err)
 	}
 	if ok, _ := p.HasOrgPermission(ctx, "u1", "o1", PermOrgManage); ok {
@@ -460,7 +460,7 @@ func TestSetMemberPermissionOverrides(t *testing.T) {
 
 	err := p.SetMemberPermissionOverrides(ctx, "o1", "u1", []orgtypes.MemberPermissionOverride{
 		{Permission: string(PermMemberManage), Effect: orgtypes.PermissionEffectDeny},
-		{Permission: "view_giving", Effect: orgtypes.PermissionEffectGrant},
+		{Permission: "view_reports", Effect: orgtypes.PermissionEffectGrant},
 	})
 	if err != nil {
 		t.Fatalf("set overrides: %v", err)
@@ -484,13 +484,13 @@ func TestSetMemberPermissionOverrides(t *testing.T) {
 
 	// Duplicates and unknown effects are rejected before any write.
 	if err := p.SetMemberPermissionOverrides(ctx, "o1", "u1", []orgtypes.MemberPermissionOverride{
-		{Permission: "view_giving", Effect: orgtypes.PermissionEffectGrant},
-		{Permission: "view_giving", Effect: orgtypes.PermissionEffectDeny},
+		{Permission: "view_reports", Effect: orgtypes.PermissionEffectGrant},
+		{Permission: "view_reports", Effect: orgtypes.PermissionEffectDeny},
 	}); err == nil {
 		t.Fatal("duplicate permission must be rejected")
 	}
 	if err := p.SetMemberPermissionOverrides(ctx, "o1", "u1", []orgtypes.MemberPermissionOverride{
-		{Permission: "view_giving", Effect: "sideways"},
+		{Permission: "view_reports", Effect: "sideways"},
 	}); err == nil {
 		t.Fatal("unknown effect must be rejected")
 	}
@@ -569,23 +569,23 @@ func TestHasOrgPermissionOn(t *testing.T) {
 		perm           Permission
 		want           bool
 	}{
-		{name: "unscoped role answers every scope", role: orgtypes.RoleAdmin, scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: true},
-		{name: "scoped assignment answers its scope", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: true},
-		{name: "scoped assignment ignored outside its scope", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), scopeType: "campus", scopeID: "c2", perm: PermMemberManage, want: false},
-		{name: "scope type must match", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), scopeType: "service", scopeID: "c1", perm: PermMemberManage, want: false},
-		{name: "scoped role must grant the permission", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), scopeType: "campus", scopeID: "c1", perm: PermOrgDelete, want: false},
-		{name: "deny override beats a scoped grant", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), overrides: deny(PermMemberManage), scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: false},
-		{name: "grant override applies", role: orgtypes.RoleMember, overrides: grant(PermMemberManage), scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: true},
-		{name: "scoped assignments do not answer the unscoped check", role: orgtypes.RoleMember, assignments: scoped("campus-pastor", "campus", "c1"), perm: PermMemberManage, want: false},
-		{name: "additional org-wide assignment answers the unscoped check", role: orgtypes.RoleMember, assignments: unscoped("campus-pastor"), perm: PermMemberManage, want: true},
-		{name: "additional org-wide assignment answers any scope", role: orgtypes.RoleMember, assignments: unscoped("campus-pastor"), scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: true},
-		{name: "non-member has no reach", assignments: scoped("campus-pastor", "campus", "c1"), scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: false},
-		{name: "no-rows assignment listing means no scoped grant", role: orgtypes.RoleMember, assignmentsErr: sql.ErrNoRows, scopeType: "campus", scopeID: "c1", perm: PermMemberManage, want: false},
+		{name: "unscoped role answers every scope", role: orgtypes.RoleAdmin, scopeType: "region", scopeID: "r1", perm: PermMemberManage, want: true},
+		{name: "scoped assignment answers its scope", role: orgtypes.RoleMember, assignments: scoped("regional-lead", "region", "r1"), scopeType: "region", scopeID: "r1", perm: PermMemberManage, want: true},
+		{name: "scoped assignment ignored outside its scope", role: orgtypes.RoleMember, assignments: scoped("regional-lead", "region", "r1"), scopeType: "region", scopeID: "r2", perm: PermMemberManage, want: false},
+		{name: "scope type must match", role: orgtypes.RoleMember, assignments: scoped("regional-lead", "region", "r1"), scopeType: "project", scopeID: "r1", perm: PermMemberManage, want: false},
+		{name: "scoped role must grant the permission", role: orgtypes.RoleMember, assignments: scoped("regional-lead", "region", "r1"), scopeType: "region", scopeID: "r1", perm: PermOrgDelete, want: false},
+		{name: "deny override beats a scoped grant", role: orgtypes.RoleMember, assignments: scoped("regional-lead", "region", "r1"), overrides: deny(PermMemberManage), scopeType: "region", scopeID: "r1", perm: PermMemberManage, want: false},
+		{name: "grant override applies", role: orgtypes.RoleMember, overrides: grant(PermMemberManage), scopeType: "region", scopeID: "r1", perm: PermMemberManage, want: true},
+		{name: "scoped assignments do not answer the unscoped check", role: orgtypes.RoleMember, assignments: scoped("regional-lead", "region", "r1"), perm: PermMemberManage, want: false},
+		{name: "additional org-wide assignment answers the unscoped check", role: orgtypes.RoleMember, assignments: unscoped("regional-lead"), perm: PermMemberManage, want: true},
+		{name: "additional org-wide assignment answers any scope", role: orgtypes.RoleMember, assignments: unscoped("regional-lead"), scopeType: "region", scopeID: "r1", perm: PermMemberManage, want: true},
+		{name: "non-member has no reach", assignments: scoped("regional-lead", "region", "r1"), scopeType: "region", scopeID: "r1", perm: PermMemberManage, want: false},
+		{name: "no-rows assignment listing means no scoped grant", role: orgtypes.RoleMember, assignmentsErr: sql.ErrNoRows, scopeType: "region", scopeID: "r1", perm: PermMemberManage, want: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			p := New(&Config{OrgRoles: map[string]RoleDefinition{
-				"campus-pastor": {Permissions: []Permission{PermOrgView, PermMemberManage}},
+				"regional-lead": {Permissions: []Permission{PermOrgView, PermMemberManage}},
 			}}, &fakeStore{memberOrgRole: tc.role, assignments: tc.assignments, assignmentsErr: tc.assignmentsErr, overrides: tc.overrides})
 			got, err := p.HasOrgPermissionOn(ctx, "u1", "o1", tc.perm, tc.scopeType, tc.scopeID)
 			if err != nil {
@@ -612,20 +612,20 @@ func TestRoleAssignmentAPI(t *testing.T) {
 	}
 
 	// A scoped assignment is stored with its opaque scope.
-	if err := p.AssignRole(ctx, "o1", "u1", "campus-pastor", &orgtypes.Scope{Type: "campus", ID: "c1"}); err != nil {
+	if err := p.AssignRole(ctx, "o1", "u1", "regional-lead", &orgtypes.Scope{Type: "region", ID: "r1"}); err != nil {
 		t.Fatalf("assign scoped: %v", err)
 	}
 	if len(store.assignments) != 1 {
 		t.Fatalf("assignments = %d, want 1", len(store.assignments))
 	}
 	a := store.assignments[0]
-	if a.ID == "" || a.OrganizationID != "o1" || a.UserID != "u1" || a.Role != "campus-pastor" ||
-		a.Scope == nil || a.Scope.Type != "campus" || a.Scope.ID != "c1" || a.CreatedAt.IsZero() || a.UpdatedAt.IsZero() {
+	if a.ID == "" || a.OrganizationID != "o1" || a.UserID != "u1" || a.Role != "regional-lead" ||
+		a.Scope == nil || a.Scope.Type != "region" || a.Scope.ID != "r1" || a.CreatedAt.IsZero() || a.UpdatedAt.IsZero() {
 		t.Fatalf("assignment not filled in: %+v", a)
 	}
 
 	// Assigning the same role and scope again is idempotent.
-	if err := p.AssignRole(ctx, "o1", "u1", "campus-pastor", &orgtypes.Scope{Type: "campus", ID: "c1"}); err != nil {
+	if err := p.AssignRole(ctx, "o1", "u1", "regional-lead", &orgtypes.Scope{Type: "region", ID: "r1"}); err != nil {
 		t.Fatalf("re-assign scoped: %v", err)
 	}
 	if len(store.assignments) != 1 {
@@ -655,11 +655,11 @@ func TestRoleAssignmentAPIValidation(t *testing.T) {
 	p := New(nil, &fakeStore{memberOrgRole: orgtypes.RoleMember})
 
 	// A scope missing either half is rejected before anything is written.
-	if err := p.AssignRole(ctx, "o1", "u1", "campus-pastor", &orgtypes.Scope{Type: "campus"}); err == nil {
+	if err := p.AssignRole(ctx, "o1", "u1", "regional-lead", &orgtypes.Scope{Type: "region"}); err == nil {
 		t.Fatal("scope without an id must be rejected")
 	}
 	// Scopes longer than the cross-dialect limit are rejected too.
-	if err := p.AssignRole(ctx, "o1", "u1", "campus-pastor", &orgtypes.Scope{Type: "campus", ID: strings.Repeat("x", maxScopeLen+1)}); err == nil {
+	if err := p.AssignRole(ctx, "o1", "u1", "regional-lead", &orgtypes.Scope{Type: "region", ID: strings.Repeat("x", maxScopeLen+1)}); err == nil {
 		t.Fatal("over-long scope id must be rejected")
 	}
 
@@ -669,7 +669,7 @@ func TestRoleAssignmentAPIValidation(t *testing.T) {
 	}
 
 	// Assignments require membership, on both paths.
-	if err := New(nil, &fakeStore{}).AssignRole(ctx, "o1", "u1", "member", &orgtypes.Scope{Type: "campus", ID: "c1"}); !errors.Is(err, sql.ErrNoRows) {
+	if err := New(nil, &fakeStore{}).AssignRole(ctx, "o1", "u1", "member", &orgtypes.Scope{Type: "region", ID: "r1"}); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("non-member scoped assign: got %v, want sql.ErrNoRows", err)
 	}
 	if err := New(nil, &fakeStore{}).AssignRole(ctx, "o1", "u1", orgtypes.RoleMember, nil); !errors.Is(err, sql.ErrNoRows) {
@@ -708,7 +708,7 @@ func TestAddRoleAssignmentAndUnscopedReach(t *testing.T) {
 		t.Fatalf("assignments after re-add = %d, want 1", len(store.assignments))
 	}
 	// ...a scoped add is the same thing with a scope...
-	if err := p.AddRoleAssignment(ctx, "o1", "u1", "campus-pastor", &orgtypes.Scope{Type: "campus", ID: "c1"}); err != nil {
+	if err := p.AddRoleAssignment(ctx, "o1", "u1", "regional-lead", &orgtypes.Scope{Type: "region", ID: "r1"}); err != nil {
 		t.Fatalf("add scoped: %v", err)
 	}
 	if len(store.assignments) != 2 || store.assignments[1].Scope == nil {
@@ -722,9 +722,9 @@ func TestAddRoleAssignmentAndUnscopedReach(t *testing.T) {
 		t.Fatalf("HasOrgPermission(org:manage) = %v, %v; want true", ok, err)
 	}
 	// ...answers every scope...
-	ok, err = p.HasOrgPermissionOn(ctx, "u1", "o1", PermOrgManage, "campus", "c1")
+	ok, err = p.HasOrgPermissionOn(ctx, "u1", "o1", PermOrgManage, "region", "r1")
 	if err != nil || !ok {
-		t.Fatalf("HasOrgPermissionOn(org:manage @ campus/c1) = %v, %v; want true", ok, err)
+		t.Fatalf("HasOrgPermissionOn(org:manage @ region/r1) = %v, %v; want true", ok, err)
 	}
 	// ...and appears in the effective permission set.
 	perms, err := p.GetMemberPermissions(ctx, "o1", "u1")
@@ -754,7 +754,7 @@ func TestAddRoleAssignmentAndUnscopedReach(t *testing.T) {
 	if err := p.AddRoleAssignment(ctx, "o1", "u1", orgtypes.RoleOwner, nil); !errors.Is(err, ErrOwnerNotAssignable) {
 		t.Fatalf("add owner: got %v, want ErrOwnerNotAssignable", err)
 	}
-	if err := p.AssignRole(ctx, "o1", "u1", orgtypes.RoleOwner, &orgtypes.Scope{Type: "campus", ID: "c1"}); !errors.Is(err, ErrOwnerNotAssignable) {
+	if err := p.AssignRole(ctx, "o1", "u1", orgtypes.RoleOwner, &orgtypes.Scope{Type: "region", ID: "r1"}); !errors.Is(err, ErrOwnerNotAssignable) {
 		t.Fatalf("assign owner scoped: got %v, want ErrOwnerNotAssignable", err)
 	}
 

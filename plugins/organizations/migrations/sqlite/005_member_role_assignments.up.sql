@@ -3,7 +3,7 @@
 -- `members.role` remains the member's organization-wide (unscoped) role;
 -- this table stores additional assignments that are limited to a scope.
 -- Both scope fields are opaque app-defined strings (e.g. scope_type
--- 'campus', scope_id 'campus_123'); Aegis only stores and compares them.
+-- 'region', scope_id 'region_123'); Aegis only stores and compares them.
 --
 -- The unique key makes assignment idempotent (the same role at the same scope
 -- cannot pile up), and its (organization_id, user_id) prefix serves per-member

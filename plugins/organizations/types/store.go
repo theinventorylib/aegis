@@ -181,6 +181,16 @@ type OrganizationStore interface {
 	// UpdateOrganizationRole replaces a role's permissions.
 	UpdateOrganizationRole(ctx context.Context, role OrganizationRole) error
 
+	// RenameOrganizationRole renames a custom role: the role row, every
+	// assignment carrying it, every member whose primary role it is, and
+	// organization-level invitations referencing it, in one transaction. A
+	// partial rename would leave references to a role name that no longer
+	// exists, so implementations must not run the statements separately.
+	// Team-level invitations carry team role names and must not be touched.
+	// Returns sql.ErrNoRows (or the equivalent) when no role named oldName
+	// exists for the organization.
+	RenameOrganizationRole(ctx context.Context, orgID, oldName, newName string, updatedAt time.Time) error
+
 	// DeleteOrganizationRole removes a custom role.
 	DeleteOrganizationRole(ctx context.Context, orgID, name string) error
 

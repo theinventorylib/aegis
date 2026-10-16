@@ -1047,6 +1047,93 @@ func (q *Queries) RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberPara
 	return err
 }
 
+const renameInvitationsRole = `-- name: RenameInvitationsRole :exec
+UPDATE invitation SET role = ?1, updated_at = ?2 WHERE organization_id = ?3 AND team_id IS NULL AND role = ?4
+`
+
+type RenameInvitationsRoleParams struct {
+	NewName        string `json:"new_name"`
+	UpdatedAt      string `json:"updated_at"`
+	OrganizationID string `json:"organization_id"`
+	OldName        string `json:"old_name"`
+}
+
+func (q *Queries) RenameInvitationsRole(ctx context.Context, arg RenameInvitationsRoleParams) error {
+	_, err := q.db.ExecContext(ctx, renameInvitationsRole,
+		arg.NewName,
+		arg.UpdatedAt,
+		arg.OrganizationID,
+		arg.OldName,
+	)
+	return err
+}
+
+const renameMemberRoleAssignments = `-- name: RenameMemberRoleAssignments :exec
+UPDATE member_role_assignment SET role = ?1, updated_at = ?2 WHERE organization_id = ?3 AND role = ?4
+`
+
+type RenameMemberRoleAssignmentsParams struct {
+	NewName        string `json:"new_name"`
+	UpdatedAt      string `json:"updated_at"`
+	OrganizationID string `json:"organization_id"`
+	OldName        string `json:"old_name"`
+}
+
+func (q *Queries) RenameMemberRoleAssignments(ctx context.Context, arg RenameMemberRoleAssignmentsParams) error {
+	_, err := q.db.ExecContext(ctx, renameMemberRoleAssignments,
+		arg.NewName,
+		arg.UpdatedAt,
+		arg.OrganizationID,
+		arg.OldName,
+	)
+	return err
+}
+
+const renameMembersRole = `-- name: RenameMembersRole :exec
+UPDATE members SET role = ?1, updated_at = ?2 WHERE organization_id = ?3 AND role = ?4
+`
+
+type RenameMembersRoleParams struct {
+	NewName        string `json:"new_name"`
+	UpdatedAt      string `json:"updated_at"`
+	OrganizationID string `json:"organization_id"`
+	OldName        string `json:"old_name"`
+}
+
+func (q *Queries) RenameMembersRole(ctx context.Context, arg RenameMembersRoleParams) error {
+	_, err := q.db.ExecContext(ctx, renameMembersRole,
+		arg.NewName,
+		arg.UpdatedAt,
+		arg.OrganizationID,
+		arg.OldName,
+	)
+	return err
+}
+
+const renameOrganizationRole = `-- name: RenameOrganizationRole :execrows
+UPDATE organization_role SET name = ?1, updated_at = ?2 WHERE organization_id = ?3 AND name = ?4
+`
+
+type RenameOrganizationRoleParams struct {
+	NewName        string `json:"new_name"`
+	UpdatedAt      string `json:"updated_at"`
+	OrganizationID string `json:"organization_id"`
+	OldName        string `json:"old_name"`
+}
+
+func (q *Queries) RenameOrganizationRole(ctx context.Context, arg RenameOrganizationRoleParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, renameOrganizationRole,
+		arg.NewName,
+		arg.UpdatedAt,
+		arg.OrganizationID,
+		arg.OldName,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateInvitationStatus = `-- name: UpdateInvitationStatus :exec
 UPDATE invitation SET status = ?, updated_at = ? WHERE id = ?
 `

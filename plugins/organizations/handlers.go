@@ -831,6 +831,198 @@ func (p *Plugin) DeleteRoleHandler(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Role deleted"})
 }
 
+// RenameRoleHandler renames a custom role, carrying its assignments and any
+// member whose primary role it is. Compiled roles cannot be renamed and the
+// new name must be free.
+func (p *Plugin) RenameRoleHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	orgID := core.GetSanitizedPathParam(r, "id")
+	name := core.GetSanitizedPathParam(r, "name")
+	if orgID == "" || name == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID and role name required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermOrgManage) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	var req RenameRoleRequest
+	if err := core.ReadJSON(r, &req); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if err := req.Validate(); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	// Renaming grants nothing new, so no permission cap is needed here — the
+	// caller already holds role management.
+	info, err := p.RenameRole(r.Context(), orgID, name, req.Name)
+	switch {
+	case errors.Is(err, ErrRoleReserved):
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	case errors.Is(err, ErrInvalidRoleName):
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	case errors.Is(err, ErrRoleExists):
+		core.WriteJSONError(w, http.StatusConflict, err.Error())
+		return
+	case errors.Is(err, sql.ErrNoRows):
+		core.WriteJSONError(w, http.StatusNotFound, "Role not found")
+		return
+	case err != nil:
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to rename role")
+		return
+	}
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Role renamed", Data: info})
+}
+
+// ListRoleAssignmentsHandler lists a member's role assignments: the primary
+// membership role (flagged) followed by the additional organization-wide and
+// scoped ones. Authority data, so it sits behind member:assign_roles like the
+// member-permissions endpoint, not member:view.
+func (p *Plugin) ListRoleAssignmentsHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	orgID := core.GetSanitizedPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "userId")
+	if orgID == "" || userID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID and User ID required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermMemberAssignRoles) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - role assignments require member:assign_roles")
+		return
+	}
+
+	assignments, err := p.ListRoleAssignments(r.Context(), orgID, userID)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		core.WriteJSONError(w, http.StatusNotFound, "Member not found")
+		return
+	case err != nil:
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to list role assignments")
+		return
+	}
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Data: assignments})
+}
+
+// AddRoleAssignmentHandler grants a member an additional role, optionally
+// scoped to a resource. The member's primary role is not changed — that is
+// UpdateMemberRoleHandler.
+func (p *Plugin) AddRoleAssignmentHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	orgID := core.GetSanitizedPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "userId")
+	if orgID == "" || userID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID and User ID required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermMemberAssignRoles) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - role assignment requires member:assign_roles")
+		return
+	}
+
+	var req AddRoleAssignmentRequest
+	if err := core.ReadJSON(r, &req); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	// Sanitize before validating: the validation rules must see the trimmed
+	// values, so a whitespace-only scope half cannot pass as "filled" and then
+	// widen the assignment to organization-wide.
+	req.Role = core.SanitizeString(req.Role, nil)
+	req.ScopeType = core.SanitizeString(req.ScopeType, nil)
+	req.ScopeID = core.SanitizeString(req.ScopeID, nil)
+	if err := req.Validate(); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	// Unknown role names are a request error, not a server one. rolePermissions
+	// treats a missing role as "no permissions", so check existence here.
+	if !p.IsCompiledRole(req.Role) {
+		if _, err := p.store.GetOrganizationRole(r.Context(), orgID, req.Role); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				core.WriteJSONError(w, http.StatusBadRequest, "Unknown role")
+				return
+			}
+			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to load role")
+			return
+		}
+	}
+	if p.checkRoleAssignable(w, r, user.ID, orgID, req.Role, nil) {
+		return
+	}
+
+	var scope *orgtypes.Scope
+	if req.ScopeType != "" {
+		scope = &orgtypes.Scope{Type: req.ScopeType, ID: req.ScopeID}
+	}
+	err = p.AddRoleAssignment(r.Context(), orgID, userID, req.Role, scope)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		core.WriteJSONError(w, http.StatusNotFound, "Member not found")
+		return
+	case errors.Is(err, ErrOwnerNotAssignable):
+		core.WriteJSONError(w, http.StatusBadRequest, "Cannot assign this role")
+		return
+	case errors.Is(err, ErrInvalidScope):
+		core.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	case err != nil:
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to assign role")
+		return
+	}
+	core.WriteJSON(w, http.StatusCreated, &core.Response{Success: true, Message: "Role assigned"})
+}
+
+// RemoveRoleAssignmentHandler removes one additional assignment by ID. The
+// primary role is changed through the member's role endpoint instead, so its
+// membership ID is refused here.
+func (p *Plugin) RemoveRoleAssignmentHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	orgID := core.GetSanitizedPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "userId")
+	assignmentID := core.GetSanitizedPathParam(r, "assignmentId")
+	if orgID == "" || userID == "" || assignmentID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID, User ID and assignment ID required")
+		return
+	}
+	if !p.hasOrgPermissionForUser(r.Context(), user.ID, orgID, PermMemberAssignRoles) {
+		core.WriteJSONError(w, http.StatusForbidden, "Forbidden - role assignment requires member:assign_roles")
+		return
+	}
+
+	switch err := p.RemoveRoleAssignment(r.Context(), orgID, userID, assignmentID); {
+	case errors.Is(err, sql.ErrNoRows):
+		core.WriteJSONError(w, http.StatusNotFound, "Role assignment not found")
+		return
+	case err != nil:
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to remove role assignment")
+		return
+	}
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Role assignment removed"})
+}
+
 // RemoveOrganizationMemberHandler removes a member from an organization
 func (p *Plugin) RemoveOrganizationMemberHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := core.GetUser(r.Context())

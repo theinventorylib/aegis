@@ -78,16 +78,16 @@ func (p *Plugin) RequireOrgPermission(perm Permission) func(http.Handler) http.H
 
 // RequireOrgPermissionOn creates middleware that requires the authenticated
 // user to hold perm for the scoped resource returned by scope — for example
-// one campus or service. An organization-wide assignment answers every
+// one region or project. An organization-wide assignment answers every
 // scope; a scoped assignment answers only its own scope. The scope callback
 // resolves the scope from the request (path parameters, query values, or
 // body); a request whose scope cannot be resolved is rejected with 400.
 //
 // Example:
 //
-//	r.GET("/organizations/:id/campuses/:campusID/reports",
+//	r.GET("/organizations/:id/regions/:regionID/reports",
 //	    requireAuth(plugin.RequireOrgPermissionOn(PermOrgView, func(r *http.Request) (string, string) {
-//	        return "campus", core.GetSanitizedPathParam(r, "campusID")
+//	        return "region", core.GetSanitizedPathParam(r, "regionID")
 //	    })(http.HandlerFunc(handler))))
 func (p *Plugin) RequireOrgPermissionOn(perm Permission, scope func(*http.Request) (string, string)) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

@@ -397,3 +397,32 @@ func (x *sqliteQuerier) deleteMemberRoleAssignments(ctx context.Context, orgID, 
 func (x *sqliteQuerier) countMemberRoleAssignmentsWithRole(ctx context.Context, orgID, role string) (int64, error) {
 	return x.q.CountMemberRoleAssignmentsWithRole(ctx, sqlcsqlite.CountMemberRoleAssignmentsWithRoleParams{OrganizationID: orgID, Role: role})
 }
+
+// Role rename translators. The three statements run inside one transaction
+// (see DefaultOrganizationStore.RenameOrganizationRole).
+
+func (x *sqliteQuerier) renameOrganizationRole(ctx context.Context, orgID, oldName, newName, updatedAt string) (int64, error) {
+	return x.q.RenameOrganizationRole(ctx, sqlcsqlite.RenameOrganizationRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *sqliteQuerier) renameMemberRoleAssignments(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameMemberRoleAssignments(ctx, sqlcsqlite.RenameMemberRoleAssignmentsParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *sqliteQuerier) renameMembersRole(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameMembersRole(ctx, sqlcsqlite.RenameMembersRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *sqliteQuerier) renameInvitationsRole(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameInvitationsRole(ctx, sqlcsqlite.RenameInvitationsRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *sqliteQuerier) withTx(tx *sql.Tx) querier { return &sqliteQuerier{q: x.q.WithTx(tx)} }

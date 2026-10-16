@@ -217,7 +217,7 @@ type MemberPermissionOverride struct {
 }
 
 // Scope identifies the resource a role assignment is limited to (e.g. a
-// campus or a service). Both fields are opaque strings — the vocabulary is
+// region or a project). Both fields are opaque strings — the vocabulary is
 // app-defined; Aegis only stores, returns, and compares them.
 type Scope struct {
 	Type string `json:"type"`

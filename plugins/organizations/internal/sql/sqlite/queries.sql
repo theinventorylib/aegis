@@ -190,3 +190,15 @@ DELETE FROM member_role_assignment WHERE organization_id = ? AND user_id = ? AND
 
 -- name: DeleteMemberRoleAssignments :exec
 DELETE FROM member_role_assignment WHERE organization_id = ? AND user_id = ?;
+
+-- name: RenameOrganizationRole :execrows
+UPDATE organization_role SET name = sqlc.arg('new_name'), updated_at = sqlc.arg('updated_at') WHERE organization_id = sqlc.arg('organization_id') AND name = sqlc.arg('old_name');
+
+-- name: RenameMemberRoleAssignments :exec
+UPDATE member_role_assignment SET role = sqlc.arg('new_name'), updated_at = sqlc.arg('updated_at') WHERE organization_id = sqlc.arg('organization_id') AND role = sqlc.arg('old_name');
+
+-- name: RenameMembersRole :exec
+UPDATE members SET role = sqlc.arg('new_name'), updated_at = sqlc.arg('updated_at') WHERE organization_id = sqlc.arg('organization_id') AND role = sqlc.arg('old_name');
+
+-- name: RenameInvitationsRole :exec
+UPDATE invitation SET role = sqlc.arg('new_name'), updated_at = sqlc.arg('updated_at') WHERE organization_id = sqlc.arg('organization_id') AND team_id IS NULL AND role = sqlc.arg('old_name');
