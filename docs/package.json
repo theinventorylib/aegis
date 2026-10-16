@@ -9,24 +9,25 @@
   "dependencies": {
     "@nuxt/eslint": "1.13.0",
     "@nuxt/icon": "2.2.1",
-    "@nuxt/ui": "^4.11.1",
+    "@nuxt/ui": "^4.12.0",
     "@tailwindcss/vite": "^4.3.3",
     "better-sqlite3": "^12.11.1",
-    "docus": "latest",
+    "docus": "~5.13.0",
     "mermaid": "^11.17.2",
-    "nuxt": "^4.5.2",
+    "nuxt": "^4.6.1",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@nuxtjs/robots": "^5.7.1",
-    "@nuxtjs/sitemap": "^7.6.0",
-    "nuxt-og-image": "^6.7.8"
+    "@nuxtjs/sitemap": "^7.6.2",
+    "nuxt-og-image": "^6.10.4"
   },
   "pnpm": {
     "overrides": {
       "esbuild": ">=0.28.1",
-      "sharp": ">=0.35.4",
-      "@tiptap/*": ">=3.31.3"
+      "sharp": ">=0.35.5",
+      "@tiptap/*": ">=3.31.3",
+      "katex": ">=0.18.2"
     }
   }
 }
