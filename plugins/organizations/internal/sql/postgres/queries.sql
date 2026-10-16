@@ -168,3 +168,36 @@ DELETE FROM organization_role WHERE organization_id = $1 AND name = $2;
 
 -- name: CountOrganizationMembersWithRole :one
 SELECT COUNT(*) FROM members WHERE organization_id = $1 AND role = $2;
+
+-- Member role assignment queries
+
+-- name: CountMemberRoleAssignmentsWithRole :one
+SELECT COUNT(*) FROM member_role_assignment WHERE organization_id = $1 AND role = $2;
+
+-- name: CreateMemberRoleAssignment :exec
+INSERT INTO member_role_assignment (id, organization_id, user_id, role, scope_type, scope_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+
+-- name: ListMemberRoleAssignments :many
+SELECT id, organization_id, user_id, role, scope_type, scope_id, created_at, updated_at
+FROM member_role_assignment
+WHERE organization_id = $1 AND user_id = $2
+ORDER BY created_at ASC;
+
+-- name: DeleteMemberRoleAssignment :execrows
+DELETE FROM member_role_assignment WHERE organization_id = $1 AND user_id = $2 AND id = $3;
+
+-- name: DeleteMemberRoleAssignments :exec
+DELETE FROM member_role_assignment WHERE organization_id = $1 AND user_id = $2;
+
+-- name: RenameOrganizationRole :execrows
+UPDATE organization_role SET name = sqlc.arg('new_name'), updated_at = sqlc.arg('updated_at') WHERE organization_id = sqlc.arg('organization_id') AND name = sqlc.arg('old_name');
+
+-- name: RenameMemberRoleAssignments :exec
+UPDATE member_role_assignment SET role = sqlc.arg('new_name'), updated_at = sqlc.arg('updated_at') WHERE organization_id = sqlc.arg('organization_id') AND role = sqlc.arg('old_name');
+
+-- name: RenameMembersRole :exec
+UPDATE members SET role = sqlc.arg('new_name'), updated_at = sqlc.arg('updated_at') WHERE organization_id = sqlc.arg('organization_id') AND role = sqlc.arg('old_name');
+
+-- name: RenameInvitationsRole :exec
+UPDATE invitation SET role = sqlc.arg('new_name'), updated_at = sqlc.arg('updated_at') WHERE organization_id = sqlc.arg('organization_id') AND team_id IS NULL AND role = sqlc.arg('old_name');

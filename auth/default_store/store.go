@@ -224,12 +224,31 @@ func (s *defaultAccountStore) GetByProvider(ctx context.Context, provider, provi
 	return buildAccount(row.ID, row.UserID, row.Provider, row.ProviderAccountID, row.PasswordHash, row.AccessToken, row.RefreshToken, row.ExpiresAt, row.CreatedAt, row.UpdatedAt), nil
 }
 
+// Update replaces an existing account's mutable fields. An empty
+// PasswordHash is normalized to NULL by the store and the query applies
+// COALESCE over the parameter, so it leaves the stored hash unchanged and
+// partial updates — the documented case is refreshing OAuth tokens — cannot
+// wipe a credential. Password rotation should prefer UpdatePasswordHash,
+// which writes the hash column alone.
 func (s *defaultAccountStore) Update(ctx context.Context, account types.Account) error {
 	return s.q.updateAccount(ctx,
 		account.ID,
+		toNullString(account.PasswordHash),
 		toNullString(account.AccessToken), toNullString(account.RefreshToken),
 		toNullString(account.ExpiresAt.Format(time.RFC3339)),
 		account.UpdatedAt.Format(time.RFC3339),
+	)
+}
+
+// UpdatePasswordHash implements the optional types.PasswordHashUpdater
+// capability: it rewrites only password_hash and updated_at, leaving OAuth
+// tokens, expiry, and account identity untouched, so a password change cannot
+// clobber tokens written by a concurrent refresh (and vice versa). An empty
+// passwordHash clears the stored hash, which disables password login.
+func (s *defaultAccountStore) UpdatePasswordHash(ctx context.Context, accountID, passwordHash string) error {
+	return s.q.updateAccountPassword(ctx, accountID,
+		toNullString(passwordHash),
+		time.Now().Format(time.RFC3339),
 	)
 }
 

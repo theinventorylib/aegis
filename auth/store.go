@@ -15,6 +15,12 @@ type UserStore = authtypes.UserStore
 // delete. Implement this to manage provider-linked accounts in a custom store.
 type AccountStore = authtypes.AccountStore
 
+// PasswordHashUpdater is an optional capability re-exported from auth/types.
+// Stores that implement it support hash-only password writes, which avoids
+// clobbering concurrently written token fields. Callers should treat support
+// as optional; the core AccountService already does.
+type PasswordHashUpdater = authtypes.PasswordHashUpdater
+
 // VerificationStore defines the persistence interface for Verification tokens:
 // create, lookup by token, list by identifier, invalidate, delete, and clean up
 // expired tokens. Used by email verification, password reset, and OTP flows.

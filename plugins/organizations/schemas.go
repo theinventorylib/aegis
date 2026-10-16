@@ -173,6 +173,42 @@ type UpdateRoleRequest struct {
 	Permissions []string `json:"permissions"`
 }
 
+// RenameRoleRequest renames a custom role. The new name must not collide with
+// a compiled or existing custom role.
+type RenameRoleRequest struct {
+	Name string `json:"name"`
+}
+
+// Validate validates the rename request.
+func (r RenameRoleRequest) Validate() error {
+	return validation.ValidateStruct(&r,
+		validation.Field(&r.Name, validation.Required, validation.Length(1, 50)),
+	)
+}
+
+// AddRoleAssignmentRequest grants a member an additional role. Leave
+// scopeType/scopeId empty for an organization-wide assignment; both are
+// required together for a scoped one. The member's primary role is unchanged.
+type AddRoleAssignmentRequest struct {
+	Role      string `json:"role"`
+	ScopeType string `json:"scopeType"`
+	ScopeID   string `json:"scopeId"`
+}
+
+// Validate validates the role-assignment request: a role is required and the
+// scope halves go together (both empty for an organization-wide assignment).
+// Lengths are enforced where the values are used, after sanitization: the role
+// is a reference that may name a compiled role, whose name comes from consumer
+// config and is not bounded here, and the plugin bounds scopes on the
+// sanitized values.
+func (r AddRoleAssignmentRequest) Validate() error {
+	return validation.ValidateStruct(&r,
+		validation.Field(&r.Role, validation.Required),
+		validation.Field(&r.ScopeType, validation.When(r.ScopeID != "", validation.Required)),
+		validation.Field(&r.ScopeID, validation.When(r.ScopeType != "", validation.Required)),
+	)
+}
+
 // ========== Team Request Schemas ==========
 
 // CreateTeamRequest represents a request to create a team within an organization.

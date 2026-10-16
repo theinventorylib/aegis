@@ -107,3 +107,74 @@ func TestUpdatePasswordPurgesCacheBeforeDelete(t *testing.T) {
 		t.Errorf("sessions not deleted after password change: %d remain", len(rows))
 	}
 }
+
+// recordingAuditLogger lives in password_reset_test.go: it implements both
+// LogEvent and LogAuthEvent and captures the event types.
+
+// capableAccountStore is a fakeAccountStore that also implements the optional
+// PasswordHashUpdater capability, recording which write path is used.
+type capableAccountStore struct {
+	fakeAccountStore
+	narrowWrites []passwordWrite
+	fullUpdates  int
+}
+
+type passwordWrite struct{ accountID, hash string }
+
+func (c *capableAccountStore) Update(ctx context.Context, account auth.Account) error {
+	c.fullUpdates++
+	return c.fakeAccountStore.Update(ctx, account)
+}
+
+func (c *capableAccountStore) UpdatePasswordHash(_ context.Context, accountID, passwordHash string) error {
+	c.narrowWrites = append(c.narrowWrites, passwordWrite{accountID: accountID, hash: passwordHash})
+	return nil
+}
+
+// TestUpdatePasswordPrefersNarrowHashWrite pins the capability preference:
+// with a store that supports PasswordHashUpdater, password rotation must not
+// go through the full-row Update, which would rewrite token columns with the
+// values captured at load time.
+func TestUpdatePasswordPrefersNarrowHashWrite(t *testing.T) {
+	ctx := context.Background()
+	accounts := &capableAccountStore{fakeAccountStore: fakeAccountStore{accounts: []auth.Account{
+		{ID: "a1", UserID: "u1", Provider: PasswordProvider, PasswordHash: "old-hash", AccessToken: "token"},
+	}}}
+	svc := newAccountService(accounts, &mockSessionStore{}, defaultPasswordHasherConfig(), DefaultAuthConfig(), &NoOpAuditLogger{}, nil, nil)
+
+	if err := svc.UpdatePassword(ctx, "u1", "NewPassword123!"); err != nil {
+		t.Fatalf("UpdatePassword: %v", err)
+	}
+	if accounts.fullUpdates != 0 {
+		t.Errorf("full-row Update called %d times, want 0 (capability must be preferred)", accounts.fullUpdates)
+	}
+	if len(accounts.narrowWrites) != 1 {
+		t.Fatalf("narrow writes = %v, want exactly one", accounts.narrowWrites)
+	}
+	if w := accounts.narrowWrites[0]; w.accountID != "a1" || w.hash == "" || w.hash == "old-hash" {
+		t.Errorf("narrow write = %+v, want a1 with a rotated hash", w)
+	}
+}
+
+// TestPasswordAuditEventTypes pins the difference between the change and
+// reset flows: ResetPassword records password_reset, UpdatePassword records
+// password_changed.
+func TestPasswordAuditEventTypes(t *testing.T) {
+	ctx := context.Background()
+	audit := &recordingAuditLogger{}
+	accounts := &fakeAccountStore{accounts: []auth.Account{
+		{ID: "a1", UserID: "u1", Provider: PasswordProvider, PasswordHash: "old-hash"},
+	}}
+	svc := newAccountService(accounts, &mockSessionStore{}, defaultPasswordHasherConfig(), DefaultAuthConfig(), audit, nil, nil)
+
+	if err := svc.ResetPassword(ctx, "u1", "NewPassword123!"); err != nil {
+		t.Fatalf("ResetPassword: %v", err)
+	}
+	if err := svc.UpdatePassword(ctx, "u1", "AnotherPassword123!"); err != nil {
+		t.Fatalf("UpdatePassword: %v", err)
+	}
+
+	if len(audit.events) != 2 || audit.events[0] != AuditEventPasswordReset || audit.events[1] != AuditEventPasswordChanged {
+		t.Fatalf("audit events = %v, want [%s %s]", audit.events, AuditEventPasswordReset, AuditEventPasswordChanged)
+	}
+}

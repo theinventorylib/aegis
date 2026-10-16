@@ -198,6 +198,15 @@ func (s *VerificationService) DeleteVerification(ctx context.Context, id string)
 	return s.store.Delete(ctx, id)
 }
 
+// CleanupExpired deletes expired verification tokens (email, reset, OTP).
+//
+// Expired tokens are already rejected on validation; this only reclaims the
+// rows. Aegis does not schedule it — call it from your own worker alongside
+// SessionService.CleanupExpired.
+func (s *VerificationService) CleanupExpired(ctx context.Context) error {
+	return s.store.CleanupExpired(ctx)
+}
+
 // generateHexToken creates a cryptographically secure random hex token.
 // n is the number of random bytes (output will be 2*n hex characters).
 func generateHexToken(n int) (string, error) {

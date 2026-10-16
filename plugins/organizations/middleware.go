@@ -76,6 +76,53 @@ func (p *Plugin) RequireOrgPermission(perm Permission) func(http.Handler) http.H
 	})
 }
 
+// RequireOrgPermissionOn creates middleware that requires the authenticated
+// user to hold perm for the scoped resource returned by scope — for example
+// one region or project. An organization-wide assignment answers every
+// scope; a scoped assignment answers only its own scope. The scope callback
+// resolves the scope from the request (path parameters, query values, or
+// body); a request whose scope cannot be resolved is rejected with 400.
+//
+// Example:
+//
+//	r.GET("/organizations/:id/regions/:regionID/reports",
+//	    requireAuth(plugin.RequireOrgPermissionOn(PermOrgView, func(r *http.Request) (string, string) {
+//	        return "region", core.GetSanitizedPathParam(r, "regionID")
+//	    })(http.HandlerFunc(handler))))
+func (p *Plugin) RequireOrgPermissionOn(perm Permission, scope func(*http.Request) (string, string)) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, err := core.GetUser(r.Context())
+			if err != nil {
+				core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+				return
+			}
+
+			orgID := core.GetSanitizedPathParam(r, "id")
+			if orgID == "" {
+				core.WriteJSONError(w, http.StatusBadRequest, "Organization ID required")
+				return
+			}
+
+			scopeType, scopeID := scope(r)
+			scopeType = core.SanitizeString(scopeType, nil)
+			scopeID = core.SanitizeString(scopeID, nil)
+			if scopeType == "" || scopeID == "" {
+				core.WriteJSONError(w, http.StatusBadRequest, "Scope required")
+				return
+			}
+
+			ok, err := p.HasOrgPermissionOn(r.Context(), user.ID, orgID, perm, scopeType, scopeID)
+			if err != nil || !ok {
+				core.WriteJSONError(w, http.StatusForbidden, "Forbidden")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // RequireTeamPermission creates middleware that requires the authenticated
 // user to be able to access the team (via CanAccessTeam) and to have a team
 // role that grants perm.

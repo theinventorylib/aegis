@@ -62,8 +62,9 @@ type OrganizationStore interface {
 	GetMember(ctx context.Context, userID, orgID string) (Member, error)
 
 	// HasOrgRole checks whether the user has any of the given org-level roles.
-	// Use this instead of the deprecated IsOrganizationMember / IsOwnerOrAdmin
-	// methods for new code.
+	// Implementations should match the membership role first, then additional
+	// organization-wide assignments (empty scope). Use this instead of the
+	// deprecated IsOrganizationMember / IsOwnerOrAdmin methods for new code.
 	//
 	// Example:
 	//
@@ -98,7 +99,11 @@ type OrganizationStore interface {
 	UpdateMemberRole(ctx context.Context, userID, orgID, role string, updatedAt time.Time) error
 
 	// RemoveMember removes a user from an organization.
-	// Should also remove from all teams in the organization.
+	// Should also remove from all teams in the organization, and must remove
+	// the member's role assignments. Implementations using separate
+	// statements should delete assignments first: a partial failure then
+	// leaves the member with fewer grants, never stale ones that could
+	// reactivate if the user rejoins.
 	RemoveMember(ctx context.Context, userID, orgID string) error
 
 	// ListOrganizationMembers retrieves all members of an organization.
@@ -176,12 +181,45 @@ type OrganizationStore interface {
 	// UpdateOrganizationRole replaces a role's permissions.
 	UpdateOrganizationRole(ctx context.Context, role OrganizationRole) error
 
+	// RenameOrganizationRole renames a custom role: the role row, every
+	// assignment carrying it, every member whose primary role it is, and
+	// organization-level invitations referencing it, in one transaction. A
+	// partial rename would leave references to a role name that no longer
+	// exists, so implementations must not run the statements separately.
+	// Team-level invitations carry team role names and must not be touched.
+	// Returns sql.ErrNoRows (or the equivalent) when no role named oldName
+	// exists for the organization.
+	RenameOrganizationRole(ctx context.Context, orgID, oldName, newName string, updatedAt time.Time) error
+
 	// DeleteOrganizationRole removes a custom role.
 	DeleteOrganizationRole(ctx context.Context, orgID, name string) error
 
 	// CountOrganizationMembersWithRole counts members holding a role, so a role
-	// in use cannot be deleted out from under them.
+	// in use cannot be deleted out from under them. Implementations should
+	// count both the membership role and assignment rows.
 	CountOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int, error)
+
+	// ========== Role assignment operations ==========
+
+	// CreateMemberRoleAssignment stores an assignment of an org role to a
+	// member. An empty scopeType/scopeID pair stores an organization-wide
+	// assignment (a member may hold several in addition to the membership
+	// role); a non-empty pair stores a resource-scoped one. The caller owns
+	// authorization and role-name validation.
+	CreateMemberRoleAssignment(ctx context.Context, id, orgID, userID, role, scopeType, scopeID string, createdAt, updatedAt time.Time) error
+
+	// ListMemberRoleAssignments returns the member's assignments stored in the
+	// assignment table, oldest first. The membership's primary role is not
+	// stored there and is not included; ListRoleAssignments synthesizes it.
+	// Organization-wide assignments are returned with a nil Scope. Returns an
+	// empty slice when none exist.
+	ListMemberRoleAssignments(ctx context.Context, orgID, userID string) ([]RoleAssignment, error)
+
+	// DeleteMemberRoleAssignment removes one assignment by ID.
+	// Changing or removing the primary role is the job of
+	// UpdateMemberRole / RemoveMember. Returns sql.ErrNoRows (or the
+	// equivalent) when no assignment matched.
+	DeleteMemberRoleAssignment(ctx context.Context, orgID, userID, id string) error
 
 	// ========== Invitation operations ==========
 

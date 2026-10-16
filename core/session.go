@@ -440,6 +440,18 @@ func (s *SessionService) CountUserSessions(ctx context.Context, userID string) (
 	return s.sessionStore.CountByUserID(ctx, userID)
 }
 
+// CleanupExpired deletes expired sessions from the store.
+//
+// Expiry already gates authentication — every lookup filters on expires_at, so
+// an expired row can never authenticate anyone — but the rows linger until
+// deleted. Aegis deliberately does not run a background janitor (surprising
+// load, lifecycle and multi-instance concerns); call this from your own
+// scheduled worker. It is a single indexed DELETE, safe to run concurrently
+// from multiple instances.
+func (s *SessionService) CleanupExpired(ctx context.Context) error {
+	return s.sessionStore.CleanupExpired(ctx)
+}
+
 // purgeUserSessionCache removes every cached session entry for a user from
 // Redis without touching the database.
 //

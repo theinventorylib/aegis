@@ -104,8 +104,12 @@ func (s *sqliteQuerier) getAccountByProvider(ctx context.Context, provider strin
 	return accountRow{ID: r.ID, UserID: r.UserID, Provider: r.Provider, ProviderAccountID: r.ProviderAccountID, PasswordHash: r.PasswordHash, AccessToken: r.AccessToken, RefreshToken: r.RefreshToken, ExpiresAt: r.ExpiresAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
 }
 
-func (s *sqliteQuerier) updateAccount(ctx context.Context, id string, accessToken, refreshToken, expiresAt sql.NullString, updatedAt string) error {
-	return s.q.UpdateAccount(ctx, sqlcsqlite.UpdateAccountParams{ID: id, AccessToken: accessToken, RefreshToken: refreshToken, ExpiresAt: expiresAt, UpdatedAt: updatedAt})
+func (s *sqliteQuerier) updateAccount(ctx context.Context, id string, passwordHash, accessToken, refreshToken, expiresAt sql.NullString, updatedAt string) error {
+	return s.q.UpdateAccount(ctx, sqlcsqlite.UpdateAccountParams{ID: id, PasswordHash: passwordHash, AccessToken: accessToken, RefreshToken: refreshToken, ExpiresAt: expiresAt, UpdatedAt: updatedAt})
+}
+
+func (s *sqliteQuerier) updateAccountPassword(ctx context.Context, id string, passwordHash sql.NullString, updatedAt string) error {
+	return s.q.UpdateAccountPassword(ctx, sqlcsqlite.UpdateAccountPasswordParams{ID: id, PasswordHash: passwordHash, UpdatedAt: updatedAt})
 }
 
 func (s *sqliteQuerier) deleteAccount(ctx context.Context, id string) error {

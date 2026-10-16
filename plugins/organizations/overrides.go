@@ -28,7 +28,8 @@ func (p *Plugin) MemberPermissionOverrides(ctx context.Context, orgID, userID st
 
 // SetMemberPermissionOverrides replaces a member's overrides (send an empty
 // slice to clear them). The target must be a member of the organization;
-// duplicate permissions and unknown effects are rejected before anything is
+// duplicate permissions, unknown effects, and (when Config.Permissions is
+// configured) permissions outside the catalog are rejected before anything is
 // written. Empty IDs and timestamps are filled in on overrides in place.
 //
 // This is the programmatic entry point: it applies no actor-authority cap
@@ -54,6 +55,9 @@ func (p *Plugin) SetMemberPermissionOverrides(ctx context.Context, orgID, userID
 		}
 		seen[perm] = true
 		overrides[i].Permission = perm
+		if err := p.validatePermissions([]Permission{Permission(perm)}); err != nil {
+			return err
+		}
 	}
 
 	if _, err := p.store.GetMember(ctx, userID, orgID); err != nil {

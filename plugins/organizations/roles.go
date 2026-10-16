@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -23,6 +24,10 @@ var (
 
 	// ErrRoleInUse means members still hold the role, so it cannot be deleted.
 	ErrRoleInUse = errors.New("role is assigned to members")
+
+	// ErrInvalidRoleName means a rename was requested with a missing or
+	// whitespace-only role name.
+	ErrInvalidRoleName = errors.New("invalid role name")
 )
 
 // RoleInfo describes a role in an organization's catalog.
@@ -106,6 +111,9 @@ func (p *Plugin) CreateRole(ctx context.Context, orgID, name string, permissions
 	if p.IsCompiledRole(name) {
 		return RoleInfo{}, ErrRoleReserved
 	}
+	if err := p.validatePermissions(permissions); err != nil {
+		return RoleInfo{}, err
+	}
 	if _, err := p.store.GetOrganizationRole(ctx, orgID, name); err == nil {
 		return RoleInfo{}, ErrRoleExists
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -133,6 +141,9 @@ func (p *Plugin) UpdateRole(ctx context.Context, orgID, name string, permissions
 	if p.IsCompiledRole(name) {
 		return RoleInfo{}, ErrRoleReserved
 	}
+	if err := p.validatePermissions(permissions); err != nil {
+		return RoleInfo{}, err
+	}
 	role, err := p.store.GetOrganizationRole(ctx, orgID, name)
 	if err != nil {
 		return RoleInfo{}, err
@@ -143,6 +154,48 @@ func (p *Plugin) UpdateRole(ctx context.Context, orgID, name string, permissions
 		return RoleInfo{}, err
 	}
 	return RoleInfo{Name: name, Permissions: dedupePermissions(permissions), Custom: true}, nil
+}
+
+// RenameRole renames a custom role. Neither name may belong to a compiled
+// role (built-ins and Config.OrgRoles), and the new name must be free. The
+// rename carries the role's assignments, any member whose primary role it is,
+// and organization-level invitations referencing it, in one transaction;
+// sql.ErrNoRows means the organization has no role named oldName.
+//
+// The caller owns authorization, like the assignment APIs: gate it with
+// HasOrgPermissionOn / RequireOrgPermissionOn. No authority cap is needed —
+// renaming grants nothing new — so the role's permissions may exceed the
+// caller's own.
+func (p *Plugin) RenameRole(ctx context.Context, orgID, oldName, newName string) (RoleInfo, error) {
+	oldName = core.SanitizeString(oldName, nil)
+	newName = core.SanitizeString(newName, nil)
+	if oldName == "" || newName == "" {
+		return RoleInfo{}, fmt.Errorf("%w: old and new role names are required", ErrInvalidRoleName)
+	}
+	if p.IsCompiledRole(oldName) || p.IsCompiledRole(newName) {
+		return RoleInfo{}, ErrRoleReserved
+	}
+
+	role, err := p.store.GetOrganizationRole(ctx, orgID, oldName)
+	if err != nil {
+		return RoleInfo{}, err
+	}
+	info := RoleInfo{Name: newName, Permissions: permissionsFromStrings(role.Permissions), Custom: true}
+	if oldName == newName {
+		info.Name = oldName
+		return info, nil
+	}
+
+	if _, err := p.store.GetOrganizationRole(ctx, orgID, newName); err == nil {
+		return RoleInfo{}, ErrRoleExists
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return RoleInfo{}, err
+	}
+
+	if err := p.store.RenameOrganizationRole(ctx, orgID, oldName, newName, time.Now()); err != nil {
+		return RoleInfo{}, err
+	}
+	return info, nil
 }
 
 // DeleteRole removes a custom role. Roles still assigned to members are

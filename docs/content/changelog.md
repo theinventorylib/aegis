@@ -1,6 +1,28 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-16
+
+### Added
+- **Role rename**: `RenameRole` and `POST /organizations/{id}/roles/{name}/rename` rename a custom role, carrying the new name to the role row, its assignments, every member whose primary role it is, and organization-level invitations referencing it, in one transaction (team-level invitations are unaffected). Compiled roles (built-ins and `Config.OrgRoles`) cannot be renamed and the new name must be free. Verified against PostgreSQL; the MySQL and SQLite statements were exercised against fresh MySQL 8 and SQLite databases.
+- **Role-assignment endpoints**: `GET`/`POST /organizations/{id}/members/{userId}/role-assignments` and `DELETE .../role-assignments/{assignmentId}` expose `ListRoleAssignments`, `AddRoleAssignment` and `RemoveRoleAssignment` over HTTP, with the same permission gates (`member:assign_roles` for every call, authority data being the same class as the member-permissions endpoint), reserved-owner refusal and authority caps as the other member endpoints.
+- **Scoped organization-role assignments** (`plugins/organizations`): `AssignRole` / `ListRoleAssignments` / `RemoveRoleAssignment`, plus `HasOrgPermissionOn` and `RequireOrgPermissionOn(perm, scopeFn)` for resource-scoped authority. Scopes are opaque app-defined `scope_type` / `scope_id` strings (at most 128 characters each); a member's membership role stays organization-wide, and several scoped assignments may coexist per member. Backed by the new `member_role_assignment` table (migration 006 on postgres, 005 on mysql/sqlite); the plugin's `Init` requires that table, so apply migrations before upgrading.
+- **Multiple organization-role assignments**: `AddRoleAssignment` adds organization-wide or scoped assignments on top of the membership's primary role without changing it; `ListRoleAssignments` flags the primary entry with `Primary`, and the reserved owner role cannot be granted through the assignment APIs.
+- **Permission catalog** (`Config.Permissions`): optional app-defined permission registry with `Module`/`Description` metadata and `Sensitive` capping. When configured, `CreateRole` / `UpdateRole` and member overrides reject permissions outside the catalog (`ErrUnknownPermission`), and `PermissionCatalog()` returns the merged framework + app catalog for UIs.
+- **Assignment-time authority cap for organization roles**: adding a member, changing a member's role, creating an invitation, and adding/updating a team member now refuse a role that carries framework (or catalog-`Sensitive`) permissions the actor does not hold. Team roles are capped against the actor's org role plus their own team role.
+- **Session and verification cleanup API**: `SessionService.CleanupExpired(ctx)` and `VerificationService.CleanupExpired(ctx)` expose the store-level sweeps; hosts schedule them (Aegis runs no background janitor).
+- `AccountService.ResetPassword`: same behavior as `UpdatePassword`, but records `AuditEventPasswordReset` so recovery flows are distinguishable in the audit log.
+- Optional `auth.PasswordHashUpdater` account-store capability: password rotation rewrites only the hash column (the default stores implement it), so it cannot clobber tokens written by a concurrent OAuth refresh.
+
+### Changed
+- `orgtypes.OrganizationStore` gained `CreateMemberRoleAssignment`, `ListMemberRoleAssignments`, and `DeleteMemberRoleAssignment`; custom store implementations must add them. `RemoveMember` must now also remove the member's role assignments, and `CountOrganizationMembersWithRole` should count assignment rows so a role in use cannot be deleted while it is still granted.
+- `orgtypes.OrganizationStore` also gained `RenameOrganizationRole` (one transaction: role row, assignments, primary-role members, and organization-level invitations); custom store implementations must add it.
+- Permission resolution (`HasOrgPermission`, `HasOrgPermissionOn`, `GetMemberPermissions`, and `HasOrgRole` on the default store) includes additional organization-wide assignments.
+
+### Fixed
+- **Password updates and resets now persist the new hash.** The default account store's `Update` did not write `password_hash`, so `UpdatePassword` and the recovery flows built on it reported success while the previous password stayed in effect. The store now persists the hash and treats an empty value as "leave unchanged", so partial updates cannot wipe it.
+- **The MySQL core schema now applies on MySQL 8.** `auth/migrations/mysql/001_initial.up.sql` used `TEXT` primary keys and `CREATE INDEX IF NOT EXISTS`, both rejected by MySQL; key columns are now `VARCHAR(255)` and indexes are created without the guard, so fresh MySQL installs complete the core schema.
+
 ## [2.1.2] - 2026-10-03
 
 ### Added

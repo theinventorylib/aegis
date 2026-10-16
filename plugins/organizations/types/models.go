@@ -216,6 +216,35 @@ type MemberPermissionOverride struct {
 	UpdatedAt      time.Time        `json:"updatedAt"`
 }
 
+// Scope identifies the resource a role assignment is limited to (e.g. a
+// region or a project). Both fields are opaque strings — the vocabulary is
+// app-defined; Aegis only stores, returns, and compares them.
+type Scope struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
+// RoleAssignment is one grant of an organization role to a member.
+//
+// A nil Scope means the assignment is organization-wide: it answers every
+// scope. A non-nil Scope limits the assignment to resources of that type and
+// ID. Scoped assignments are additive and several may coexist per member.
+//
+// A member's primary organization-wide role is the membership role
+// (Member.Role); ListRoleAssignments returns it first, flagged Primary. Any
+// further organization-wide assignments appear with a nil Scope and Primary
+// false, and only the Primary entry can be changed with UpdateMemberRole.
+type RoleAssignment struct {
+	ID             string    `json:"id"`
+	OrganizationID string    `json:"organizationId"`
+	UserID         string    `json:"userId"`
+	Role           string    `json:"role"`
+	Scope          *Scope    `json:"scope,omitempty"` // nil = organization-wide
+	Primary        bool      `json:"primary,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
 // OrganizationRole is a persisted, organization-specific role definition.
 //
 // Built-in and Config.OrgRoles definitions stay in code; these are created per

@@ -141,8 +141,12 @@ func (p *postgresQuerier) getAccountByProvider(ctx context.Context, provider str
 	return accountRow{ID: r.ID, UserID: r.UserID, Provider: r.Provider, ProviderAccountID: r.ProviderAccountID, PasswordHash: r.PasswordHash, AccessToken: r.AccessToken, RefreshToken: r.RefreshToken, ExpiresAt: formatNullTS(r.ExpiresAt), CreatedAt: formatTS(r.CreatedAt), UpdatedAt: formatTS(r.UpdatedAt)}, nil
 }
 
-func (p *postgresQuerier) updateAccount(ctx context.Context, id string, accessToken, refreshToken, expiresAt sql.NullString, updatedAt string) error {
-	return p.q.UpdateAccount(ctx, sqlcpostgres.UpdateAccountParams{ID: id, AccessToken: accessToken, RefreshToken: refreshToken, ExpiresAt: parseNullTS(expiresAt), UpdatedAt: parseTS(updatedAt)})
+func (p *postgresQuerier) updateAccount(ctx context.Context, id string, passwordHash, accessToken, refreshToken, expiresAt sql.NullString, updatedAt string) error {
+	return p.q.UpdateAccount(ctx, sqlcpostgres.UpdateAccountParams{ID: id, PasswordHash: passwordHash, AccessToken: accessToken, RefreshToken: refreshToken, ExpiresAt: parseNullTS(expiresAt), UpdatedAt: parseTS(updatedAt)})
+}
+
+func (p *postgresQuerier) updateAccountPassword(ctx context.Context, id string, passwordHash sql.NullString, updatedAt string) error {
+	return p.q.UpdateAccountPassword(ctx, sqlcpostgres.UpdateAccountPasswordParams{ID: id, PasswordHash: passwordHash, UpdatedAt: parseTS(updatedAt)})
 }
 
 func (p *postgresQuerier) deleteAccount(ctx context.Context, id string) error {

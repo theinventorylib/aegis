@@ -52,7 +52,8 @@ type querier interface {
 	getAccountByID(ctx context.Context, id string) (accountRow, error)
 	getAccountsByUserID(ctx context.Context, userID string) ([]accountRow, error)
 	getAccountByProvider(ctx context.Context, provider string, providerAccountID sql.NullString) (accountRow, error)
-	updateAccount(ctx context.Context, id string, accessToken, refreshToken, expiresAt sql.NullString, updatedAt string) error
+	updateAccount(ctx context.Context, id string, passwordHash, accessToken, refreshToken, expiresAt sql.NullString, updatedAt string) error
+	updateAccountPassword(ctx context.Context, id string, passwordHash sql.NullString, updatedAt string) error
 	deleteAccount(ctx context.Context, id string) error
 
 	// Verification queries

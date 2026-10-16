@@ -62,10 +62,13 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
+	"unicode/utf8"
 
 	"github.com/theinventorylib/aegis/v2/core"
 	iversion "github.com/theinventorylib/aegis/v2/internal/version"
@@ -88,6 +91,14 @@ type Config struct {
 	// TeamRoles overrides or extends the built-in team roles (lead, member).
 	// Semantics are the same as OrgRoles.
 	TeamRoles map[string]RoleDefinition
+
+	// Permissions is the optional permission catalog: app-defined permission
+	// strings with UI metadata. When non-empty, CreateRole / UpdateRole and
+	// member overrides only accept listed permissions, and entries flagged
+	// Sensitive are capped by the assignment authority checks exactly like
+	// framework permissions. When empty (the default), every permission
+	// string is accepted and only framework permissions are capped.
+	Permissions map[Permission]PermissionDefinition
 
 	// InvitationSubject is the subject line for invitation emails.
 	// Default: "You're invited!".
@@ -132,6 +143,7 @@ type Plugin struct {
 	config         Config
 	orgRoles       map[string]RoleDefinition
 	teamRoles      map[string]RoleDefinition
+	permissions    map[Permission]PermissionDefinition
 }
 
 // New creates a new organizations plugin for multi-tenancy management.
@@ -170,11 +182,23 @@ func New(cfg *Config, store orgtypes.OrganizationStore, dialect ...plugins.Diale
 		}
 		p.config.OrgRoles = cfg.OrgRoles
 		p.config.TeamRoles = cfg.TeamRoles
+		p.config.Permissions = cfg.Permissions
 		orgRoles = cfg.OrgRoles
 		teamRoles = cfg.TeamRoles
 	}
 	p.orgRoles = resolveRoles(defaultOrgRoles(), orgRoles)
 	p.teamRoles = resolveRoles(defaultTeamRoles(), teamRoles)
+
+	// Compile the permission catalog with the same normalization the write
+	// path applies, so padded registrations still match sanitized writes.
+	p.permissions = make(map[Permission]PermissionDefinition, len(p.config.Permissions))
+	for perm, def := range p.config.Permissions {
+		normalized := Permission(core.SanitizeString(string(perm), nil))
+		if normalized == "" {
+			continue
+		}
+		p.permissions[normalized] = def
+	}
 	return p
 }
 
@@ -209,6 +233,8 @@ func (p *Plugin) Description() string {
 //   - members: Organization membership with roles
 //   - team: Team metadata within organizations
 //   - team_member: Team membership with roles
+//   - invitation: Pending organization and team invitations
+//   - member_role_assignment: Additional (scoped or organization-wide) role assignments
 //
 // Parameters:
 //   - ctx: Initialization context
@@ -520,7 +546,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		Method:      "PUT",
 		Path:        prefix + "/{id}/members/{userId}/permissions",
 		Summary:     "Replace member permissions",
-		Description: "Replace a member's permission overrides. Deny wins over the role; grant adds a permission the role does not carry. Grants are capped at the actor's own framework permissions, and the owner's overrides cannot be changed.",
+		Description: "Replace a member's permission overrides. Deny wins over the role; grant adds a permission the role does not carry. Grants are capped at the actor's own framework (or catalog-sensitive) permissions, and the owner's overrides cannot be changed.",
 		Tags:        []string{"Members"},
 		Auth:        true,
 		Params: []openapi.Param{
@@ -663,6 +689,97 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			403: openapi.RefResponse("Insufficient permissions", "Error"),
 			404: openapi.RefResponse("Role not found", "Error"),
 			409: openapi.RefResponse("Role is assigned to members", "Error"),
+		},
+	})
+
+	// Additional role assignments: the membership's primary role is managed by
+	// PATCH /{id}/members/{userId}; these grant, list and revoke the extra
+	// organization-wide and scoped ones.
+	membersGroup.GET("/:userId/role-assignments", requireAuth(http.HandlerFunc(p.ListRoleAssignmentsHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "GET",
+		Path:        prefix + "/{id}/members/{userId}/role-assignments",
+		Summary:     "List a member's role assignments",
+		Description: "Requires member:assign_roles — the membership's primary role (flagged) followed by the additional organization-wide and scoped assignments.",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[[]orgtypes.RoleAssignment]("Role assignments"),
+			400: openapi.RefResponse("Invalid organization or user ID", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Member not found", "Error"),
+		},
+	})
+
+	membersGroup.POST("/:userId/role-assignments", requireAuth(http.HandlerFunc(p.AddRoleAssignmentHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/{id}/members/{userId}/role-assignments",
+		Summary:     "Grant an additional role to a member",
+		Description: "Adds an organization-wide or scoped assignment on top of the member's primary role. The caller must hold every permission the role grants, and the reserved owner role cannot be assigned.",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[AddRoleAssignmentRequest](),
+		Responses: openapi.Responses{
+			201: openapi.RefResponse("Role assigned", "Success"),
+			400: openapi.RefResponse("Unknown role, invalid scope, or unassignable role", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Member not found", "Error"),
+		},
+	})
+
+	membersGroup.DELETE("/:userId/role-assignments/:assignmentId", requireAuth(http.HandlerFunc(p.RemoveRoleAssignmentHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "DELETE",
+		Path:        prefix + "/{id}/members/{userId}/role-assignments/{assignmentId}",
+		Summary:     "Revoke a role assignment",
+		Description: "Removes one additional assignment by ID. The primary role is changed through the member's role endpoint instead.",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+			{Name: "assignmentId", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Role assignment removed", "Success"),
+			400: openapi.RefResponse("Invalid IDs", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Role assignment not found", "Error"),
+		},
+	})
+
+	rolesGroup.POST("/:name/rename", requireAuth(http.HandlerFunc(p.RenameRoleHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/{id}/roles/{name}/rename",
+		Summary:     "Rename a custom role",
+		Description: "Renames a custom role, carrying its assignments, any member whose primary role it is, and organization-level invitations referencing it. Compiled roles cannot be renamed and the new name must be free.",
+		Tags:        []string{"Roles"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "name", In: "path", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[RenameRoleRequest](),
+		Responses: openapi.Responses{
+			200: openapi.DataResponseOf[RoleInfo]("Role renamed"),
+			400: openapi.RefResponse("Reserved name or invalid request", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Role not found", "Error"),
+			409: openapi.RefResponse("Role name already in use", "Error"),
 		},
 	})
 
@@ -1176,6 +1293,186 @@ func (p *Plugin) UpdateMemberRole(ctx context.Context, orgID, userID, role strin
 	return p.store.UpdateMemberRole(ctx, userID, orgID, role, time.Now())
 }
 
+// maxScopeLen bounds the scope type and id of a role assignment so behavior is
+// identical across dialects: MySQL stores them in VARCHAR(128) — narrower than
+// the table's other string columns because the five-column unique key must fit
+// InnoDB's 3072-byte index limit under utf8mb4.
+const maxScopeLen = 128
+
+// ErrOwnerNotAssignable means a caller tried to grant the reserved owner role
+// through an assignment API. Ownership transfer needs its own flow.
+var ErrOwnerNotAssignable = errors.New("the owner role cannot be assigned; ownership transfer needs its own flow")
+
+// ErrInvalidScope means an assignment scope is incomplete (only one half) or
+// exceeds maxScopeLen characters.
+var ErrInvalidScope = errors.New("invalid scope")
+
+// AssignRole grants an organization role to a member.
+//
+// A nil scope assigns (or replaces) the member's primary organization-wide
+// role — the membership role that member listings show. A non-nil scope adds
+// a scoped assignment: several scoped assignments may coexist per member, and
+// each answers only resources matching its scope. Both scope fields are
+// opaque app-defined strings (sanitized on write, at most maxScopeLen
+// characters each); assignments with a nil scope answer every scope, so they
+// need no row of their own. Use AddRoleAssignment to add further
+// organization-wide assignments without touching the primary role.
+//
+// Assigning an identical (role, scope) is idempotent. The target must be a
+// member of the organization: sql.ErrNoRows is returned otherwise, on both the
+// scoped and the organization-wide path. The reserved owner role cannot be
+// assigned here.
+//
+// The caller owns authorization: gate the call with HasOrgPermissionOn /
+// RequireOrgPermissionOn, and apply the assignment-time authority cap the
+// HTTP handlers apply (see ungrantableOrgRole).
+func (p *Plugin) AssignRole(ctx context.Context, orgID, userID, role string, scope *orgtypes.Scope) error {
+	if role == orgtypes.RoleOwner {
+		return ErrOwnerNotAssignable
+	}
+	var scopeType, scopeID string
+	if scope != nil {
+		scopeType = core.SanitizeString(scope.Type, nil)
+		scopeID = core.SanitizeString(scope.ID, nil)
+		if scopeType == "" || scopeID == "" {
+			return fmt.Errorf("%w: scope requires both a type and an id", ErrInvalidScope)
+		}
+		if utf8.RuneCountInString(scopeType) > maxScopeLen || utf8.RuneCountInString(scopeID) > maxScopeLen {
+			return fmt.Errorf("%w: scope type and id must be at most %d characters", ErrInvalidScope, maxScopeLen)
+		}
+	}
+
+	// Assignments attach to members, mirroring SetMemberPermissionOverrides.
+	if _, err := p.store.GetMember(ctx, userID, orgID); err != nil {
+		return err
+	}
+
+	if scope == nil {
+		return p.UpdateMemberRole(ctx, orgID, userID, role)
+	}
+
+	// Idempotent: the same role at the same scope must not pile up rows (the
+	// table's unique key backstops concurrent duplicates).
+	existing, err := p.store.ListMemberRoleAssignments(ctx, orgID, userID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if hasAssignment(existing, role, scopeType, scopeID) {
+		return nil
+	}
+
+	now := time.Now()
+	return p.store.CreateMemberRoleAssignment(ctx, core.GenerateID(), orgID, userID, role, scopeType, scopeID, now, now)
+}
+
+// AddRoleAssignment adds an assignment on top of the member's existing reach.
+// A nil scope adds an organization-wide assignment (a member may hold several
+// in addition to the primary membership role); a non-nil scope adds a
+// resource-scoped one and is equivalent to AssignRole with that scope.
+//
+// The membership's primary/display role is not affected — use
+// UpdateMemberRole (or AssignRole with a nil scope) to change it. The reserved
+// owner role cannot be granted this way.
+//
+// Adding an identical (role, scope) is idempotent; adding the current primary
+// role with a nil scope is a no-op because the membership role already grants
+// it organization-wide. The target must be a member of the organization:
+// sql.ErrNoRows is returned otherwise.
+func (p *Plugin) AddRoleAssignment(ctx context.Context, orgID, userID, role string, scope *orgtypes.Scope) error {
+	if role == orgtypes.RoleOwner {
+		return ErrOwnerNotAssignable
+	}
+	var scopeType, scopeID string
+	if scope != nil {
+		scopeType = core.SanitizeString(scope.Type, nil)
+		scopeID = core.SanitizeString(scope.ID, nil)
+		if scopeType == "" || scopeID == "" {
+			return fmt.Errorf("%w: scope requires both a type and an id", ErrInvalidScope)
+		}
+		if utf8.RuneCountInString(scopeType) > maxScopeLen || utf8.RuneCountInString(scopeID) > maxScopeLen {
+			return fmt.Errorf("%w: scope type and id must be at most %d characters", ErrInvalidScope, maxScopeLen)
+		}
+	}
+
+	// Assignments attach to members, mirroring SetMemberPermissionOverrides.
+	m, err := p.store.GetMember(ctx, userID, orgID)
+	if err != nil {
+		return err
+	}
+	// The primary role already answers every scope; adding it again
+	// organization-wide would only be a redundant row.
+	if scope == nil && role == m.Role {
+		return nil
+	}
+
+	existing, err := p.store.ListMemberRoleAssignments(ctx, orgID, userID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if hasAssignment(existing, role, scopeType, scopeID) {
+		return nil
+	}
+
+	now := time.Now()
+	return p.store.CreateMemberRoleAssignment(ctx, core.GenerateID(), orgID, userID, role, scopeType, scopeID, now, now)
+}
+
+// hasAssignment reports whether assignments already contain role at the given
+// scope; an empty scopeType/scopeID means organization-wide.
+func hasAssignment(assignments []orgtypes.RoleAssignment, role, scopeType, scopeID string) bool {
+	for _, a := range assignments {
+		if a.Role != role {
+			continue
+		}
+		switch {
+		case a.Scope == nil:
+			if scopeType == "" && scopeID == "" {
+				return true
+			}
+		case a.Scope.Type == scopeType && a.Scope.ID == scopeID:
+			return true
+		}
+	}
+	return false
+}
+
+// ListRoleAssignments returns a member's role assignments: the primary
+// organization-wide role first (synthesized from the membership — Aegis does
+// not duplicate it in the assignment table), then the additional assignments
+// in creation order. Primary marks the membership entry; a nil Scope on any
+// entry means organization-wide.
+func (p *Plugin) ListRoleAssignments(ctx context.Context, orgID, userID string) ([]orgtypes.RoleAssignment, error) {
+	m, err := p.store.GetMember(ctx, userID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	assignments, err := p.store.ListMemberRoleAssignments(ctx, orgID, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]orgtypes.RoleAssignment, 0, len(assignments)+1)
+	out = append(out, orgtypes.RoleAssignment{
+		ID:             m.ID,
+		OrganizationID: m.OrganizationID,
+		UserID:         m.UserID,
+		Role:           m.Role,
+		Scope:          nil,
+		Primary:        true,
+		CreatedAt:      m.CreatedAt,
+		UpdatedAt:      m.UpdatedAt,
+	})
+	return append(out, assignments...), nil
+}
+
+// RemoveRoleAssignment removes one assignment by ID (scoped or an additional
+// organization-wide entry). The primary role is the membership itself: use
+// UpdateMemberRole to change its role, or RemoveOrganizationMember to drop the
+// membership entirely. Returns sql.ErrNoRows when no assignment matches —
+// including the primary membership ID that ListRoleAssignments returns.
+func (p *Plugin) RemoveRoleAssignment(ctx context.Context, orgID, userID, assignmentID string) error {
+	return p.store.DeleteMemberRoleAssignment(ctx, orgID, userID, assignmentID)
+}
+
 // RemoveOrganizationMember removes a user from an organization.
 func (p *Plugin) RemoveOrganizationMember(ctx context.Context, userID, orgID string) error {
 	return p.store.RemoveMember(ctx, userID, orgID)
@@ -1318,6 +1615,10 @@ func generateInvitationToken() (raw string, hash string, err error) {
 
 // CreateInvitation creates a new pending invitation, generates a token, and
 // optionally sends an invitation email via the email-otp plugin.
+//
+// The role is capped by the inviter's authority at creation time; an
+// already-sent invitation is not re-validated at acceptance, so reducing the
+// inviter's authority afterwards does not invalidate it.
 //
 // Parameters:
 //   - ctx: Request context
@@ -1558,7 +1859,7 @@ func (p *Plugin) Dependencies() []plugins.Dependency {
 
 // RequiresTables returns required tables
 func (p *Plugin) RequiresTables() []string {
-	return []string{"organization", "members", "team", "team_member", "invitation"}
+	return []string{"organization", "members", "team", "team_member", "invitation", "member_role_assignment"}
 }
 
 // ProvidesAuthMethods returns the provided auth methods

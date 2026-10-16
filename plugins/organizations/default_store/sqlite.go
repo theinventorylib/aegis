@@ -361,3 +361,68 @@ func (x *sqliteQuerier) deleteOrganizationRole(ctx context.Context, orgID, name 
 func (x *sqliteQuerier) countOrganizationMembersWithRole(ctx context.Context, orgID, role string) (int64, error) {
 	return x.q.CountOrganizationMembersWithRole(ctx, sqlcsqlite.CountOrganizationMembersWithRoleParams{OrganizationID: orgID, Role: role})
 }
+
+func (x *sqliteQuerier) createMemberRoleAssignment(ctx context.Context, id, orgID, userID, role, scopeType, scopeID, createdAt, updatedAt string) error {
+	return x.q.CreateMemberRoleAssignment(ctx, sqlcsqlite.CreateMemberRoleAssignmentParams{
+		ID: id, OrganizationID: orgID, UserID: userID, Role: role,
+		ScopeType: scopeType, ScopeID: scopeID,
+		CreatedAt: createdAt, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *sqliteQuerier) listMemberRoleAssignments(ctx context.Context, orgID, userID string) ([]roleAssignmentRow, error) {
+	rows, err := x.q.ListMemberRoleAssignments(ctx, sqlcsqlite.ListMemberRoleAssignmentsParams{OrganizationID: orgID, UserID: userID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]roleAssignmentRow, len(rows))
+	for i, r := range rows {
+		out[i] = roleAssignmentRow{
+			ID: r.ID, OrganizationID: r.OrganizationID, UserID: r.UserID, Role: r.Role,
+			ScopeType: r.ScopeType, ScopeID: r.ScopeID,
+			CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		}
+	}
+	return out, nil
+}
+
+func (x *sqliteQuerier) deleteMemberRoleAssignment(ctx context.Context, orgID, userID, id string) (int64, error) {
+	return x.q.DeleteMemberRoleAssignment(ctx, sqlcsqlite.DeleteMemberRoleAssignmentParams{OrganizationID: orgID, UserID: userID, ID: id})
+}
+
+func (x *sqliteQuerier) deleteMemberRoleAssignments(ctx context.Context, orgID, userID string) error {
+	return x.q.DeleteMemberRoleAssignments(ctx, sqlcsqlite.DeleteMemberRoleAssignmentsParams{OrganizationID: orgID, UserID: userID})
+}
+
+func (x *sqliteQuerier) countMemberRoleAssignmentsWithRole(ctx context.Context, orgID, role string) (int64, error) {
+	return x.q.CountMemberRoleAssignmentsWithRole(ctx, sqlcsqlite.CountMemberRoleAssignmentsWithRoleParams{OrganizationID: orgID, Role: role})
+}
+
+// Role rename translators. The three statements run inside one transaction
+// (see DefaultOrganizationStore.RenameOrganizationRole).
+
+func (x *sqliteQuerier) renameOrganizationRole(ctx context.Context, orgID, oldName, newName, updatedAt string) (int64, error) {
+	return x.q.RenameOrganizationRole(ctx, sqlcsqlite.RenameOrganizationRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *sqliteQuerier) renameMemberRoleAssignments(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameMemberRoleAssignments(ctx, sqlcsqlite.RenameMemberRoleAssignmentsParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *sqliteQuerier) renameMembersRole(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameMembersRole(ctx, sqlcsqlite.RenameMembersRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *sqliteQuerier) renameInvitationsRole(ctx context.Context, orgID, oldName, newName, updatedAt string) error {
+	return x.q.RenameInvitationsRole(ctx, sqlcsqlite.RenameInvitationsRoleParams{
+		OrganizationID: orgID, OldName: oldName, NewName: newName, UpdatedAt: updatedAt,
+	})
+}
+
+func (x *sqliteQuerier) withTx(tx *sql.Tx) querier { return &sqliteQuerier{q: x.q.WithTx(tx)} }
