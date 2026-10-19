@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/go-chi/chi/v5 v5.3.2
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-ozzo/ozzo-validation/v4 v4.4.1
 	github.com/labstack/echo/v4 v4.16.0
 	github.com/lestrrat-go/jwx/v3 v3.3.0
