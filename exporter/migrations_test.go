@@ -2,7 +2,6 @@ package exporter
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,17 +44,22 @@ func sqlFiles(t *testing.T, dir string) []string {
 	return files
 }
 
-func readManifest(t *testing.T, dir string) manifest {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(dir, manifestName))
-	if err != nil {
-		t.Fatalf("read manifest: %v", err)
+func hasFile(files []string, name string) bool {
+	for _, f := range files {
+		if f == name {
+			return true
+		}
 	}
-	var mf manifest
-	if err := json.Unmarshal(data, &mf); err != nil {
-		t.Fatalf("decode manifest: %v", err)
+	return false
+}
+
+func findFile(files []string, fragment string) string {
+	for _, f := range files {
+		if strings.Contains(f, fragment) {
+			return f
+		}
 	}
-	return mf
+	return ""
 }
 
 func TestExportStartsAtOneInEmptyDirectory(t *testing.T) {
@@ -66,59 +70,34 @@ func TestExportStartsAtOneInEmptyDirectory(t *testing.T) {
 	}
 
 	files := sqlFiles(t, dir)
-	if len(files) == 0 {
-		t.Fatal("expected SQL migrations")
+	if !hasFile(files, "00001_aegis_auth_001_initial.sql") {
+		t.Fatalf("first file missing; got %v", files)
 	}
-	if files[0] != "00001_aegis_auth_initial.sql" {
-		t.Fatalf("first file = %q, want 00001_aegis_auth_initial.sql", files[0])
-	}
-	mf := readManifest(t, dir)
-	if got := mf.Migrations["auth/001"].Number; got != 1 {
-		t.Fatalf("auth/001 number = %d, want 1", got)
+	if _, err := os.Stat(filepath.Join(dir, ".aegis-migrations.json")); !os.IsNotExist(err) {
+		t.Fatal("the exporter must not create a manifest")
 	}
 }
 
-func TestExportRefusesLowerNumberInApplicationDirectory(t *testing.T) {
+func TestExportAutoAppendsAfterApplicationMigrations(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "00012_app.sql"), []byte("SELECT 1;"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
 	exp := NewExporter(Config{Format: FormatSQL, Dialect: plugins.DialectPostgres, OutputDir: dir, AuthOnly: true})
-	err := exp.Export()
-	if err == nil {
-		t.Fatal("export must refuse to write lower numbers into a non-empty directory")
-	}
-	if !strings.Contains(err.Error(), "--start-version 13") {
-		t.Fatalf("error should name the required start version, got: %v", err)
-	}
-}
-
-func TestExportHonorsStartVersion(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "00012_app.sql"), []byte("SELECT 1;"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	exp := NewExporter(Config{
-		Format: FormatSQL, Dialect: plugins.DialectPostgres, OutputDir: dir, AuthOnly: true, StartVersion: 13,
-	})
 	if err := exp.Export(); err != nil {
 		t.Fatalf("export: %v", err)
 	}
 
 	files := sqlFiles(t, dir)
-	found := false
-	for _, f := range files {
-		if strings.HasPrefix(f, "00013_aegis_auth_initial") {
-			found = true
-		}
+	if !hasFile(files, "00013_aegis_auth_001_initial.sql") {
+		t.Fatalf("Aegis should start at 13; got %v", files)
 	}
-	if !found {
-		t.Fatalf("expected Aegis migrations to start at 00013, got %v", files)
+	if findFile(files, "00001_aegis_") != "" {
+		t.Fatalf("Aegis wrote a lower number: %v", files)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "00001_aegis_auth_initial.sql")); !os.IsNotExist(err) {
-		t.Fatal("must not write a lower-numbered Aegis migration alongside app migrations")
+	if !hasFile(files, "00012_app.sql") {
+		t.Fatal("application migration must remain untouched")
 	}
 }
 
@@ -134,10 +113,11 @@ func TestExportIsAppendOnlyAcrossRuns(t *testing.T) {
 	if err := NewExporter(cfg).Export(); err != nil {
 		t.Fatalf("first export: %v", err)
 	}
-	first := readManifest(t, dir)
-	firstNum := first.Migrations["demo/001"].Number
+	first := findFile(sqlFiles(t, dir), "_aegis_demo_001_")
+	if first == "" {
+		t.Fatal("missing demo/001 migration")
+	}
 
-	// Add a second plugin migration; the first must keep its number.
 	p.migrations = append(p.migrations, plugins.Migration{
 		Version: 2, Description: "second", Up: "ALTER TABLE demo ADD COLUMN name TEXT;", Down: "ALTER TABLE demo DROP COLUMN name;",
 	})
@@ -146,24 +126,23 @@ func TestExportIsAppendOnlyAcrossRuns(t *testing.T) {
 		t.Fatalf("second export: %v", err)
 	}
 
-	second := readManifest(t, dir)
-	if got := second.Migrations["demo/001"].Number; got != firstNum {
-		t.Fatalf("demo/001 was renumbered: %d -> %d", firstNum, got)
+	files := sqlFiles(t, dir)
+	if got := findFile(files, "_aegis_demo_001_"); got != first {
+		t.Fatalf("demo/001 was renumbered: %q -> %q", first, got)
 	}
-	if got := second.Migrations["demo/002"].Number; got != firstNum+1 {
-		t.Fatalf("demo/002 number = %d, want %d", got, firstNum+1)
+	if findFile(files, "_aegis_demo_002_") == "" {
+		t.Fatalf("demo/002 was not appended; got %v", files)
 	}
 }
 
-func TestExportAdoptsExistingAegisFiles(t *testing.T) {
+func TestExportAdoptsOldAegisFilesWithoutVersion(t *testing.T) {
 	dir := t.TempDir()
 	migrations, err := auth.GetMigrations(plugins.DialectPostgres)
 	if err != nil {
 		t.Fatalf("get auth migrations: %v", err)
 	}
-	// Simulate the old exporter's flat output (no manifest).
-	for i, m := range migrations {
-		name := filepath.Join(dir, oldAegisName(i+1, "auth", m.Description))
+	for _, m := range migrations {
+		name := filepath.Join(dir, oldAegisName(m.Version, "auth", m.Description))
 		if err := os.WriteFile(name, []byte(m.Up), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -174,16 +153,32 @@ func TestExportAdoptsExistingAegisFiles(t *testing.T) {
 		t.Fatalf("export: %v", err)
 	}
 
-	mf := readManifest(t, dir)
-	for i, m := range migrations {
-		id := "auth/" + pad3(m.Version)
-		entry, ok := mf.Migrations[id]
-		if !ok {
-			t.Fatalf("manifest missing %s", id)
-		}
-		if entry.Number != i+1 {
-			t.Fatalf("%s number = %d, want adopted %d", id, entry.Number, i+1)
-		}
+	files := sqlFiles(t, dir)
+	if len(files) != len(migrations) {
+		t.Fatalf("old files should be adopted without new duplicates; got %v", files)
+	}
+	if findFile(files, "_aegis_auth_001_initial") != "" {
+		t.Fatalf("old file was not adopted: %v", files)
+	}
+}
+
+func TestExportMatchesSourceVersionWhenDescriptionChanges(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "00001_aegis_auth_001_renamed.sql"), []byte("SELECT 1;"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	exp := NewExporter(Config{Format: FormatSQL, Dialect: plugins.DialectPostgres, OutputDir: dir, AuthOnly: true})
+	if err := exp.Export(); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+
+	files := sqlFiles(t, dir)
+	if findFile(files, "_aegis_auth_001_initial") != "" {
+		t.Fatalf("a description change must not create a duplicate: %v", files)
+	}
+	if !hasFile(files, "00001_aegis_auth_001_renamed.sql") {
+		t.Fatal("existing file must remain in place")
 	}
 }
 
@@ -199,30 +194,34 @@ func TestExportAdoptsHyphenatedPluginFiles(t *testing.T) {
 	if err := exp.Export(); err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	mf := readManifest(t, dir)
-	entry, ok := mf.Migrations["email-otp/001"]
-	if !ok {
-		t.Fatalf("manifest missing email-otp/001: %+v", mf.Migrations)
+
+	files := sqlFiles(t, dir)
+	if findFile(files, "_aegis_email_otp_001_initial") != "" {
+		t.Fatalf("hyphenated plugin was duplicated: %v", files)
 	}
-	if entry.Number != 1 {
-		t.Fatalf("adopted number = %d, want 1", entry.Number)
+	if !hasFile(files, "00001_aegis_email_otp_initial.sql") {
+		t.Fatal("old hyphenated file must remain in place")
 	}
 }
 
-func TestExportRejectsChangedMigration(t *testing.T) {
+func TestExportNeverRewritesExistingFiles(t *testing.T) {
 	dir := t.TempDir()
-	p := &testPlugin{name: "demo", migrations: []plugins.Migration{
-		{Version: 1, Description: "first", Up: "CREATE TABLE demo (id TEXT);", Down: "DROP TABLE demo;"},
-	}}
-	cfg := Config{Format: FormatSQL, Dialect: plugins.DialectPostgres, OutputDir: dir, Plugins: []plugins.Plugin{p}}
-	if err := NewExporter(cfg).Export(); err != nil {
-		t.Fatalf("first export: %v", err)
+	const original = "-- original content\n"
+	if err := os.WriteFile(filepath.Join(dir, "00001_aegis_auth_001_initial.sql"), []byte(original), 0600); err != nil {
+		t.Fatal(err)
 	}
 
-	p.migrations[0].Up = "CREATE TABLE demo (id TEXT, changed BOOLEAN);"
-	err := NewExporter(cfg).Export()
-	if err == nil || !strings.Contains(err.Error(), "released migrations must be immutable") {
-		t.Fatalf("expected immutable-migration error, got: %v", err)
+	exp := NewExporter(Config{Format: FormatSQL, Dialect: plugins.DialectPostgres, OutputDir: dir, AuthOnly: true})
+	if err := exp.Export(); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "00001_aegis_auth_001_initial.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != original {
+		t.Fatalf("existing file was rewritten:\n%s", data)
 	}
 }
 
@@ -234,8 +233,8 @@ func TestExportGolangMigratePairs(t *testing.T) {
 	if err := exp.Export(); err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	up := filepath.Join(dir, "000001_aegis_auth_initial.up.sql")
-	down := filepath.Join(dir, "000001_aegis_auth_initial.down.sql")
+	up := filepath.Join(dir, "000001_aegis_auth_001_initial.up.sql")
+	down := filepath.Join(dir, "000001_aegis_auth_001_initial.down.sql")
 	if _, err := os.Stat(up); err != nil {
 		t.Fatalf("missing up migration: %v", err)
 	}
@@ -244,9 +243,16 @@ func TestExportGolangMigratePairs(t *testing.T) {
 	}
 }
 
-func pad3(n int) string {
-	s := "000" + itoa(n)
-	return s[len(s)-3:]
+func oldAegisName(version int, source, description string) string {
+	return pad(version, 5) + "_aegis_" + source + "_" + description + ".sql"
+}
+
+func pad(n, width int) string {
+	s := itoa(n)
+	for len(s) < width {
+		s = "0" + s
+	}
+	return s
 }
 
 func itoa(n int) string {
@@ -261,9 +267,4 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b[i:])
-}
-
-func oldAegisName(number int, source, description string) string {
-	s := "00000" + itoa(number)
-	return s[len(s)-5:] + "_aegis_" + source + "_" + description + ".sql"
 }
