@@ -113,6 +113,8 @@ type defaultVerificationStore struct{ q querier }
 
 type defaultSessionStore struct{ q querier }
 
+var _ types.ImpersonationStore = (*defaultSessionStore)(nil)
+
 // UserStore implementation
 
 func (s *defaultUserStore) Create(ctx context.Context, user types.User) (types.User, error) {
@@ -376,7 +378,58 @@ func (s *defaultSessionStore) CleanupExpired(ctx context.Context) error {
 	return s.q.cleanupExpiredSessions(ctx, time.Now().Format(time.RFC3339))
 }
 
+// ImpersonationStore implementation. Optional capability detected by the core
+// session service; custom SessionStore implementations may omit it.
+
+func (s *defaultSessionStore) CreateImpersonation(ctx context.Context, imp types.Impersonation) error {
+	return s.q.createImpersonation(ctx, impersonationRow{
+		SessionID:      imp.SessionID,
+		ActorUserID:    imp.ActorUserID,
+		OrganizationID: imp.OrganizationID,
+		CreatedAt:      imp.CreatedAt.Format(time.RFC3339),
+		ExpiresAt:      imp.ExpiresAt.Format(time.RFC3339),
+	})
+}
+
+func (s *defaultSessionStore) GetImpersonation(ctx context.Context, sessionID string) (types.Impersonation, error) {
+	row, err := s.q.getImpersonationBySession(ctx, sessionID)
+	if err != nil {
+		return types.Impersonation{}, err
+	}
+	return buildImpersonation(row.SessionID, row.ActorUserID, row.OrganizationID, row.CreatedAt, row.ExpiresAt), nil
+}
+
+func (s *defaultSessionStore) DeleteImpersonation(ctx context.Context, sessionID string) error {
+	return s.q.deleteImpersonation(ctx, sessionID)
+}
+
+func (s *defaultSessionStore) ListImpersonationsByActor(ctx context.Context, actorUserID string) ([]types.Impersonation, error) {
+	rows, err := s.q.listImpersonationsByActor(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]types.Impersonation, len(rows))
+	for i, row := range rows {
+		out[i] = buildImpersonation(row.SessionID, row.ActorUserID, row.OrganizationID, row.CreatedAt, row.ExpiresAt)
+	}
+	return out, nil
+}
+
+func (s *defaultSessionStore) CleanupExpiredImpersonations(ctx context.Context) error {
+	return s.q.cleanupExpiredImpersonations(ctx, time.Now().Format(time.RFC3339))
+}
+
 // Helper functions for converting row fields to domain models.
+
+func buildImpersonation(sessionID, actorUserID, orgID, createdAt, expiresAt string) types.Impersonation {
+	return types.Impersonation{
+		SessionID:      sessionID,
+		ActorUserID:    actorUserID,
+		OrganizationID: orgID,
+		CreatedAt:      parseTime(createdAt),
+		ExpiresAt:      parseTime(expiresAt),
+	}
+}
 
 func buildUser(id string, avatar sql.NullString, name string, email sql.NullString, createdAt, updatedAt string, disabled bool) types.User {
 	return types.User{

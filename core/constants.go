@@ -74,6 +74,11 @@ const (
 	// DefaultRefreshExpiry is the default refresh token expiration time (7 days)
 	// Allows "remember me" functionality while limiting token lifetime
 	DefaultRefreshExpiry = 7 * 24 * time.Hour
+
+	// DefaultImpersonationMaxDuration is the default cap for an administrative
+	// impersonation session (15 minutes). Impersonation sessions are deliberately
+	// short-lived and cannot be refreshed.
+	DefaultImpersonationMaxDuration = 15 * time.Minute
 )
 
 // Default account-security flow lifetimes.

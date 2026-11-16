@@ -100,6 +100,12 @@ type Config struct {
 	// string is accepted and only framework permissions are capped.
 	Permissions map[Permission]PermissionDefinition
 
+	// ImpersonationDeniedPermissions are permissions that an impersonation
+	// session can never exercise, in addition to every app-defined permission
+	// whose catalog entry has Sensitive=true. Use it for permissions that are
+	// not in the catalog or that must be denied for a policy reason.
+	ImpersonationDeniedPermissions []Permission
+
 	// InvitationSubject is the subject line for invitation emails.
 	// Default: "You're invited!".
 	InvitationSubject string
@@ -183,6 +189,7 @@ func New(cfg *Config, store orgtypes.OrganizationStore, dialect ...plugins.Diale
 		p.config.OrgRoles = cfg.OrgRoles
 		p.config.TeamRoles = cfg.TeamRoles
 		p.config.Permissions = cfg.Permissions
+		p.config.ImpersonationDeniedPermissions = cfg.ImpersonationDeniedPermissions
 		orgRoles = cfg.OrgRoles
 		teamRoles = cfg.TeamRoles
 	}
@@ -559,6 +566,28 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 			400: openapi.RefResponse("Invalid request or duplicate permission", "Error"),
 			401: openapi.RefResponse("Not authenticated", "Error"),
 			403: openapi.RefResponse("Insufficient permissions", "Error"),
+			404: openapi.RefResponse("Member not found", "Error"),
+		},
+	})
+
+	membersGroup.PUT("/:userId/sensitive-permissions", requireAuth(http.HandlerFunc(p.UpdateSensitiveMemberPermissionsHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "PUT",
+		Path:        prefix + "/{id}/members/{userId}/sensitive-permissions",
+		Summary:     "Replace sensitive member permissions",
+		Description: "Owner-only endpoint for permissions marked Sensitive (for example billing). Impersonation sessions are refused, and non-owner admins cannot use the general permissions endpoint for these entries.",
+		Tags:        []string{"Members"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+			{Name: "userId", In: "path", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[UpdateMemberPermissionsRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Sensitive permissions updated", "Success"),
+			400: openapi.RefResponse("Invalid request or non-sensitive permission", "Error"),
+			401: openapi.RefResponse("Not authenticated", "Error"),
+			403: openapi.RefResponse("Owner or non-impersonated session required", "Error"),
 			404: openapi.RefResponse("Member not found", "Error"),
 		},
 	})

@@ -27,3 +27,8 @@ type Verification = authtypes.Verification
 // an optional refresh token, an expiry time, and optional metadata such as the
 // client IP address and user-agent string.
 type Session = authtypes.Session
+
+// Impersonation describes an administrative impersonation session. The
+// session belongs to the impersonated user and records the administrator and
+// organization that scope it.
+type Impersonation = authtypes.Impersonation

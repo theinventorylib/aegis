@@ -232,6 +232,9 @@ func sessionToMap(session *auth.Session) map[string]any {
 	if session.UserAgent != "" {
 		m["userAgent"] = session.UserAgent
 	}
+	if session.Impersonation != nil {
+		m["impersonation"] = session.Impersonation
+	}
 	return m
 }
 
@@ -444,6 +447,22 @@ func GetSession(ctx context.Context) *auth.Session {
 // Use this to avoid redundant session validation within the same request.
 func HasSession(ctx context.Context) bool {
 	return GetSession(ctx) != nil
+}
+
+// ImpersonationFromContext returns the impersonation record attached to the
+// request's validated session, or nil for ordinary sessions and unauthenticated
+// requests. Plugins use this to apply impersonation-specific restrictions.
+func ImpersonationFromContext(ctx context.Context) *auth.Impersonation {
+	if session := GetSession(ctx); session != nil {
+		return session.Impersonation
+	}
+	return nil
+}
+
+// IsImpersonated reports whether the request is running in an impersonation
+// session.
+func IsImpersonated(ctx context.Context) bool {
+	return ImpersonationFromContext(ctx) != nil
 }
 
 // isContextInitialized checks if AegisContextMiddleware has been run.

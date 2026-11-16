@@ -54,6 +54,9 @@ func (p *Plugin) requireOrganizationRole(checker orgRoleChecker) func(http.Handl
 //	)
 func (p *Plugin) RequireOrgRole(roles ...string) func(http.Handler) http.Handler {
 	return p.requireOrganizationRole(func(ctx context.Context, userID, orgID string) (bool, error) {
+		if core.IsImpersonated(ctx) {
+			return false, nil
+		}
 		return p.store.HasOrgRole(ctx, userID, orgID, roles...)
 	})
 }
@@ -73,6 +76,15 @@ func (p *Plugin) RequireOrgRole(roles ...string) func(http.Handler) http.Handler
 func (p *Plugin) RequireOrgPermission(perm Permission) func(http.Handler) http.Handler {
 	return p.requireOrganizationRole(func(ctx context.Context, userID, orgID string) (bool, error) {
 		return p.HasOrgPermission(ctx, userID, orgID, perm)
+	})
+}
+
+// RequireOrgSensitivePermission requires a sensitive permission (catalog
+// Sensitive or ImpersonationDeniedPermissions) and refuses impersonation
+// sessions outright. Use it for billing and other sensitive settings routes.
+func (p *Plugin) RequireOrgSensitivePermission(perm Permission) func(http.Handler) http.Handler {
+	return p.requireOrganizationRole(func(ctx context.Context, userID, orgID string) (bool, error) {
+		return p.HasOrgSensitivePermission(ctx, userID, orgID, perm)
 	})
 }
 
@@ -170,6 +182,10 @@ func (p *Plugin) RequireTeamRole(roles ...string) func(http.Handler) http.Handle
 			user, err := core.GetUser(r.Context())
 			if err != nil {
 				core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+				return
+			}
+			if core.IsImpersonated(r.Context()) {
+				core.WriteJSONError(w, http.StatusForbidden, "Not available during impersonation")
 				return
 			}
 

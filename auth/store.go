@@ -31,6 +31,10 @@ type VerificationStore = authtypes.VerificationStore
 // expired sessions. Implement this to manage sessions in a custom store.
 type SessionStore = authtypes.SessionStore
 
+// ImpersonationStore is an optional capability implemented by session stores
+// that support administrative impersonation sessions.
+type ImpersonationStore = authtypes.ImpersonationStore
+
 // Transactor is an optional capability re-exported from auth/types. Stores
 // that support cross-store transactions implement this; callers should treat
 // support as optional via Auth.Transactor.

@@ -84,6 +84,19 @@ type UpdateRoleRequest struct {
 	Role string `json:"role"` // New role to assign (required)
 }
 
+// ImpersonateUserRequest scopes an impersonation session to one organization.
+//
+// Example:
+//
+//	{
+//	  "organizationId": "org_abc123",
+//	  "duration": "10m"
+//	}
+type ImpersonateUserRequest struct {
+	OrganizationID string `json:"organizationId"`     // Organization to scope the session to (required)
+	Duration       string `json:"duration,omitempty"` // Optional requested lifetime, capped by AuthConfig
+}
+
 // ========== Response DTOs ==========
 
 // Note: list endpoints should use core.PaginatedResponse[T] for pagination metadata.

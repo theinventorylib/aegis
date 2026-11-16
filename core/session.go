@@ -132,28 +132,164 @@ func (s *SessionService) CreateSession(ctx context.Context, user *auth.User) (*a
 	return session, nil
 }
 
+// ImpersonationResult is returned when an administrator starts impersonating
+// a user. Token is the raw session token to hand to the caller; it is not
+// persisted anywhere.
+type ImpersonationResult struct {
+	Session       *auth.Session
+	User          auth.User
+	Impersonation auth.Impersonation
+	Token         string
+}
+
+// CreateImpersonationSession creates a short-lived session for target that
+// records actor as the administrator behind it. The session is limited to one
+// organization, cannot be refreshed, and must not outlive the configured
+// impersonation cap.
+//
+// The caller is responsible for authorizing the actor (for example, the admin
+// plugin's RequireAdmin middleware) and for confirming that target is a member
+// of organizationID. This method enforces the session-level invariants: no
+// self-impersonation, no nested impersonation, no disabled target, and a
+// bounded lifetime.
+func (s *SessionService) CreateImpersonationSession(ctx context.Context, actor, target *auth.User, organizationID string, duration time.Duration) (*auth.Session, error) {
+	store, ok := s.impersonationStore()
+	if !ok {
+		return nil, NewAuthError(AuthErrorCodeInternal, "impersonation is not supported by the configured session store")
+	}
+	if actor == nil || target == nil {
+		return nil, NewAuthError(AuthErrorCodeInternal, "actor and target are required")
+	}
+	if actor.GetID() == "" || target.GetID() == "" {
+		return nil, NewAuthError(AuthErrorCodeInternal, "actor and target must be persisted users")
+	}
+	if actor.GetID() == target.GetID() {
+		return nil, NewAuthError(AuthErrorCodeInvalidCredentials, "cannot impersonate yourself")
+	}
+	if target.Disabled {
+		return nil, NewAuthErrorWithCause(AuthErrorCodeUserDisabled, "User account is disabled", ErrUserDisabled)
+	}
+	if current := GetSession(ctx); current != nil && current.Impersonation != nil {
+		return nil, NewAuthError(AuthErrorCodeUnauthorized, "an impersonation session cannot start another impersonation")
+	}
+	organizationID = SanitizeString(organizationID, nil)
+	if organizationID == "" {
+		return nil, NewAuthError(AuthErrorCodeInvalidCredentials, "organization is required")
+	}
+
+	maxDuration := s.config.ImpersonationMaxDuration
+	if maxDuration <= 0 {
+		maxDuration = DefaultImpersonationMaxDuration
+	}
+	if duration <= 0 || duration > maxDuration {
+		duration = maxDuration
+	}
+
+	session, err := s.newSessionRowWith(ctx, target.GetID(),
+		SanitizeString(GetIPAddress(ctx), nil),
+		SanitizeString(GetUserAgent(ctx), nil), false, duration)
+	if err != nil {
+		return nil, err
+	}
+
+	imp := auth.Impersonation{
+		SessionID:      session.ID,
+		ActorUserID:    actor.GetID(),
+		OrganizationID: organizationID,
+		CreatedAt:      session.CreatedAt,
+		ExpiresAt:      session.ExpiresAt,
+	}
+	if err := store.CreateImpersonation(ctx, imp); err != nil {
+		s.deleteSessionQuietly(ctx, session.ID)
+		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to record impersonation session", err)
+	}
+
+	// Cache the marker so a later cache hit can tell that this session must
+	// stay tied to a live impersonation record.
+	session.Impersonation = &imp
+	s.cacheSession(ctx, session)
+	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventImpersonationStarted, actor.GetID(), true, map[string]any{
+		"target_user_id":  target.GetID(),
+		"organization_id": organizationID,
+		"session_id":      session.ID,
+		"expires_at":      session.ExpiresAt.Format(time.RFC3339),
+	})
+	return session, nil
+}
+
+// RevokeImpersonationsByActor deletes every impersonation session started by
+// actor and invalidates its cache entries. Call it when the administrator is
+// disabled, demoted, or otherwise loses the right to impersonate.
+func (s *SessionService) RevokeImpersonationsByActor(ctx context.Context, actorUserID string) error {
+	store, ok := s.impersonationStore()
+	if !ok {
+		return nil
+	}
+	impersonations, err := store.ListImpersonationsByActor(ctx, actorUserID)
+	if err != nil {
+		return err
+	}
+	for _, imp := range impersonations {
+		if session, err := s.sessionStore.Get(ctx, imp.SessionID); err == nil {
+			s.invalidateSessionCache(ctx, &session)
+		}
+		if err := s.sessionStore.Delete(ctx, imp.SessionID); err != nil {
+			return err
+		}
+		if err := store.DeleteImpersonation(ctx, imp.SessionID); err != nil {
+			return err
+		}
+		logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventImpersonationEnded, actorUserID, true, map[string]any{
+			"session_id":      imp.SessionID,
+			"organization_id": imp.OrganizationID,
+			"reason":          "actor_revoked",
+		})
+	}
+	return nil
+}
+
+func (s *SessionService) impersonationStore() (auth.ImpersonationStore, bool) {
+	store, ok := s.sessionStore.(auth.ImpersonationStore)
+	return store, ok
+}
+
 // newSessionRow generates raw tokens, persists only their SHA-256 hashes at
 // rest, caches the session, and returns it carrying the raw tokens for the
 // caller to hand to the client. Shared by CreateSession and RefreshSession.
 func (s *SessionService) newSessionRow(ctx context.Context, userID, ipAddress, userAgent string) (*auth.Session, error) {
+	return s.newSessionRowWith(ctx, userID, ipAddress, userAgent, true, s.config.SessionExpiry)
+}
+
+// newSessionRowWith creates a session row. refresh controls whether a refresh
+// token is generated; impersonation sessions deliberately do not get one.
+func (s *SessionService) newSessionRowWith(ctx context.Context, userID, ipAddress, userAgent string, refresh bool, expiry time.Duration) (*auth.Session, error) {
 	rawToken, err := generateRandomToken()
 	if err != nil {
 		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate access token", err)
 	}
-	rawRefreshToken, err := generateRandomToken()
-	if err != nil {
-		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate refresh token", err)
+	var rawRefreshToken string
+	if refresh {
+		rawRefreshToken, err = generateRandomToken()
+		if err != nil {
+			return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to generate refresh token", err)
+		}
+	}
+	if expiry <= 0 {
+		expiry = s.config.SessionExpiry
 	}
 
+	now := time.Now()
 	persisted := auth.Session{
-		ID:           GenerateID(),
-		UserID:       userID,
-		Token:        hashTokenHex(rawToken),
-		RefreshToken: hashTokenHex(rawRefreshToken),
-		ExpiresAt:    time.Now().Add(s.config.SessionExpiry),
-		CreatedAt:    time.Now(),
-		IPAddress:    ipAddress,
-		UserAgent:    userAgent,
+		ID:        GenerateID(),
+		UserID:    userID,
+		Token:     hashTokenHex(rawToken),
+		ExpiresAt: now.Add(expiry),
+		CreatedAt: now,
+		IPAddress: ipAddress,
+		UserAgent: userAgent,
+	}
+	if refresh {
+		persisted.RefreshToken = hashTokenHex(rawRefreshToken)
 	}
 	if err := s.sessionStore.Create(ctx, persisted); err != nil {
 		return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to create session", err)
@@ -236,6 +372,38 @@ func (s *SessionService) loadUserForSession(ctx context.Context, session *auth.S
 	}
 	if user.Disabled {
 		return nil, NewAuthErrorWithCause(AuthErrorCodeUserDisabled, "User account is disabled", ErrUserDisabled)
+	}
+
+	// Impersonation records are separate from the session row. A cached
+	// session carries the marker; reject it if the record has expired or
+	// disappeared, otherwise the cached copy would downgrade into an ordinary
+	// session for the target user. Impersonation sessions are also the only
+	// sessions created without a refresh token, so ordinary sessions skip this
+	// extra lookup.
+	if session.Impersonation != nil || session.RefreshToken == "" {
+		if store, ok := s.impersonationStore(); ok {
+			imp, impErr := store.GetImpersonation(ctx, session.ID)
+			switch {
+			case impErr == nil:
+				if imp.OrganizationID == "" || time.Now().After(imp.ExpiresAt) {
+					s.invalidateSessionCache(ctx, session)
+					s.deleteSessionQuietly(ctx, session.ID)
+					return nil, NewAuthError(AuthErrorCodeSessionInvalid, "impersonation session expired")
+				}
+				session.Impersonation = &imp
+				// Re-cache with the marker so a future cache hit can detect a
+				// revoked record instead of treating the session as ordinary.
+				s.cacheSession(ctx, session)
+			case isNotFound(impErr):
+				if session.Impersonation != nil {
+					s.invalidateSessionCache(ctx, session)
+					s.deleteSessionQuietly(ctx, session.ID)
+					return nil, NewAuthError(AuthErrorCodeSessionInvalid, "impersonation session revoked")
+				}
+			default:
+				return nil, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to load impersonation session", impErr)
+			}
+		}
 	}
 	return &user, nil
 }
@@ -323,11 +491,28 @@ func (s *SessionService) DeleteSession(ctx context.Context, token string) error 
 		// caller knows the logout was incomplete.
 		return NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to load session for deletion", err)
 	}
+	var impersonation *auth.Impersonation
+	if store, ok := s.impersonationStore(); ok {
+		if rec, recErr := store.GetImpersonation(ctx, session.ID); recErr == nil {
+			impersonation = &rec
+			if delErr := store.DeleteImpersonation(ctx, session.ID); delErr != nil {
+				s.logger.Error("session: failed to delete impersonation record", "session_id", session.ID, "error", delErr)
+			}
+		}
+	}
 	if err := s.sessionStore.Delete(ctx, session.ID); err != nil {
 		return err
 	}
 	s.invalidateSessionCache(ctx, &session)
 	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventLogout, session.UserID, true, nil)
+	if impersonation != nil {
+		logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventImpersonationEnded, impersonation.ActorUserID, true, map[string]any{
+			"target_user_id":  session.UserID,
+			"organization_id": impersonation.OrganizationID,
+			"session_id":      session.ID,
+			"reason":          "stopped",
+		})
+	}
 	return nil
 }
 
@@ -483,7 +668,13 @@ func (s *SessionService) CountUserSessions(ctx context.Context, userID string) (
 // scheduled worker. It is a single indexed DELETE, safe to run concurrently
 // from multiple instances.
 func (s *SessionService) CleanupExpired(ctx context.Context) error {
-	return s.sessionStore.CleanupExpired(ctx)
+	if err := s.sessionStore.CleanupExpired(ctx); err != nil {
+		return err
+	}
+	if store, ok := s.impersonationStore(); ok {
+		return store.CleanupExpiredImpersonations(ctx)
+	}
+	return nil
 }
 
 // purgeUserSessionCache removes every cached session entry for a user from

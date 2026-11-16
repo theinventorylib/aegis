@@ -191,7 +191,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	// Protected route - sending OTP requires authentication to prevent spam/abuse
-	smsGroup.POST("/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
+	smsGroup.POST("/send", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.SendOTPHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/send",
@@ -209,7 +209,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	})
 
 	// Public routes
-	smsGroup.POST("/verify", handlers.VerifyOTPHandler) // User proving phone ownership
+	smsGroup.POST("/verify", core.DenyImpersonated(http.HandlerFunc(handlers.VerifyOTPHandler)).ServeHTTP) // User proving phone ownership
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/verify",
