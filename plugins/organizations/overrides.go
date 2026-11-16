@@ -18,6 +18,15 @@ var (
 	ErrInvalidEffect = errors.New("invalid permission effect")
 	// ErrDuplicatePermission means the same permission appeared twice.
 	ErrDuplicatePermission = errors.New("duplicate permission")
+	// ErrSensitiveOwnerRequired means a sensitive permission change was
+	// attempted by someone other than the organization owner.
+	ErrSensitiveOwnerRequired = errors.New("sensitive permissions can only be managed by the organization owner")
+	// ErrNotSensitivePermission means the sensitive-permissions endpoint was
+	// given a permission that is not marked sensitive.
+	ErrNotSensitivePermission = errors.New("permission is not sensitive")
+	// ErrImpersonationForbidden means the action is not available from an
+	// impersonation session.
+	ErrImpersonationForbidden = errors.New("not available during impersonation")
 )
 
 // MemberPermissionOverrides returns a member's grant/deny overrides. Returns
@@ -84,4 +93,38 @@ func (p *Plugin) SetMemberPermissionOverrides(ctx context.Context, orgID, userID
 		}
 	}
 	return nil
+}
+
+// SetSensitiveMemberPermissionOverrides replaces a member's overrides for
+// sensitive permissions (billing and similar). It is the organization-level
+// counterpart to the app-level Sensitive catalog flag:
+//
+//   - only the organization owner may call it;
+//   - impersonation sessions are always refused;
+//   - every override must name a sensitive permission (catalog Sensitive or
+//     Config.ImpersonationDeniedPermissions);
+//   - the owner's own overrides cannot be changed.
+//
+// Ordinary editors use SetMemberPermissionOverrides / the regular permissions
+// endpoint, which refuse sensitive entries unless the actor is the owner.
+func (p *Plugin) SetSensitiveMemberPermissionOverrides(ctx context.Context, actorID, orgID, userID string, overrides []orgtypes.MemberPermissionOverride) error {
+	if core.IsImpersonated(ctx) {
+		return ErrImpersonationForbidden
+	}
+	owner, err := p.CanManageSensitivePermissions(ctx, actorID, orgID)
+	if err != nil {
+		return err
+	}
+	if !owner {
+		return ErrSensitiveOwnerRequired
+	}
+	if p.IsOwner(ctx, userID, orgID) {
+		return ErrSensitiveOwnerRequired
+	}
+	for _, o := range overrides {
+		if !p.isSensitiveForEditing(Permission(o.Permission)) {
+			return fmt.Errorf("%w: %q", ErrNotSensitivePermission, o.Permission)
+		}
+	}
+	return p.SetMemberPermissionOverrides(ctx, orgID, userID, overrides)
 }

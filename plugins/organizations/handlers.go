@@ -302,16 +302,35 @@ func (p *Plugin) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 // same 403 shape as permission-edit caps — and reports whether the caller must
 // return early.
 func (p *Plugin) checkRoleAssignable(w http.ResponseWriter, r *http.Request, actorID, orgID, role string, teamID *string) bool {
+	// A role that carries a sensitive permission (billing, for example) is a
+	// sensitive assignment: owner only, and never from an impersonation.
+	hasSensitive, err := p.roleHasSensitivePermission(r.Context(), orgID, role, teamID != nil)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
+		return true
+	}
+	if hasSensitive {
+		allowed, err := p.CanManageSensitivePermissions(r.Context(), actorID, orgID)
+		if err != nil {
+			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
+			return true
+		}
+		if !allowed {
+			core.WriteJSONError(w, http.StatusForbidden, "Sensitive permissions can only be managed by the organization owner")
+			return true
+		}
+	}
+
 	var (
-		bad Permission
-		err error
+		bad  Permission
+		err2 error
 	)
 	if teamID != nil {
-		bad, err = p.ungrantableTeamRoleOnTeam(r.Context(), actorID, orgID, *teamID, role)
+		bad, err2 = p.ungrantableTeamRoleOnTeam(r.Context(), actorID, orgID, *teamID, role)
 	} else {
-		bad, err = p.ungrantableOrgRole(r.Context(), actorID, orgID, role)
+		bad, err2 = p.ungrantableOrgRole(r.Context(), actorID, orgID, role)
 	}
-	if err != nil {
+	if err2 != nil {
 		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
 		return true
 	}
@@ -633,6 +652,23 @@ func (p *Plugin) UpdateMemberPermissionsHandler(w http.ResponseWriter, r *http.R
 			grants = append(grants, Permission(o.Permission))
 		}
 	}
+	// Sensitive permissions are owner-only and never editable from an
+	// impersonation session.
+	for _, o := range overrides {
+		if !p.isSensitiveForEditing(Permission(o.Permission)) {
+			continue
+		}
+		allowed, err := p.CanManageSensitivePermissions(r.Context(), user.ID, orgID)
+		if err != nil {
+			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
+			return
+		}
+		if !allowed {
+			core.WriteJSONError(w, http.StatusForbidden, "Sensitive permissions can only be managed by the organization owner")
+			return
+		}
+		break
+	}
 	if bad, err := p.ungrantablePermission(r.Context(), user.ID, orgID, grants); err != nil {
 		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
 		return
@@ -664,6 +700,81 @@ func (p *Plugin) UpdateMemberPermissionsHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Permissions updated", Data: perms})
+}
+
+// UpdateSensitiveMemberPermissionsHandler replaces a member's overrides for
+// sensitive permissions only. Owner-only; impersonation sessions are refused.
+func (p *Plugin) UpdateSensitiveMemberPermissionsHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	orgID := core.GetSanitizedPathParam(r, "id")
+	userID := core.GetSanitizedPathParam(r, "userId")
+	if orgID == "" || userID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "Organization ID and User ID required")
+		return
+	}
+
+	allowed, err := p.CanManageSensitivePermissions(r.Context(), user.ID, orgID)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
+		return
+	}
+	if !allowed {
+		core.WriteJSONError(w, http.StatusForbidden, "Sensitive permissions can only be managed by the organization owner")
+		return
+	}
+	if p.IsOwner(r.Context(), userID, orgID) {
+		core.WriteJSONError(w, http.StatusBadRequest, "Cannot change the owner's permissions")
+		return
+	}
+
+	var req UpdateMemberPermissionsRequest
+	if err := core.ReadJSON(r, &req); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if err := req.Validate(); err != nil {
+		core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	overrides := make([]orgtypes.MemberPermissionOverride, 0, len(req.Overrides))
+	for _, o := range req.Overrides {
+		overrides = append(overrides, orgtypes.MemberPermissionOverride{
+			Permission: o.Permission,
+			Effect:     orgtypes.PermissionEffect(o.Effect),
+		})
+	}
+
+	if err := p.SetSensitiveMemberPermissionOverrides(r.Context(), user.ID, orgID, userID, overrides); err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			core.WriteJSONError(w, http.StatusNotFound, "Member not found")
+		case errors.Is(err, ErrImpersonationForbidden),
+			errors.Is(err, ErrSensitiveOwnerRequired):
+			core.WriteJSONError(w, http.StatusForbidden, err.Error())
+		case errors.Is(err, ErrPermissionRequired),
+			errors.Is(err, ErrInvalidEffect),
+			errors.Is(err, ErrDuplicatePermission),
+			errors.Is(err, ErrUnknownPermission),
+			errors.Is(err, ErrNotSensitivePermission):
+			core.WriteJSON(w, http.StatusBadRequest, &core.Response{Success: false, Error: err.Error()})
+		default:
+			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to save permissions")
+		}
+		return
+	}
+
+	perms, err := p.GetMemberPermissions(r.Context(), userID, orgID)
+	if err != nil {
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to load permissions")
+		return
+	}
+	core.WriteJSON(w, http.StatusOK, &core.Response{Success: true, Message: "Sensitive permissions updated", Data: perms})
 }
 
 // ListRolesHandler returns the compiled and custom roles for the organization.
@@ -718,6 +829,17 @@ func (p *Plugin) CreateRoleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	perms := permissionsFromStrings(req.Permissions)
+	if p.containsSensitivePermission(perms) {
+		allowed, err := p.CanManageSensitivePermissions(r.Context(), user.ID, orgID)
+		if err != nil {
+			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
+			return
+		}
+		if !allowed {
+			core.WriteJSONError(w, http.StatusForbidden, "Sensitive permissions can only be managed by the organization owner")
+			return
+		}
+	}
 	if bad, err := p.ungrantablePermission(r.Context(), user.ID, orgID, perms); err != nil {
 		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
 		return
@@ -769,6 +891,17 @@ func (p *Plugin) UpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	perms := permissionsFromStrings(req.Permissions)
+	if p.containsSensitivePermission(perms) {
+		allowed, err := p.CanManageSensitivePermissions(r.Context(), user.ID, orgID)
+		if err != nil {
+			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
+			return
+		}
+		if !allowed {
+			core.WriteJSONError(w, http.StatusForbidden, "Sensitive permissions can only be managed by the organization owner")
+			return
+		}
+	}
 	if bad, err := p.ungrantablePermission(r.Context(), user.ID, orgID, perms); err != nil {
 		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to check permissions")
 		return

@@ -492,7 +492,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	totpGroup := r.Group(prefix, "TOTP")
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
-	totpGroup.POST("/setup", requireAuth(http.HandlerFunc(handlers.SetupHandler)).ServeHTTP)
+	totpGroup.POST("/setup", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.SetupHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/setup",
@@ -507,7 +507,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	totpGroup.POST("/enable", requireAuth(http.HandlerFunc(handlers.EnableHandler)).ServeHTTP)
+	totpGroup.POST("/enable", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.EnableHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/enable",
@@ -523,7 +523,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	totpGroup.POST("/disable", requireAuth(http.HandlerFunc(handlers.DisableHandler)).ServeHTTP)
+	totpGroup.POST("/disable", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.DisableHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/disable",
@@ -555,7 +555,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	totpGroup.POST("/recovery-codes", requireAuth(http.HandlerFunc(handlers.RegenerateRecoveryCodesHandler)).ServeHTTP)
+	totpGroup.POST("/recovery-codes", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.RegenerateRecoveryCodesHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/recovery-codes",

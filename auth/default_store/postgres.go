@@ -261,3 +261,49 @@ func (p *postgresQuerier) cleanupExpiredSessions(ctx context.Context, now string
 func (p *postgresQuerier) withTx(tx *sql.Tx) querier {
 	return &postgresQuerier{q: p.q.WithTx(tx)}
 }
+
+// Impersonation
+
+func (p *postgresQuerier) createImpersonation(ctx context.Context, imp impersonationRow) error {
+	return p.q.CreateImpersonation(ctx, sqlcpostgres.CreateImpersonationParams{
+		SessionID:      imp.SessionID,
+		ActorUserID:    imp.ActorUserID,
+		OrganizationID: imp.OrganizationID,
+		CreatedAt:      parseTS(imp.CreatedAt),
+		ExpiresAt:      parseTS(imp.ExpiresAt),
+	})
+}
+
+func (p *postgresQuerier) getImpersonationBySession(ctx context.Context, sessionID string) (impersonationRow, error) {
+	row, err := p.q.GetImpersonationBySession(ctx, sessionID)
+	if err != nil {
+		return impersonationRow{}, err
+	}
+	return impersonationRow{
+		SessionID: row.SessionID, ActorUserID: row.ActorUserID, OrganizationID: row.OrganizationID,
+		CreatedAt: formatTS(row.CreatedAt), ExpiresAt: formatTS(row.ExpiresAt),
+	}, nil
+}
+
+func (p *postgresQuerier) deleteImpersonation(ctx context.Context, sessionID string) error {
+	return p.q.DeleteImpersonation(ctx, sessionID)
+}
+
+func (p *postgresQuerier) listImpersonationsByActor(ctx context.Context, actorUserID string) ([]impersonationRow, error) {
+	rows, err := p.q.ListImpersonationsByActor(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]impersonationRow, len(rows))
+	for i, row := range rows {
+		out[i] = impersonationRow{
+			SessionID: row.SessionID, ActorUserID: row.ActorUserID, OrganizationID: row.OrganizationID,
+			CreatedAt: formatTS(row.CreatedAt), ExpiresAt: formatTS(row.ExpiresAt),
+		}
+	}
+	return out, nil
+}
+
+func (p *postgresQuerier) cleanupExpiredImpersonations(ctx context.Context, now string) error {
+	return p.q.CleanupExpiredImpersonations(ctx, parseTS(now))
+}

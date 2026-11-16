@@ -91,3 +91,18 @@ DELETE FROM session Where user_id = $1;
 
 -- name: CleanupExpiredSessions :exec
 DELETE FROM session WHERE expires_at <= $1;
+-- Impersonation queries
+-- name: CreateImpersonation :exec
+INSERT INTO session_impersonation (session_id, actor_user_id, organization_id, created_at, expires_at) VALUES ($1, $2, $3, $4, $5);
+
+-- name: GetImpersonationBySession :one
+SELECT session_id, actor_user_id, organization_id, created_at, expires_at FROM session_impersonation WHERE session_id = $1;
+
+-- name: DeleteImpersonation :exec
+DELETE FROM session_impersonation WHERE session_id = $1;
+
+-- name: ListImpersonationsByActor :many
+SELECT session_id, actor_user_id, organization_id, created_at, expires_at FROM session_impersonation WHERE actor_user_id = $1;
+
+-- name: CleanupExpiredImpersonations :exec
+DELETE FROM session_impersonation WHERE expires_at <= $1;

@@ -350,6 +350,9 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 	sessionCfg := core.DefaultSessionConfig()
 	sessionCfg.SessionExpiry = cfg.SessionExpiry
 	sessionCfg.RefreshExpiry = cfg.RefreshExpiry
+	if cfg.CoreAuth != nil && cfg.CoreAuth.ImpersonationMaxDuration > 0 {
+		sessionCfg.ImpersonationMaxDuration = cfg.CoreAuth.ImpersonationMaxDuration
+	}
 	sessionCfg.CookieSettings.Name = cfg.CookieName
 	sessionCfg.CookieSettings.Domain = cfg.CookieDomain
 	sessionCfg.CookieSettings.Secure = cfg.CookieSecure
