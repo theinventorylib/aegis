@@ -114,9 +114,14 @@ func exportCmd() {
 	output := exportFlags.String("output", "./migrations", "Output directory for migrations")
 	pluginsStr := exportFlags.String("plugins", "", "Comma-separated list of plugins (all, or e.g., emailotp,sms,oauth)")
 	authOnly := exportFlags.Bool("auth-only", false, "Export only auth schema (no plugins)")
+	startVersion := exportFlags.Int("start-version", 0, "First sequence number for a first export into a non-empty migrations folder (default: auto)")
 
 	if err := exportFlags.Parse(os.Args[2:]); err != nil {
 		fmt.Printf("Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
+	if *startVersion < 0 {
+		fmt.Println("Error: --start-version must not be negative")
 		os.Exit(1)
 	}
 
@@ -174,11 +179,12 @@ func exportCmd() {
 
 	// Create exporter
 	exporterObj := exporter.NewExporter(exporter.Config{
-		Format:    expFormat,
-		Dialect:   plugins.Dialect(dialectStr),
-		OutputDir: *output,
-		AuthOnly:  *authOnly,
-		Plugins:   pluginList,
+		Format:       expFormat,
+		Dialect:      plugins.Dialect(dialectStr),
+		OutputDir:    *output,
+		AuthOnly:     *authOnly,
+		Plugins:      pluginList,
+		StartVersion: *startVersion,
 	})
 
 	// Export
@@ -200,9 +206,12 @@ func exportCmd() {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
+	for _, warning := range exporterObj.Warnings {
+		fmt.Printf("Warning: %s\n", warning)
+	}
 
 	fmt.Printf("\n✓ Successfully exported migrations to %s\n", *output)
-	fmt.Printf("  (existing _aegis_ files were replaced; your own files were not modified)\n")
+	fmt.Printf("  (new migrations appended; existing _aegis_ files and your own files were not modified)\n")
 }
 
 func printUsage() {
@@ -215,16 +224,23 @@ func printUsage() {
 	fmt.Println("  --format string       Export format (default: sql)")
 	fmt.Println("                        Options: sql, goose, golang-migrate")
 	fmt.Println("  --output string       Path to your migrations folder (default: ./migrations)")
-	fmt.Println("                        Existing files whose names contain \"_aegis_\" are")
-	fmt.Println("                        replaced; your own migration files are never touched.")
+	fmt.Println("                        Existing Aegis migrations are never renumbered or")
+	fmt.Println("                        rewritten; new ones are appended. Your own files are")
+	fmt.Println("                        never touched.")
+	fmt.Println("  --start-version int   First sequence number when exporting into a folder")
+	fmt.Println("                        that already contains your own migrations. Must be")
+	fmt.Println("                        greater than your latest migration number.")
 	fmt.Println("  --dialect string      Database dialect to use (required: postgres, mysql, sqlite)")
 	fmt.Println("  --plugins string      Plugins to include (default: none, auth only)")
 	fmt.Println("                        Examples: all, emailotp,sms, oauth,jwt,admin")
 	fmt.Println("  --auth-only          Export only auth schema (alias for no plugins, deprecated)")
 	fmt.Println()
 	fmt.Println("EXAMPLES:")
-	fmt.Println("  # Export auth only into an existing folder (aegis files replaced, yours kept)")
+	fmt.Println("  # Export auth only into an existing folder (aegis files appended, yours kept)")
 	fmt.Println("  aegis export --dialect postgres --output ./migrations")
+	fmt.Println()
+	fmt.Println("  # Export after your app's migration 00012")
+	fmt.Println("  aegis export --dialect postgres --output ./migrations --start-version 13")
 	fmt.Println()
 	fmt.Println("  # Export auth + all plugins as Goose format")
 	fmt.Println("  aegis export --dialect postgres --format goose --plugins all")
@@ -241,8 +257,9 @@ func printUsage() {
 	fmt.Println("NAMING CONVENTION:")
 	fmt.Println("  Aegis-generated files always contain \"_aegis_\" in their name")
 	fmt.Println("  (e.g. 00001_aegis_auth_initial.sql). Do not use that substring in")
-	fmt.Println("  your own migration filenames — those files will be overwritten on")
-	fmt.Println("  the next export.")
+	fmt.Println("  your own migration filenames — it identifies files managed by Aegis.")
+	fmt.Println("  A .aegis-migrations.json manifest records assigned numbers; keep it")
+	fmt.Println("  with your migrations.")
 	fmt.Println()
 	fmt.Println("AVAILABLE PLUGINS:")
 	fmt.Println("  - admin          Administrative endpoints for user management")
