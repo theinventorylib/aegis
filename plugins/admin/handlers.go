@@ -138,11 +138,15 @@ func (a *Plugin) impersonateUserHandler(w http.ResponseWriter, r *http.Request) 
 	result, err := a.ImpersonateUser(r.Context(), actor.ID, targetID, req.OrganizationID, duration)
 	if err != nil {
 		if a.aegis != nil {
-			_ = a.aegis.GetAuthService().AuditLogger().LogAuthEvent(r.Context(), core.AuditEventImpersonationDenied, actor.ID, false, map[string]any{
+			if auditErr := a.aegis.GetAuthService().AuditLogger().LogAuthEvent(r.Context(), core.AuditEventImpersonationDenied, actor.ID, false, map[string]any{
 				"target_user_id":  targetID,
 				"organization_id": req.OrganizationID,
 				"reason":          err.Error(),
-			})
+			}); auditErr != nil {
+				if logger := a.aegis.GetLogger(); logger != nil {
+					logger.Error("admin: failed to audit denied impersonation", "error", auditErr)
+				}
+			}
 		}
 		switch {
 		case errors.Is(err, ErrImpersonationDisabled):

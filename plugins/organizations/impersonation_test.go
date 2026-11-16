@@ -22,7 +22,7 @@ func impersonatedContext(orgID string) context.Context {
 	return core.WithSession(context.Background(), session)
 }
 
-func impersonationTestPlugin() (*Plugin, *keyedStore) {
+func impersonationTestPlugin() *Plugin {
 	store := &keyedStore{roles: map[string]string{
 		"owner":  orgtypes.RoleOwner,
 		"admin":  orgtypes.RoleAdmin,
@@ -36,11 +36,11 @@ func impersonationTestPlugin() (*Plugin, *keyedStore) {
 			"billing:manage": {Module: "billing", Sensitive: true, Description: "Manage billing"},
 		},
 	}, store)
-	return p, store
+	return p
 }
 
 func TestImpersonationDeniesSensitivePermissions(t *testing.T) {
-	p, _ := impersonationTestPlugin()
+	p := impersonationTestPlugin()
 	ctx := impersonatedContext("o1")
 
 	// The target's normal role grants billing; impersonation must still deny it.
@@ -73,7 +73,7 @@ func TestImpersonationDeniesSensitivePermissions(t *testing.T) {
 }
 
 func TestImpersonationFiltersMemberPermissions(t *testing.T) {
-	p, _ := impersonationTestPlugin()
+	p := impersonationTestPlugin()
 
 	normal, err := p.GetMemberPermissions(context.Background(), "target", "o1")
 	if err != nil {
@@ -96,7 +96,7 @@ func TestImpersonationFiltersMemberPermissions(t *testing.T) {
 }
 
 func TestSensitivePermissionEditsAreOwnerOnlyAndNeverImpersonated(t *testing.T) {
-	p, _ := impersonationTestPlugin()
+	p := impersonationTestPlugin()
 	overrides := []orgtypes.MemberPermissionOverride{{
 		Permission: "billing:manage",
 		Effect:     orgtypes.PermissionEffectGrant,
@@ -120,7 +120,7 @@ func TestSensitivePermissionEditsAreOwnerOnlyAndNeverImpersonated(t *testing.T) 
 }
 
 func TestSensitivePermissionsList(t *testing.T) {
-	p, _ := impersonationTestPlugin()
+	p := impersonationTestPlugin()
 	got := p.SensitivePermissions()
 	if !containsPermission(got, "billing:manage") {
 		t.Fatalf("SensitivePermissions() = %v, want billing:manage", got)
