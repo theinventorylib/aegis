@@ -434,7 +434,7 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUser
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, avatar, name, email, created_at, updated_at, disabled FROM ` + "`" + `user` + "`" + ` WHERE email = ? AND disabled = 0
+SELECT id, avatar, name, email, created_at, updated_at, disabled FROM ` + "`" + `user` + "`" + ` WHERE email = ?
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email sql.NullString) (User, error) {
@@ -453,7 +453,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email sql.NullString) (Use
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, avatar, name, email, created_at, updated_at, disabled FROM ` + "`" + `user` + "`" + ` WHERE id = ? AND disabled = 0
+SELECT id, avatar, name, email, created_at, updated_at, disabled FROM ` + "`" + `user` + "`" + ` WHERE id = ?
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {

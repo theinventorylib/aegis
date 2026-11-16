@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/theinventorylib/aegis/v2/auth"
@@ -63,6 +64,10 @@ type AccountService struct {
 	// verification issues and redeems password-reset tokens. Wired by
 	// AuthService.
 	verification *VerificationService
+
+	// loginAttemptTracker, when set, is cleared after a successful password
+	// reset so the account is not left locked out by earlier failures.
+	loginAttemptTracker *LoginAttemptTracker
 }
 
 // newAccountService creates a new account service with the specified dependencies.
@@ -101,6 +106,31 @@ func (s *AccountService) setSessionInvalidator(f func(ctx context.Context, userI
 func (s *AccountService) setSecurityStores(userStore auth.UserStore, verification *VerificationService) {
 	s.userStore = userStore
 	s.verification = verification
+}
+
+// setLoginAttemptTracker wires the lockout tracker so successful password
+// resets can clear stale failed-attempt state.
+func (s *AccountService) setLoginAttemptTracker(tracker *LoginAttemptTracker) {
+	s.loginAttemptTracker = tracker
+}
+
+// clearLoginAttempts clears the lockout counters for the user's email address
+// and every credential account ID (username) they can sign in with.
+func (s *AccountService) clearLoginAttempts(ctx context.Context, user auth.User) {
+	if s.loginAttemptTracker == nil {
+		return
+	}
+	identifiers := []string{user.Email}
+	if accounts, err := s.accountStore.GetByUserID(ctx, user.ID); err == nil {
+		for _, acc := range accounts {
+			identifiers = append(identifiers, acc.ProviderAccountID)
+		}
+	}
+	for _, identifier := range identifiers {
+		if err := s.loginAttemptTracker.ClearAttempts(ctx, strings.ToLower(strings.TrimSpace(identifier))); err != nil {
+			s.logger.Error("account: failed to clear login attempts", "user_id", user.ID, "error", err)
+		}
+	}
 }
 
 // CreateAccount creates a new account

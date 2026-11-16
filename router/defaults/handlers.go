@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/theinventorylib/aegis/v2/auth"
@@ -54,18 +55,32 @@ func (h *Handlers) loginHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		status := http.StatusUnauthorized
 		msg := err.Error()
-		if core.IsAuthError(err) {
-			ae, ok := err.(*core.AuthError)
-			if ok && ae.Code == core.AuthErrorCodeRateLimit {
+		code := ""
+		var authErr *core.AuthError
+		switch {
+		case errors.As(err, &authErr):
+			msg = authErr.Message
+			code = authErr.Code
+			switch authErr.Code {
+			case core.AuthErrorCodeRateLimit:
 				status = http.StatusTooManyRequests
+				if authErr.RetryAfter > 0 {
+					seconds := int((authErr.RetryAfter + time.Second - 1) / time.Second)
+					if seconds < 1 {
+						seconds = 1
+					}
+					w.Header().Set("Retry-After", strconv.Itoa(seconds))
+				}
+			case core.AuthErrorCodeUserDisabled:
+				status = http.StatusForbidden
 			}
-		}
-		if errors.Is(err, core.ErrEmailNotVerified) {
+		case errors.Is(err, core.ErrEmailNotVerified):
 			status = http.StatusForbidden
 		}
 		core.WriteJSON(w, status, &core.Response{
 			Success: false,
 			Error:   msg,
+			Code:    code,
 		})
 		return
 	}

@@ -196,3 +196,46 @@ func TestPasswordResetInvalidatesPreviousTokens(t *testing.T) {
 		t.Fatalf("latest token should work: %v", err)
 	}
 }
+
+// TestPasswordResetClearsLockout covers the #96 lifecycle gap: a successful
+// reset must unlock the account, not leave it locked for the rest of the
+// attempt window.
+func TestPasswordResetClearsLockout(t *testing.T) {
+	ctx := context.Background()
+	as, _, _, _ := newSecurityTestAuth()
+	tracker := NewLoginAttemptTracker(&LoginAttemptConfig{
+		MaxAttempts:     1,
+		LockoutDuration: time.Minute,
+		AttemptWindow:   time.Minute,
+	}, nil)
+	defer tracker.Stop()
+	as.Account.setLoginAttemptTracker(tracker)
+
+	user, err := as.User.CreateUser(ctx, auth.User{Name: "Alice", Email: "alice@example.com"}, "OldPassword123!")
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if _, _, err := tracker.RecordFailedAttempt(ctx, "alice@example.com"); err != nil {
+		t.Fatalf("record failure: %v", err)
+	}
+	locked, _, err := tracker.IsLockedOut(ctx, "alice@example.com")
+	if err != nil || !locked {
+		t.Fatalf("precondition: expected locked (locked=%v err=%v)", locked, err)
+	}
+
+	_, token, err := as.Account.RequestPasswordReset(ctx, "alice@example.com")
+	if err != nil {
+		t.Fatalf("request reset: %v", err)
+	}
+	if _, err := as.Account.ConfirmPasswordReset(ctx, token, "NewPassword123!"); err != nil {
+		t.Fatalf("confirm reset: %v", err)
+	}
+
+	locked, _, err = tracker.IsLockedOut(ctx, user.GetEmail())
+	if err != nil {
+		t.Fatalf("IsLockedOut: %v", err)
+	}
+	if locked {
+		t.Fatal("successful password reset must clear the lockout")
+	}
+}
