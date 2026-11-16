@@ -3,11 +3,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- **Disabled accounts are enforced in core**: `CreateSession`, `RefreshSession`, and session validation reject disabled users. The default user queries now return disabled users so the core can distinguish "disabled" from "not found". Disabling a user through the admin plugin revokes their sessions.
-- **Login lockout is independent of the HTTP rate limiter**: `Config.WithLoginAttemptConfig` exists; `MaxAttempts <= 0` disables account lockout while keeping the IP throttle. Lockout errors carry `RetryAfter`, and the default login handler returns `Retry-After`, `429`, and `USER_DISABLED`/`RATE_LIMIT` codes.
-- **Password reset clears lockout**: `ConfirmPasswordReset` clears failed-attempt state for the user's email and credential usernames.
+### Added
+- **Organization-scoped impersonation** (`plugins/admin`): `POST /admin/users/{id}/impersonate` creates a short-lived session as a target organization member when `AuthConfig.ImpersonationEnabled` is set. The session has no refresh token, is limited to one organization, cannot nest, and is audited (`impersonation_started`, `impersonation_ended`, `impersonation_denied`). The new `session_impersonation` table is auth migration `003_impersonation` on all dialects.
+- **Sensitive permission controls** (`plugins/organizations`): `PermissionDefinition.Sensitive`, `Config.ImpersonationDeniedPermissions`, `HasOrgSensitivePermission`, `RequireOrgSensitivePermission`, and `SensitivePermissions`. Sensitive permissions are denied during impersonation, and only the organization owner (never an impersonation session) may edit them. `PUT /organizations/{id}/members/{userId}/sensitive-permissions` is the dedicated editing route.
 - **Administrative unlock**: `POST /admin/users/{id}/unlock`, `AuthService.ClearLoginAttempts`, and `AuthService.ClearLoginAttemptsForUser`.
+- **Auto-appending migration export**: `aegis export` scans the highest numeric prefix in the output directory and appends Aegis migrations after it. Existing `_aegis_*` files are adopted and never renumbered or rewritten, and new filenames include the source version (for example `00013_aegis_auth_001_initial.sql`). There is no manifest; the migration tool owns applied state.
+
+### Changed
+- **Disabled accounts are enforced in core**: `CreateSession`, `RefreshSession`, and session validation reject disabled users. The default user queries now return disabled users so the core can distinguish "disabled" from "not found"; `GetUserByEmail`/`GetUserByID` consumers see them. Disabling a user through the admin plugin revokes their sessions and any impersonation sessions they started.
+- **Login lockout is independent of the HTTP rate limiter**: `Config.WithLoginAttemptConfig` exists; `MaxAttempts <= 0` disables account lockout while keeping the IP throttle. Lockout errors now carry `RetryAfter`, and the default login handler returns `Retry-After`, `429`, and `USER_DISABLED`/`RATE_LIMIT` codes.
+- **Password reset clears lockout**: `ConfirmPasswordReset` clears failed-attempt state for the user's email and credential usernames.
+- **Migration docs**: database and quickstart pages describe auto-append numbering; the rate-limit page documents the real configuration API and in-memory tracker behavior.
 
 ### Fixed
 - `core.IsAuthError` now matches the `*AuthError` values returned by its constructors, so lockout responses map to `429` instead of `401`.

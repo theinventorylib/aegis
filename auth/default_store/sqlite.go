@@ -224,3 +224,49 @@ func (s *sqliteQuerier) cleanupExpiredSessions(ctx context.Context, now string) 
 func (s *sqliteQuerier) withTx(tx *sql.Tx) querier {
 	return &sqliteQuerier{q: s.q.WithTx(tx)}
 }
+
+// Impersonation
+
+func (s *sqliteQuerier) createImpersonation(ctx context.Context, imp impersonationRow) error {
+	return s.q.CreateImpersonation(ctx, sqlcsqlite.CreateImpersonationParams{
+		SessionID:      imp.SessionID,
+		ActorUserID:    imp.ActorUserID,
+		OrganizationID: imp.OrganizationID,
+		CreatedAt:      imp.CreatedAt,
+		ExpiresAt:      imp.ExpiresAt,
+	})
+}
+
+func (s *sqliteQuerier) getImpersonationBySession(ctx context.Context, sessionID string) (impersonationRow, error) {
+	row, err := s.q.GetImpersonationBySession(ctx, sessionID)
+	if err != nil {
+		return impersonationRow{}, err
+	}
+	return impersonationRow{
+		SessionID: row.SessionID, ActorUserID: row.ActorUserID, OrganizationID: row.OrganizationID,
+		CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt,
+	}, nil
+}
+
+func (s *sqliteQuerier) deleteImpersonation(ctx context.Context, sessionID string) error {
+	return s.q.DeleteImpersonation(ctx, sessionID)
+}
+
+func (s *sqliteQuerier) listImpersonationsByActor(ctx context.Context, actorUserID string) ([]impersonationRow, error) {
+	rows, err := s.q.ListImpersonationsByActor(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]impersonationRow, len(rows))
+	for i, row := range rows {
+		out[i] = impersonationRow{
+			SessionID: row.SessionID, ActorUserID: row.ActorUserID, OrganizationID: row.OrganizationID,
+			CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt,
+		}
+	}
+	return out, nil
+}
+
+func (s *sqliteQuerier) cleanupExpiredImpersonations(ctx context.Context, now string) error {
+	return s.q.CleanupExpiredImpersonations(ctx, now)
+}

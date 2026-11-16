@@ -37,6 +37,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -48,6 +49,21 @@ import (
 	admintypes "github.com/theinventorylib/aegis/v2/plugins/admin/types"
 	"github.com/theinventorylib/aegis/v2/plugins/openapi"
 	"github.com/theinventorylib/aegis/v2/router"
+)
+
+// Errors returned by ImpersonateUser.
+var (
+	// ErrImpersonationDisabled means the core AuthConfig does not allow
+	// impersonation.
+	ErrImpersonationDisabled = errors.New("impersonation is disabled")
+	// ErrNotOrganizationMember means the target is not a member of the
+	// organization the impersonation is scoped to.
+	ErrNotOrganizationMember = errors.New("target is not a member of the organization")
+	// ErrOrganizationsPluginMissing means the organizations plugin is not
+	// registered, so organization-scoped impersonation cannot be authorized.
+	ErrOrganizationsPluginMissing = errors.New("organizations plugin is required for impersonation")
+	// ErrActorNotAdmin means the actor does not hold the admin role.
+	ErrActorNotAdmin = errors.New("actor is not an administrator")
 )
 
 // Plugin provides role-based access control and administrative user management.
@@ -263,6 +279,26 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
+	adminGroup.POST("/users/:id/impersonate", requireAdmin(http.HandlerFunc(a.impersonateUserHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/users/{id}/impersonate",
+		Summary:     "Impersonate user in an organization",
+		Description: "Create a short-lived, organization-scoped session as the target user (admin only; requires AuthConfig.ImpersonationEnabled). Sensitive permissions such as billing remain denied.",
+		Tags:        []string{"Admin"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Body: openapi.BodyOf[admintypes.ImpersonateUserRequest](),
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("Impersonation session created", "Success"),
+			400: openapi.RefResponse("Invalid request or target is not an organization member", "Error"),
+			401: openapi.RefResponse("Not authorized", "Error"),
+			403: openapi.RefResponse("Impersonation disabled or target disabled", "Error"),
+		},
+	})
+
 	adminGroup.DELETE("/users/:id", requireAdmin(http.HandlerFunc(a.deleteUserHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "DELETE",
@@ -457,6 +493,9 @@ func (a *Plugin) DisableUser(ctx context.Context, userID string) error {
 		if err := a.aegis.GetAuthService().Session.DeleteUserSessions(ctx, userID); err != nil {
 			return fmt.Errorf("user disabled but session revocation failed: %w", err)
 		}
+		if err := a.aegis.GetAuthService().Session.RevokeImpersonationsByActor(ctx, userID); err != nil {
+			return fmt.Errorf("user disabled but impersonation revocation failed: %w", err)
+		}
 	}
 	return nil
 }
@@ -478,6 +517,68 @@ func (a *Plugin) UnlockUser(ctx context.Context, userID string) error {
 		return fmt.Errorf("admin plugin not initialized")
 	}
 	return a.aegis.GetAuthService().ClearLoginAttemptsForUser(ctx, userID)
+}
+
+// ImpersonateUser starts an organization-scoped impersonation session as
+// targetID. The caller must already be authorized as a platform administrator
+// (RequireAdminMiddleware) and the feature must be enabled through
+// AuthConfig.ImpersonationEnabled. The returned token is a bearer token for the
+// target; it does not replace the administrator's own session.
+func (a *Plugin) ImpersonateUser(ctx context.Context, actorID, targetID, organizationID string, duration time.Duration) (*core.ImpersonationResult, error) {
+	if a.aegis == nil {
+		return nil, fmt.Errorf("admin plugin not initialized")
+	}
+	authService := a.aegis.GetAuthService()
+	if !authService.ImpersonationEnabled() {
+		return nil, ErrImpersonationDisabled
+	}
+	if core.IsImpersonated(ctx) {
+		return nil, errors.New("an impersonation session cannot start another impersonation")
+	}
+	role, err := a.store.GetRole(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if role != RoleAdmin {
+		return nil, ErrActorNotAdmin
+	}
+
+	orgPlugin, ok := a.aegis.GetPlugin("organizations")
+	if !ok {
+		return nil, ErrOrganizationsPluginMissing
+	}
+	membership, ok := orgPlugin.(interface {
+		IsOrganizationMember(ctx context.Context, userID, orgID string) bool
+	})
+	if !ok {
+		return nil, ErrOrganizationsPluginMissing
+	}
+	if !membership.IsOrganizationMember(ctx, targetID, organizationID) {
+		return nil, ErrNotOrganizationMember
+	}
+
+	actor, err := authService.User.GetUserByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	target, err := a.store.GetByID(ctx, targetID)
+	if err != nil {
+		return nil, err
+	}
+	if target.Disabled {
+		return nil, core.NewAuthErrorWithCause(core.AuthErrorCodeUserDisabled, "User account is disabled", core.ErrUserDisabled)
+	}
+
+	session, err := authService.Session.CreateImpersonationSession(ctx, &actor, &target.User, organizationID, duration)
+	if err != nil {
+		return nil, err
+	}
+	return &core.ImpersonationResult{
+		Session:       session,
+		User:          target.User,
+		Impersonation: *session.Impersonation,
+		Token:         session.Token,
+	}, nil
 }
 
 // DeleteUser permanently deletes a user account programmatically.
@@ -503,9 +604,16 @@ func (a *Plugin) GetStats(ctx context.Context) (admintypes.StatsResponse, error)
 	return a.store.GetStats(ctx)
 }
 
-// AssignRole assigns a role to a user programmatically.
+// AssignRole assigns a role to a user programmatically. Demoting an
+// administrator revokes any impersonation sessions they started.
 func (a *Plugin) AssignRole(ctx context.Context, userID string, role string) error {
-	return a.store.AssignRole(ctx, userID, role)
+	if err := a.store.AssignRole(ctx, userID, role); err != nil {
+		return err
+	}
+	if a.aegis != nil && role != "admin" {
+		return a.aegis.GetAuthService().Session.RevokeImpersonationsByActor(ctx, userID)
+	}
+	return nil
 }
 
 // GetUserRole retrieves the role of a user programmatically.
@@ -513,9 +621,16 @@ func (a *Plugin) GetUserRole(ctx context.Context, userID string) (string, error)
 	return a.store.GetRole(ctx, userID)
 }
 
-// RemoveRole removes a role from a user programmatically.
+// RemoveRole removes a role from a user programmatically. Removing the admin
+// role revokes any impersonation sessions they started.
 func (a *Plugin) RemoveRole(ctx context.Context, userID string, role string) error {
-	return a.store.RemoveRole(ctx, userID, role)
+	if err := a.store.RemoveRole(ctx, userID, role); err != nil {
+		return err
+	}
+	if a.aegis != nil {
+		return a.aegis.GetAuthService().Session.RevokeImpersonationsByActor(ctx, userID)
+	}
+	return nil
 }
 
 // GetAdminUser retrieves a user with admin-specific information.

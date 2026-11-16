@@ -449,7 +449,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	oauthGroup.POST("/link", requireAuth(http.HandlerFunc(handlers.linkAccountHandler)).ServeHTTP)
+	oauthGroup.POST("/link", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.linkAccountHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/link",

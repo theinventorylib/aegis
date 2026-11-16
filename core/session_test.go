@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"sync"
 	"testing"
@@ -316,8 +317,9 @@ func (m *mockUserStore) Count(_ context.Context) (int, error) {
 }
 
 type mockSessionStore struct {
-	sessions map[string]auth.Session
-	mu       sync.RWMutex
+	sessions       map[string]auth.Session
+	impersonations map[string]auth.Impersonation
+	mu             sync.RWMutex
 }
 
 func (m *mockSessionStore) Create(_ context.Context, session auth.Session) error {
@@ -456,6 +458,57 @@ func (m *mockSessionStore) CleanupExpired(_ context.Context) error {
 	for id, session := range m.sessions {
 		if now.After(session.ExpiresAt) {
 			delete(m.sessions, id)
+		}
+	}
+	return nil
+}
+
+func (m *mockSessionStore) CreateImpersonation(_ context.Context, imp auth.Impersonation) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.impersonations == nil {
+		m.impersonations = make(map[string]auth.Impersonation)
+	}
+	m.impersonations[imp.SessionID] = imp
+	return nil
+}
+
+func (m *mockSessionStore) GetImpersonation(_ context.Context, sessionID string) (auth.Impersonation, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	imp, ok := m.impersonations[sessionID]
+	if !ok {
+		return auth.Impersonation{}, sql.ErrNoRows
+	}
+	return imp, nil
+}
+
+func (m *mockSessionStore) DeleteImpersonation(_ context.Context, sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.impersonations, sessionID)
+	return nil
+}
+
+func (m *mockSessionStore) ListImpersonationsByActor(_ context.Context, actorUserID string) ([]auth.Impersonation, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []auth.Impersonation
+	for _, imp := range m.impersonations {
+		if imp.ActorUserID == actorUserID {
+			out = append(out, imp)
+		}
+	}
+	return out, nil
+}
+
+func (m *mockSessionStore) CleanupExpiredImpersonations(_ context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := time.Now()
+	for id, imp := range m.impersonations {
+		if now.After(imp.ExpiresAt) {
+			delete(m.impersonations, id)
 		}
 	}
 	return nil

@@ -34,6 +34,12 @@ type sessionRow struct {
 	RefreshToken, IPAddress, UserAgent      sql.NullString
 }
 
+// impersonationRow keeps timestamps as canonical RFC3339 strings like the
+// other row types; each dialect translator converts to/from its native form.
+type impersonationRow struct {
+	SessionID, ActorUserID, OrganizationID, CreatedAt, ExpiresAt string
+}
+
 // Querier is the one interface all store methods use. It covers all four
 // sub-stores (user, account, verification, session) so the dialect is chosen
 // exactly once in NewDefaultStore and nothing else needs to know about it.
@@ -75,6 +81,13 @@ type querier interface {
 	deleteSession(ctx context.Context, id string) error
 	deleteSessionsByUserID(ctx context.Context, userID string) error
 	cleanupExpiredSessions(ctx context.Context, now string) error
+
+	// Impersonation queries
+	createImpersonation(ctx context.Context, imp impersonationRow) error
+	getImpersonationBySession(ctx context.Context, sessionID string) (impersonationRow, error)
+	deleteImpersonation(ctx context.Context, sessionID string) error
+	listImpersonationsByActor(ctx context.Context, actorUserID string) ([]impersonationRow, error)
+	cleanupExpiredImpersonations(ctx context.Context, now string) error
 
 	// withTx returns a copy of this querier bound to the provided
 	// transaction. All subsequent calls on the returned querier execute

@@ -224,3 +224,49 @@ func (m *mysqlQuerier) cleanupExpiredSessions(ctx context.Context, now string) e
 func (m *mysqlQuerier) withTx(tx *sql.Tx) querier {
 	return &mysqlQuerier{q: m.q.WithTx(tx)}
 }
+
+// Impersonation
+
+func (m *mysqlQuerier) createImpersonation(ctx context.Context, imp impersonationRow) error {
+	return m.q.CreateImpersonation(ctx, sqlcmysql.CreateImpersonationParams{
+		SessionID:      imp.SessionID,
+		ActorUserID:    imp.ActorUserID,
+		OrganizationID: imp.OrganizationID,
+		CreatedAt:      imp.CreatedAt,
+		ExpiresAt:      imp.ExpiresAt,
+	})
+}
+
+func (m *mysqlQuerier) getImpersonationBySession(ctx context.Context, sessionID string) (impersonationRow, error) {
+	row, err := m.q.GetImpersonationBySession(ctx, sessionID)
+	if err != nil {
+		return impersonationRow{}, err
+	}
+	return impersonationRow{
+		SessionID: row.SessionID, ActorUserID: row.ActorUserID, OrganizationID: row.OrganizationID,
+		CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt,
+	}, nil
+}
+
+func (m *mysqlQuerier) deleteImpersonation(ctx context.Context, sessionID string) error {
+	return m.q.DeleteImpersonation(ctx, sessionID)
+}
+
+func (m *mysqlQuerier) listImpersonationsByActor(ctx context.Context, actorUserID string) ([]impersonationRow, error) {
+	rows, err := m.q.ListImpersonationsByActor(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]impersonationRow, len(rows))
+	for i, row := range rows {
+		out[i] = impersonationRow{
+			SessionID: row.SessionID, ActorUserID: row.ActorUserID, OrganizationID: row.OrganizationID,
+			CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt,
+		}
+	}
+	return out, nil
+}
+
+func (m *mysqlQuerier) cleanupExpiredImpersonations(ctx context.Context, now string) error {
+	return m.q.CleanupExpiredImpersonations(ctx, now)
+}

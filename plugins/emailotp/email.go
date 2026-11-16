@@ -260,7 +260,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	requireAuth := core.RequireAuthMiddleware(p.sessionService)
 
 	// Protected route - sending OTP requires authentication to prevent spam/abuse
-	emailGroup.POST("/send", requireAuth(http.HandlerFunc(handlers.SendOTPHandler)).ServeHTTP)
+	emailGroup.POST("/send", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.SendOTPHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/send",
@@ -278,7 +278,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	})
 
 	// Public routes
-	emailGroup.POST("/verify", handlers.VerifyOTPHandler) // User proving email ownership
+	emailGroup.POST("/verify", core.DenyImpersonated(http.HandlerFunc(handlers.VerifyOTPHandler)).ServeHTTP) // User proving email ownership
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/verify",
@@ -296,7 +296,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 	// Public route for the registration verification flow: unverified users
 	// cannot authenticate, so sending the verification code must not require a
 	// session. Rate limit this at the gateway/router.
-	emailGroup.POST("/send-verification", handlers.SendVerificationOTPHandler)
+	emailGroup.POST("/send-verification", core.DenyImpersonated(http.HandlerFunc(handlers.SendVerificationOTPHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/send-verification",
@@ -312,7 +312,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 
 	// Password reset. The request endpoint answers the same for every address
 	// so it cannot be used to enumerate accounts.
-	emailGroup.POST("/forgot-password", handlers.ForgotPasswordHandler)
+	emailGroup.POST("/forgot-password", core.DenyImpersonated(http.HandlerFunc(handlers.ForgotPasswordHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/forgot-password",
@@ -327,7 +327,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	emailGroup.POST("/reset-password", handlers.ResetPasswordHandler)
+	emailGroup.POST("/reset-password", core.DenyImpersonated(http.HandlerFunc(handlers.ResetPasswordHandler)).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/reset-password",
@@ -343,7 +343,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 
 	// Email change. Both endpoints require a session: the confirmation token
 	// is bound to the new address, and the account that changes is the caller.
-	emailGroup.POST("/email-change", requireAuth(http.HandlerFunc(handlers.RequestEmailChangeHandler)).ServeHTTP)
+	emailGroup.POST("/email-change", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.RequestEmailChangeHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/email-change",
@@ -360,7 +360,7 @@ func (p *Plugin) MountRoutes(r router.Router, prefix string) {
 		},
 	})
 
-	emailGroup.POST("/email-change/confirm", requireAuth(http.HandlerFunc(handlers.ConfirmEmailChangeHandler)).ServeHTTP)
+	emailGroup.POST("/email-change/confirm", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.ConfirmEmailChangeHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "POST",
 		Path:        prefix + "/email-change/confirm",

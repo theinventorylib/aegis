@@ -17,6 +17,7 @@ package core
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/theinventorylib/aegis/v2/auth"
 )
@@ -210,6 +211,21 @@ func (as *AuthService) GetUserFieldsConfig() *UserFieldsConfig {
 		return nil
 	}
 	return as.authConfig.UserFields
+}
+
+// ImpersonationEnabled reports whether administrative impersonation sessions
+// are allowed by policy.
+func (as *AuthService) ImpersonationEnabled() bool {
+	return as.authConfig != nil && as.authConfig.ImpersonationEnabled
+}
+
+// ImpersonationMaxDuration returns the configured impersonation cap, falling
+// back to DefaultImpersonationMaxDuration when unset.
+func (as *AuthService) ImpersonationMaxDuration() time.Duration {
+	if as.authConfig != nil && as.authConfig.ImpersonationMaxDuration > 0 {
+		return as.authConfig.ImpersonationMaxDuration
+	}
+	return DefaultImpersonationMaxDuration
 }
 
 // AddAuditSink registers a sink that receives a copy of every audit event.

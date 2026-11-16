@@ -133,6 +133,10 @@ func (a *Plugin) checkUserRole(ctx *http.Request, w http.ResponseWriter, require
 func (a *Plugin) RequireAdminMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if core.IsImpersonated(r.Context()) {
+				core.WriteJSONError(w, http.StatusForbidden, "Not available during impersonation")
+				return
+			}
 			if a.checkUserRole(r, w, RoleAdmin) {
 				next.ServeHTTP(w, r)
 			}
@@ -159,6 +163,10 @@ func (a *Plugin) RequireAdminMiddleware() func(http.Handler) http.Handler {
 func (a *Plugin) RequireRoleMiddleware(requiredRole string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if core.IsImpersonated(r.Context()) {
+				core.WriteJSONError(w, http.StatusForbidden, "Not available during impersonation")
+				return
+			}
 			if a.checkUserRole(r, w, requiredRole) {
 				next.ServeHTTP(w, r)
 			}
