@@ -369,3 +369,16 @@ func findSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+// TC-ERR-010: IsAuthError must match pointer errors returned by constructors.
+func TestIsAuthError_Pointer(t *testing.T) {
+	if !IsAuthError(NewAuthError("TEST", "message")) {
+		t.Fatal("IsAuthError should match *AuthError")
+	}
+	if !IsAuthError(AuthError{Code: "TEST", Message: "message"}) {
+		t.Fatal("IsAuthError should match AuthError values too")
+	}
+	if IsAuthError(errors.New("plain")) {
+		t.Fatal("IsAuthError should not match a plain error")
+	}
+}

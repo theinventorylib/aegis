@@ -221,8 +221,10 @@ type Config struct {
 
 	// LoginAttemptConfig holds login attempt tracking configuration.
 	// OPTIONAL.
-	// Default: nil (uses DefaultLoginAttemptConfig() if rate limiting enabled)
-	// Use WithLoginAttemptConfig to configure.
+	// Default: nil (uses DefaultLoginAttemptConfig() when rate limiting or
+	// login attempt tracking is enabled)
+	// Use WithLoginAttemptConfig to configure. MaxAttempts <= 0 disables
+	// account lockout independently of the HTTP rate limiter.
 	LoginAttemptConfig *core.LoginAttemptConfig
 }
 
@@ -553,6 +555,24 @@ func (c *Config) WithRateLimitConfig(cfg *core.RateLimitConfig) *Config {
 	if c.LoginAttemptConfig == nil {
 		c.LoginAttemptConfig = core.DefaultLoginAttemptConfig()
 	}
+	return c
+}
+
+// WithLoginAttemptConfig configures failed-login lockout independently of the
+// HTTP rate limiter. Setting a config turns the tracker on without enabling
+// the request rate-limiting middleware; a max-attempts value of zero or less
+// disables account lockout while leaving any configured IP throttle intact.
+//
+// Example:
+//
+//	cfg := config.Default()
+//	cfg.WithLoginAttemptConfig(&core.LoginAttemptConfig{
+//	    MaxAttempts:     5,
+//	    AttemptWindow:   15 * time.Minute,
+//	    LockoutDuration: 15 * time.Minute,
+//	})
+func (c *Config) WithLoginAttemptConfig(cfg *core.LoginAttemptConfig) *Config {
+	c.LoginAttemptConfig = cfg
 	return c
 }
 

@@ -16,6 +16,7 @@ package core
 
 import (
 	"context"
+	"strings"
 
 	"github.com/theinventorylib/aegis/v2/auth"
 )
@@ -103,6 +104,42 @@ func (as *AuthService) SetEmailVerifiedMarker(fn func(ctx context.Context, userI
 	as.User.setEmailVerifiedMarker(fn)
 }
 
+// ClearLoginAttempts clears the failed-login counter and any lockout for a
+// normalized login identifier (email address or username). It is a no-op when
+// login attempt tracking is disabled.
+func (as *AuthService) ClearLoginAttempts(ctx context.Context, identifier string) error {
+	if as.loginAttemptTracker == nil {
+		return nil
+	}
+	return as.loginAttemptTracker.ClearAttempts(ctx, strings.ToLower(strings.TrimSpace(identifier)))
+}
+
+// ClearLoginAttemptsForUser clears the failed-login counter for every
+// identifier the user can log in with: their email address and the provider
+// account IDs of their credential accounts (usernames). Use it after an
+// administrative unlock or a successful password recovery.
+func (as *AuthService) ClearLoginAttemptsForUser(ctx context.Context, userID string) error {
+	if as.loginAttemptTracker == nil {
+		return nil
+	}
+	user, err := as.userStore.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	identifiers := []string{user.Email}
+	if accounts, err := as.accountStore.GetByUserID(ctx, userID); err == nil {
+		for _, acc := range accounts {
+			identifiers = append(identifiers, acc.ProviderAccountID)
+		}
+	}
+	for _, identifier := range identifiers {
+		if err := as.ClearLoginAttempts(ctx, identifier); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // NewAuthService creates a new AuthService with all sub-services initialized.
 //
 // Parameters:
@@ -151,6 +188,7 @@ func NewAuthService(authConfig *AuthConfig, authConn *auth.Auth, hashConfig *Pas
 
 	// Initialize sub-services
 	as.Account = newAccountService(as.accountStore, as.sessionStore, hashConfig, authConfig, auditLogger, authConn.Transactor(), logger)
+	as.Account.setLoginAttemptTracker(loginAttemptTracker)
 	as.User = newUserService(as.userStore, as.accountStore, as.sessionStore, hashConfig, authConfig, auditLogger, authConn.Transactor(), logger)
 	as.Verification = newVerificationService(as.verificationStore, auditLogger)
 	as.Session = newSessionService(as.userStore, as.sessionStore, nil, auditLogger, logger)

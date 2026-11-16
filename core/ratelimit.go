@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -651,10 +652,18 @@ func (lat *LoginAttemptTracker) recordFailedAttemptMemory(identifier string) (in
 
 		// New or expired entry
 		if !exists || now.After(entry.expiresAt) {
-			m[identifier] = loginAttemptEntry{
+			entry = loginAttemptEntry{
 				attempts:  1,
 				expiresAt: now.Add(lat.attemptWindow),
 			}
+			if entry.attempts >= lat.maxAttempts {
+				entry.lockedAt = now
+				entry.expiresAt = now.Add(lat.lockoutDuration)
+				attempts, lockedOut = entry.attempts, true
+				m[identifier] = entry
+				return
+			}
+			m[identifier] = entry
 			attempts = 1
 			return
 		}
@@ -723,4 +732,32 @@ func (lat *LoginAttemptTracker) ClearAttempts(ctx context.Context, identifier st
 
 	lat.memory.update(func(m map[string]loginAttemptEntry) { delete(m, identifier) })
 	return nil
+}
+
+// GetAttemptCount returns the number of failed attempts currently recorded for
+// an identifier. A missing or expired counter is zero.
+func (lat *LoginAttemptTracker) GetAttemptCount(ctx context.Context, identifier string) (int, error) {
+	if lat.redisClient != nil {
+		attemptsKey := lat.keyPrefix + identifier + ":attempts"
+		val, err := lat.redisClient.Get(ctx, attemptsKey).Result()
+		if err == redis.Nil {
+			return 0, nil
+		}
+		if err != nil {
+			return 0, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to read attempt count", err)
+		}
+		n, err := strconv.Atoi(val)
+		if err != nil {
+			return 0, NewAuthErrorWithCause(AuthErrorCodeInternal, "failed to parse attempt count", err)
+		}
+		return n, nil
+	}
+
+	var attempts int
+	lat.memory.view(func(m map[string]loginAttemptEntry) {
+		if entry, ok := m[identifier]; ok && time.Now().Before(entry.expiresAt) {
+			attempts = entry.attempts
+		}
+	})
+	return attempts, nil
 }

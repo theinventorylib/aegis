@@ -556,3 +556,23 @@ func TestRateLimiterStopWithRedisNoPanic(t *testing.T) {
 	tracker := NewLoginAttemptTracker(nil, redis.NewClient(&redis.Options{Addr: "localhost:0"}))
 	tracker.Stop()
 }
+
+// TestGetAttemptCount covers the admin-dashboard helper used by the docs.
+func TestGetAttemptCount(t *testing.T) {
+	tracker := NewLoginAttemptTracker(&LoginAttemptConfig{
+		MaxAttempts:     5,
+		LockoutDuration: time.Minute,
+		AttemptWindow:   time.Minute,
+	}, nil)
+	defer tracker.Stop()
+	ctx := context.Background()
+
+	if n, err := tracker.GetAttemptCount(ctx, "user@example.com"); err != nil || n != 0 {
+		t.Fatalf("empty count = %d, %v; want 0, nil", n, err)
+	}
+	_, _, _ = tracker.RecordFailedAttempt(ctx, "user@example.com")
+	_, _, _ = tracker.RecordFailedAttempt(ctx, "user@example.com")
+	if n, err := tracker.GetAttemptCount(ctx, "user@example.com"); err != nil || n != 2 {
+		t.Fatalf("count = %d, %v; want 2, nil", n, err)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -114,6 +115,12 @@ func newRedisClient(cfg *RedisConfig) *redis.Client {
 // IP address and user agent are extracted from the request context
 // (populated by AegisContextMiddleware). Logs a successful login audit event.
 func (s *SessionService) CreateSession(ctx context.Context, user *auth.User) (*auth.Session, error) {
+	if user == nil {
+		return nil, NewAuthError(AuthErrorCodeInternal, "user is required")
+	}
+	if user.Disabled {
+		return nil, NewAuthErrorWithCause(AuthErrorCodeUserDisabled, "User account is disabled", ErrUserDisabled)
+	}
 	uid := user.GetID()
 	session, err := s.newSessionRow(ctx, uid,
 		SanitizeString(GetIPAddress(ctx), nil),
@@ -227,6 +234,9 @@ func (s *SessionService) loadUserForSession(ctx context.Context, session *auth.S
 	if err != nil {
 		return nil, NewAuthErrorWithCause(AuthErrorCodeUserNotFound, "user not found", err)
 	}
+	if user.Disabled {
+		return nil, NewAuthErrorWithCause(AuthErrorCodeUserDisabled, "User account is disabled", ErrUserDisabled)
+	}
 	return &user, nil
 }
 
@@ -332,10 +342,25 @@ func (s *SessionService) DeleteSession(ctx context.Context, token string) error 
 // before any store access. Returns a session with **raw** tokens in its
 // Token/RefreshToken fields so the caller can hand them to the client.
 func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string) (*auth.Session, error) {
+	if strings.TrimSpace(refreshToken) == "" {
+		return nil, NewAuthError(AuthErrorCodeTokenInvalid, "invalid refresh token")
+	}
 	refreshHash := hashTokenHex(refreshToken)
 	old, err := s.sessionStore.GetByRefreshToken(ctx, refreshHash)
 	if err != nil {
 		return nil, NewAuthErrorWithCause(AuthErrorCodeTokenInvalid, "invalid refresh token", err)
+	}
+
+	user, err := s.userStore.GetByID(ctx, old.UserID)
+	if err != nil {
+		s.invalidateSessionCache(ctx, &old)
+		s.deleteSessionQuietly(ctx, old.ID)
+		return nil, NewAuthErrorWithCause(AuthErrorCodeUserNotFound, "user not found", err)
+	}
+	if user.Disabled {
+		s.invalidateSessionCache(ctx, &old)
+		s.deleteSessionQuietly(ctx, old.ID)
+		return nil, NewAuthErrorWithCause(AuthErrorCodeUserDisabled, "User account is disabled", ErrUserDisabled)
 	}
 
 	s.invalidateSessionCache(ctx, &old)
@@ -353,6 +378,15 @@ func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string
 	logAuthEvent(ctx, s.logger, s.auditLogger, AuditEventSessionRefresh, old.UserID, true, nil)
 
 	return out, nil
+}
+
+// deleteSessionQuietly removes a session row after its cache entry has been
+// invalidated. The caller is already returning an auth error, so a storage
+// failure here is logged rather than replacing the more useful cause.
+func (s *SessionService) deleteSessionQuietly(ctx context.Context, sessionID string) {
+	if err := s.sessionStore.Delete(ctx, sessionID); err != nil {
+		s.logger.Error("session: failed to delete invalidated session", "session_id", sessionID, "error", err)
+	}
 }
 
 func generateRandomToken() (string, error) {

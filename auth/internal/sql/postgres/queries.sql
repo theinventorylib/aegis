@@ -3,10 +3,10 @@
 INSERT INTO "user" (id, avatar, name, email, created_at, updated_at, disabled) VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 -- name: GetUserByEmail :one
-SELECT id, avatar, name, email, created_at, updated_at, disabled FROM "user" WHERE email = $1 AND disabled = 0;
+SELECT id, avatar, name, email, created_at, updated_at, disabled FROM "user" WHERE email = $1;
 
 -- name: GetUserByID :one
-SELECT id, avatar, name, email, created_at, updated_at, disabled FROM "user" WHERE id = $1 AND disabled = 0;
+SELECT id, avatar, name, email, created_at, updated_at, disabled FROM "user" WHERE id = $1;
 
 -- name: UpdateUser :exec
 UPDATE "user" SET avatar = $2, name = $3, email = $4, updated_at = $5, disabled = $6 WHERE id = $1;

@@ -20,6 +20,9 @@ type Response struct {
 	// Error contains a human-readable error message (optional, Success=false)
 	Error string `json:"error,omitempty"`
 
+	// Code is a machine-readable error code (optional, Success=false)
+	Code string `json:"code,omitempty"`
+
 	// Data contains the response payload (optional, Success=true)
 	Data any `json:"data,omitempty"`
 }
