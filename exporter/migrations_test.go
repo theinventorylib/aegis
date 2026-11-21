@@ -225,6 +225,38 @@ func TestExportNeverRewritesExistingFiles(t *testing.T) {
 	}
 }
 
+func TestExportSQLFormat(t *testing.T) {
+	dir := t.TempDir()
+	exp := NewExporter(Config{Format: FormatSQL, Dialect: plugins.DialectPostgres, OutputDir: dir, AuthOnly: true})
+	if err := exp.Export(); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "00001_aegis_auth_001_initial.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "-- Aegis: auth") || !strings.Contains(content, "-- Version: 1") {
+		t.Fatalf("unexpected SQL header:\n%s", content)
+	}
+}
+
+func TestExportGooseFormat(t *testing.T) {
+	dir := t.TempDir()
+	exp := NewExporter(Config{Format: FormatGoose, Dialect: plugins.DialectPostgres, OutputDir: dir, AuthOnly: true})
+	if err := exp.Export(); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "00001_aegis_auth_001_initial.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "-- +goose Up") || !strings.Contains(content, "-- +goose Down") {
+		t.Fatalf("unexpected Goose wrapper:\n%s", content)
+	}
+}
+
 func TestExportGolangMigratePairs(t *testing.T) {
 	dir := t.TempDir()
 	exp := NewExporter(Config{
