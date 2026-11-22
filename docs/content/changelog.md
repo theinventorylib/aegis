@@ -1,6 +1,12 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-11-22
+
+### Fixed
+- `aegis version` no longer prints a double `v` for release builds (for example `vv2.3.1`).
+- GoReleaser release notes now group scoped conventional commits such as `feat(organizations):` and `fix(auth):` correctly.
+
 ## [2.3.0] - 2026-11-22
 
 ### Added

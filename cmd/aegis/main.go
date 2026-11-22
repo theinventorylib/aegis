@@ -71,7 +71,11 @@ func main() {
 	case "export":
 		exportCmd()
 	case "version", "--version", "-v":
-		fmt.Printf("Aegis CLI v%s\n", version)
+		displayVersion := version
+		if displayVersion != "dev" && !strings.HasPrefix(displayVersion, "v") {
+			displayVersion = "v" + displayVersion
+		}
+		fmt.Printf("Aegis CLI %s\n", displayVersion)
 		if commit != "none" {
 			fmt.Printf("  commit: %s\n", commit)
 			fmt.Printf("  built:  %s\n", date)

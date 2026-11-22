@@ -63,10 +63,10 @@ changelog:
       - 'typo'
   groups:
     - title: Features
-      regexp: '^feat:'
+      regexp: '^feat(\([^)]*\))?:'
       order: 0
     - title: Bug Fixes
-      regexp: '^fix:'
+      regexp: '^fix(\([^)]*\))?:'
       order: 1
     - title: Others
       order: 999
