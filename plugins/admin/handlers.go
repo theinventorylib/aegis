@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/theinventorylib/aegis/v2/core"
@@ -75,6 +77,29 @@ func (a *Plugin) disableUserHandler(w http.ResponseWriter, r *http.Request) {
 // enableUserHandler re-enables a disabled user account.
 func (a *Plugin) enableUserHandler(w http.ResponseWriter, r *http.Request) {
 	a.setUserDisabledStatus(w, r, false, "enable", "enabled")
+}
+
+// unlockUserHandler clears failed-login lockout for a user account.
+func (a *Plugin) unlockUserHandler(w http.ResponseWriter, r *http.Request) {
+	userID := core.GetSanitizedPathParam(r, "id")
+	if userID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "User ID required")
+		return
+	}
+
+	if err := a.UnlockUser(r.Context(), userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			core.WriteJSONError(w, http.StatusNotFound, "User not found")
+			return
+		}
+		core.WriteJSONError(w, http.StatusInternalServerError, "Failed to unlock user")
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "User unlocked",
+	})
 }
 
 // setUserDisabledStatus is a helper function that sets the disabled status of a user.

@@ -32,6 +32,9 @@ func (s *AccountService) RequestPasswordReset(ctx context.Context, email string)
 	if err != nil {
 		return auth.User{}, "", err
 	}
+	if user.Disabled {
+		return auth.User{}, "", NewAuthErrorWithCause(AuthErrorCodeUserDisabled, "User account is disabled", ErrUserDisabled)
+	}
 
 	if err := s.verification.InvalidateVerification(ctx, email, VerificationTypePasswordReset); err != nil {
 		return auth.User{}, "", err
@@ -84,6 +87,10 @@ func (s *AccountService) ConfirmPasswordReset(ctx context.Context, token, newPas
 	if err := s.UpdatePassword(ctx, user.GetID(), newPassword); err != nil {
 		return auth.User{}, err
 	}
+
+	// A user who just proved control of the address and set a new password
+	// should not remain locked out by failures from before the reset.
+	s.clearLoginAttempts(ctx, user)
 
 	// Consume the redeemed token and any siblings for the same address. A
 	// failure here would leave the token replayable until expiry, so surface it.

@@ -1,6 +1,19 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Disabled accounts are enforced in core**: `CreateSession`, `RefreshSession`, and session validation reject disabled users. The default user queries now return disabled users so the core can distinguish "disabled" from "not found". Disabling a user through the admin plugin revokes their sessions.
+- **Login lockout is independent of the HTTP rate limiter**: `Config.WithLoginAttemptConfig` exists; `MaxAttempts <= 0` disables account lockout while keeping the IP throttle. Lockout errors carry `RetryAfter`, and the default login handler returns `Retry-After`, `429`, and `USER_DISABLED`/`RATE_LIMIT` codes.
+- **Password reset clears lockout**: `ConfirmPasswordReset` clears failed-attempt state for the user's email and credential usernames.
+- **Administrative unlock**: `POST /admin/users/{id}/unlock`, `AuthService.ClearLoginAttempts`, and `AuthService.ClearLoginAttemptsForUser`.
+
+### Fixed
+- `core.IsAuthError` now matches the `*AuthError` values returned by its constructors, so lockout responses map to `429` instead of `401`.
+- First-attempt lockout now works when `MaxAttempts` is 1 (the in-memory tracker previously locked only on the second attempt).
+- The default login handler no longer exposes the internal `auth error [CODE]:` prefix in response bodies.
+
 ## [2.2.0] - 2026-10-16
 
 ### Added

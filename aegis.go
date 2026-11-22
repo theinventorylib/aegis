@@ -314,17 +314,30 @@ func New(_ context.Context, cfg *config.Config) (*Aegis, error) {
 		}
 		aegis.rateLimiter = core.NewRateLimiter(rateLimitConfig, redisClient, auditLogger, coreLogger)
 
-		loginAttemptConfig := cfg.LoginAttemptConfig
-		if loginAttemptConfig == nil {
-			loginAttemptConfig = core.DefaultLoginAttemptConfig()
-		}
-		aegis.loginAttemptTracker = core.NewLoginAttemptTracker(loginAttemptConfig, redisClient)
-		loginAttemptTracker = aegis.loginAttemptTracker
-
 		if cfg.Logger != nil {
 			cfg.Logger.Info("Rate limiting enabled",
 				"requests_per_window", rateLimitConfig.RequestsPerWindow,
 				"window_duration", rateLimitConfig.WindowDuration)
+		}
+	}
+
+	// Login-attempt tracking is independent of the HTTP rate limiter: an
+	// explicit LoginAttemptConfig enables it on its own, and rate limiting
+	// keeps its historical default of also enabling lockout. MaxAttempts <= 0
+	// disables account lockout, which lets an app keep the IP throttle only.
+	if cfg.LoginAttemptConfig != nil || cfg.RateLimitEnabled {
+		loginAttemptConfig := cfg.LoginAttemptConfig
+		if loginAttemptConfig == nil {
+			loginAttemptConfig = core.DefaultLoginAttemptConfig()
+		}
+		if loginAttemptConfig.MaxAttempts > 0 {
+			aegis.loginAttemptTracker = core.NewLoginAttemptTracker(loginAttemptConfig, redisClient)
+			loginAttemptTracker = aegis.loginAttemptTracker
+			if cfg.Logger != nil {
+				cfg.Logger.Info("Login attempt lockout enabled",
+					"max_attempts", loginAttemptConfig.MaxAttempts,
+					"lockout_duration", loginAttemptConfig.LockoutDuration)
+			}
 		}
 	}
 

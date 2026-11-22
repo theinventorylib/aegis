@@ -37,6 +37,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -169,7 +170,8 @@ func (a *Plugin) GetMigrations() []plugins.Migration {
 
 // MountRoutes registers administrative management endpoints.
 func (a *Plugin) MountRoutes(r router.Router, prefix string) {
-	// Create admin middleware - ALL admin routes require admin role
+	// Create admin middleware - ALL admin routes require the admin role and
+	// RequireAdminMiddleware refuses impersonation sessions.
 	requireAdmin := a.RequireAdminMiddleware()
 
 	// Create route group for Admin plugin
@@ -240,6 +242,24 @@ func (a *Plugin) MountRoutes(r router.Router, prefix string) {
 		Responses: openapi.Responses{
 			200: openapi.RefResponse("User enabled", "Success"),
 			401: openapi.RefResponse("Not authorized", "Error"),
+		},
+	})
+
+	adminGroup.POST("/users/:id/unlock", requireAdmin(http.HandlerFunc(a.unlockUserHandler)).ServeHTTP)
+	openapi.Doc(openapi.Route{
+		Method:      "POST",
+		Path:        prefix + "/users/{id}/unlock",
+		Summary:     "Unlock user",
+		Description: "Clear failed-login lockout for a user (admin only)",
+		Tags:        []string{"Admin"},
+		Auth:        true,
+		Params: []openapi.Param{
+			{Name: "id", In: "path", Type: "string", Required: true},
+		},
+		Responses: openapi.Responses{
+			200: openapi.RefResponse("User unlocked", "Success"),
+			401: openapi.RefResponse("Not authorized", "Error"),
+			404: openapi.RefResponse("User not found", "Error"),
 		},
 	})
 
@@ -420,14 +440,25 @@ func (a *Plugin) GetUserRaw(ctx context.Context, userID string) (map[string]any,
 	return a.store.GetUserRaw(ctx, userID)
 }
 
-// DisableUser disables a user account programmatically.
+// DisableUser disables a user account programmatically and revokes every
+// session it currently holds. Validation also rejects disabled users, so a
+// partial failure cannot leave an account usable; the error is still returned
+// because the caller asked for a complete disable.
 func (a *Plugin) DisableUser(ctx context.Context, userID string) error {
 	user, err := a.store.GetByID(ctx, userID)
 	if err != nil {
 		return err
 	}
 	user.Disabled = true
-	return a.store.Update(ctx, user)
+	if err := a.store.Update(ctx, user); err != nil {
+		return err
+	}
+	if a.aegis != nil {
+		if err := a.aegis.GetAuthService().Session.DeleteUserSessions(ctx, userID); err != nil {
+			return fmt.Errorf("user disabled but session revocation failed: %w", err)
+		}
+	}
+	return nil
 }
 
 // EnableUser re-enables a user account programmatically.
@@ -438,6 +469,15 @@ func (a *Plugin) EnableUser(ctx context.Context, userID string) error {
 	}
 	user.Disabled = false
 	return a.store.Update(ctx, user)
+}
+
+// UnlockUser clears failed-login lockout counters for a user's email address
+// and credential usernames. It does not change the account's disabled state.
+func (a *Plugin) UnlockUser(ctx context.Context, userID string) error {
+	if a.aegis == nil {
+		return fmt.Errorf("admin plugin not initialized")
+	}
+	return a.aegis.GetAuthService().ClearLoginAttemptsForUser(ctx, userID)
 }
 
 // DeleteUser permanently deletes a user account programmatically.

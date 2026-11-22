@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // isNotFound reports whether err means "row does not exist". Stores are
@@ -116,6 +117,11 @@ type AuthError struct {
 	// Message is a human-readable error description
 	Message string
 
+	// RetryAfter is how long the caller should wait before retrying. It is
+	// set for transient rejections such as account lockout and surfaced as
+	// an HTTP Retry-After header.
+	RetryAfter time.Duration
+
 	// Cause is the underlying error that triggered this auth error (optional)
 	Cause error
 }
@@ -185,10 +191,21 @@ func NewAuthErrorWithCause(code, message string, cause error) *AuthError {
 	}
 }
 
-// IsAuthError checks if an error is an auth error
+// WithRetryAfter sets the retry delay and returns the same error for chaining.
+func (e *AuthError) WithRetryAfter(d time.Duration) *AuthError {
+	e.RetryAfter = d
+	return e
+}
+
+// IsAuthError checks if an error is an auth error, whether it is a value or a
+// pointer. Constructors return *AuthError, but older code may return the value.
 func IsAuthError(err error) bool {
-	var authErr AuthError
-	return errors.As(err, &authErr)
+	var ptr *AuthError
+	if errors.As(err, &ptr) {
+		return true
+	}
+	var value AuthError
+	return errors.As(err, &value)
 }
 
 // GetValidationErrors extracts all validation errors from an error

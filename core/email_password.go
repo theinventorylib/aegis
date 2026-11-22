@@ -80,7 +80,7 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, identifier, password 
 				"reason":     "account_locked",
 				"remaining":  remaining.String(),
 			})
-			return nil, NewAuthError(AuthErrorCodeRateLimit, "Account is temporarily locked")
+			return nil, NewAuthError(AuthErrorCodeRateLimit, "Account is temporarily locked").WithRetryAfter(remaining)
 		}
 	}
 
@@ -106,6 +106,14 @@ func (h *EmailPasswordHandlers) Login(ctx context.Context, identifier, password 
 	if err != nil || !valid {
 		h.recordFailure(ctx, loginKey, uid, "invalid_password")
 		return nil, ErrInvalidCredentials
+	}
+
+	// Disabled accounts are rejected only after the password has been
+	// verified: that keeps the disabled state from being an account
+	// enumeration oracle for callers who do not know the password.
+	if user.Disabled {
+		h.auditFailure(ctx, loginKey, uid, "user_disabled")
+		return nil, NewAuthErrorWithCause(AuthErrorCodeUserDisabled, "User account is disabled", ErrUserDisabled)
 	}
 
 	// Email verification gate. Fail closed when verification is required but no
