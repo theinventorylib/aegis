@@ -13,7 +13,7 @@ export default defineNuxtConfig({
     // 'nuxt-og-image'
   ],
   site: {
-    url: 'https://theinventorylib.github.io/aegis',
+    url: 'https://theinventorylib.github.io',
     name: 'Aegis Auth Framework',
     description: 'A lightweight, modular authentication framework for Go with plugin architecture.',
     defaultLocale: 'en'

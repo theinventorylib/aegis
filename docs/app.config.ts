@@ -3,7 +3,7 @@ export default defineAppConfig({
     title: 'Aegis',
     description: 'A lightweight authentication framework for Go with a modular plugin architecture.',
     image: '/logo.png',
-    url: 'https://theinventorylib.github.io/aegis',
+    url: 'https://theinventorylib.github.io',
     socials: {
       github: 'theinventorylib/aegis',
     },
