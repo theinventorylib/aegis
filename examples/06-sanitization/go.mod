@@ -7,13 +7,12 @@ require github.com/theinventorylib/aegis/v2 v2.0.0
 require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
-	github.com/oklog/ulid/v2 v2.1.1 // indirect
-	github.com/redis/go-redis/v9 v9.19.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
+	github.com/go-ozzo/ozzo-validation/v4 v4.4.1 // indirect
+	github.com/oklog/ulid/v2 v2.1.2 // indirect
+	github.com/redis/go-redis/v9 v9.23.0 // indirect
+	go.uber.org/atomic v1.12.0 // indirect
+	golang.org/x/crypto v0.59.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 )
 
 // For local development, using local aegis code
