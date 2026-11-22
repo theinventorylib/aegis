@@ -1,7 +1,7 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.3.0] - 2026-11-22
 
 ### Added
 - **Organization-scoped impersonation** (`plugins/admin`): `POST /admin/users/{id}/impersonate` creates a short-lived session as a target organization member when `AuthConfig.ImpersonationEnabled` is set. The session has no refresh token, is limited to one organization, cannot nest, and is audited (`impersonation_started`, `impersonation_ended`, `impersonation_denied`). The new `session_impersonation` table is auth migration `003_impersonation` on all dialects.
@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `core.IsAuthError` now matches the `*AuthError` values returned by its constructors, so lockout responses map to `429` instead of `401`.
 - First-attempt lockout now works when `MaxAttempts` is 1 (the in-memory tracker previously locked only on the second attempt).
 - The default login handler no longer exposes the internal `auth error [CODE]:` prefix in response bodies.
+
+### Security
+- Updated Go dependencies to patched releases: `github.com/labstack/echo/v4` 4.16.6, `github.com/go-chi/chi/v5` 5.5.0, `golang.org/x/net` 0.62.0, and `golang.org/x/crypto` 0.59.0 in the root module and examples.
+- Updated docs dependencies, including Nuxt 4.6.4, and added pnpm overrides for vulnerable transitive packages. `pnpm audit` reports zero advisories.
+- CodeQL and secret scanning report no open alerts. Echo v4.16.6 remains the latest v4 release; two upstream Echo advisories apply only to Echo middleware Aegis's router adapter does not use.
 
 ## [2.2.0] - 2026-10-16
 
