@@ -11,6 +11,15 @@ import (
 	"time"
 )
 
+const cleanupExpiredImpersonations = `-- name: CleanupExpiredImpersonations :exec
+DELETE FROM session_impersonation WHERE expires_at <= $1
+`
+
+func (q *Queries) CleanupExpiredImpersonations(ctx context.Context, expiresAt time.Time) error {
+	_, err := q.db.ExecContext(ctx, cleanupExpiredImpersonations, expiresAt)
+	return err
+}
+
 const cleanupExpiredSessions = `-- name: CleanupExpiredSessions :exec
 DELETE FROM session WHERE expires_at <= $1
 `
@@ -86,6 +95,30 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) er
 		arg.ExpiresAt,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+	)
+	return err
+}
+
+const createImpersonation = `-- name: CreateImpersonation :exec
+INSERT INTO session_impersonation (session_id, actor_user_id, organization_id, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)
+`
+
+type CreateImpersonationParams struct {
+	SessionID      string    `json:"session_id"`
+	ActorUserID    string    `json:"actor_user_id"`
+	OrganizationID string    `json:"organization_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	ExpiresAt      time.Time `json:"expires_at"`
+}
+
+// Impersonation queries
+func (q *Queries) CreateImpersonation(ctx context.Context, arg CreateImpersonationParams) error {
+	_, err := q.db.ExecContext(ctx, createImpersonation,
+		arg.SessionID,
+		arg.ActorUserID,
+		arg.OrganizationID,
+		arg.CreatedAt,
+		arg.ExpiresAt,
 	)
 	return err
 }
@@ -180,6 +213,15 @@ DELETE FROM accounts WHERE id = $1
 
 func (q *Queries) DeleteAccount(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteAccount, id)
+	return err
+}
+
+const deleteImpersonation = `-- name: DeleteImpersonation :exec
+DELETE FROM session_impersonation WHERE session_id = $1
+`
+
+func (q *Queries) DeleteImpersonation(ctx context.Context, sessionID string) error {
+	_, err := q.db.ExecContext(ctx, deleteImpersonation, sessionID)
 	return err
 }
 
@@ -309,6 +351,23 @@ func (q *Queries) GetAccountsByUserID(ctx context.Context, userID string) ([]Acc
 		return nil, err
 	}
 	return items, nil
+}
+
+const getImpersonationBySession = `-- name: GetImpersonationBySession :one
+SELECT session_id, actor_user_id, organization_id, created_at, expires_at FROM session_impersonation WHERE session_id = $1
+`
+
+func (q *Queries) GetImpersonationBySession(ctx context.Context, sessionID string) (SessionImpersonation, error) {
+	row := q.db.QueryRowContext(ctx, getImpersonationBySession, sessionID)
+	var i SessionImpersonation
+	err := row.Scan(
+		&i.SessionID,
+		&i.ActorUserID,
+		&i.OrganizationID,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
 }
 
 const getSession = `-- name: GetSession :one
@@ -547,6 +606,39 @@ type InvalidateVerificationByIdentifierParams struct {
 func (q *Queries) InvalidateVerificationByIdentifier(ctx context.Context, arg InvalidateVerificationByIdentifierParams) error {
 	_, err := q.db.ExecContext(ctx, invalidateVerificationByIdentifier, arg.Identifier, arg.Type, arg.ExpiresAt)
 	return err
+}
+
+const listImpersonationsByActor = `-- name: ListImpersonationsByActor :many
+SELECT session_id, actor_user_id, organization_id, created_at, expires_at FROM session_impersonation WHERE actor_user_id = $1
+`
+
+func (q *Queries) ListImpersonationsByActor(ctx context.Context, actorUserID string) ([]SessionImpersonation, error) {
+	rows, err := q.db.QueryContext(ctx, listImpersonationsByActor, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SessionImpersonation
+	for rows.Next() {
+		var i SessionImpersonation
+		if err := rows.Scan(
+			&i.SessionID,
+			&i.ActorUserID,
+			&i.OrganizationID,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUsers = `-- name: ListUsers :many

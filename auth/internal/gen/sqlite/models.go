@@ -32,6 +32,14 @@ type Session struct {
 	UserAgent    sql.NullString `json:"user_agent"`
 }
 
+type SessionImpersonation struct {
+	SessionID      string `json:"session_id"`
+	ActorUserID    string `json:"actor_user_id"`
+	OrganizationID string `json:"organization_id"`
+	CreatedAt      string `json:"created_at"`
+	ExpiresAt      string `json:"expires_at"`
+}
+
 type User struct {
 	ID        string         `json:"id"`
 	Avatar    sql.NullString `json:"avatar"`

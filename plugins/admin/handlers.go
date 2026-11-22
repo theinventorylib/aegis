@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/theinventorylib/aegis/v2/core"
 	admintypes "github.com/theinventorylib/aegis/v2/plugins/admin/types"
@@ -99,6 +100,86 @@ func (a *Plugin) unlockUserHandler(w http.ResponseWriter, r *http.Request) {
 	core.WriteJSON(w, http.StatusOK, &core.Response{
 		Success: true,
 		Message: "User unlocked",
+	})
+}
+
+// impersonateUserHandler starts an organization-scoped impersonation session.
+func (a *Plugin) impersonateUserHandler(w http.ResponseWriter, r *http.Request) {
+	actor, err := core.GetUser(r.Context())
+	if err != nil {
+		core.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	targetID := core.GetSanitizedPathParam(r, "id")
+	if targetID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "User ID required")
+		return
+	}
+
+	var req admintypes.ImpersonateUserRequest
+	if err := core.ReadJSON(r, &req); err != nil {
+		core.WriteJSONError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+	req.OrganizationID = core.SanitizeString(req.OrganizationID, nil)
+	if req.OrganizationID == "" {
+		core.WriteJSONError(w, http.StatusBadRequest, "organizationId is required")
+		return
+	}
+	var duration time.Duration
+	if req.Duration != "" {
+		duration, err = time.ParseDuration(req.Duration)
+		if err != nil || duration < 0 {
+			core.WriteJSONError(w, http.StatusBadRequest, "Invalid duration")
+			return
+		}
+	}
+
+	result, err := a.ImpersonateUser(r.Context(), actor.ID, targetID, req.OrganizationID, duration)
+	if err != nil {
+		if a.aegis != nil {
+			if auditErr := a.aegis.GetAuthService().AuditLogger().LogAuthEvent(r.Context(), core.AuditEventImpersonationDenied, actor.ID, false, map[string]any{
+				"target_user_id":  targetID,
+				"organization_id": req.OrganizationID,
+				"reason":          err.Error(),
+			}); auditErr != nil {
+				if logger := a.aegis.GetLogger(); logger != nil {
+					logger.Error("admin: failed to audit denied impersonation", "error", auditErr)
+				}
+			}
+		}
+		switch {
+		case errors.Is(err, ErrImpersonationDisabled):
+			core.WriteJSONError(w, http.StatusForbidden, "Impersonation is disabled")
+		case errors.Is(err, ErrActorNotAdmin):
+			core.WriteJSONError(w, http.StatusForbidden, "Administrator role required")
+		case errors.Is(err, ErrNotOrganizationMember):
+			core.WriteJSONError(w, http.StatusBadRequest, "Target is not a member of the organization")
+		case errors.Is(err, ErrOrganizationsPluginMissing):
+			core.WriteJSONError(w, http.StatusNotImplemented, "Organizations plugin is required for impersonation")
+		case errors.Is(err, sql.ErrNoRows):
+			core.WriteJSONError(w, http.StatusNotFound, "User not found")
+		default:
+			var authErr *core.AuthError
+			if errors.As(err, &authErr) && authErr.Code == core.AuthErrorCodeUserDisabled {
+				core.WriteJSONError(w, http.StatusForbidden, "User account is disabled")
+				return
+			}
+			core.WriteJSONError(w, http.StatusInternalServerError, "Failed to start impersonation")
+		}
+		return
+	}
+
+	core.WriteJSON(w, http.StatusOK, &core.Response{
+		Success: true,
+		Message: "Impersonation session created",
+		Data: map[string]any{
+			"user":          result.User,
+			"session":       result.Session,
+			"token":         result.Token,
+			"expiresAt":     result.Impersonation.ExpiresAt,
+			"impersonation": result.Impersonation,
+		},
 	})
 }
 

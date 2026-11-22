@@ -280,6 +280,22 @@ type Session struct {
 
 	// Metadata stores custom JSON data for session-specific attributes
 	Metadata json.RawMessage `json:"metadata,omitempty"`
+
+	// Impersonation is set when this session was created by an administrator
+	// to act as the user. It is populated during validation from the
+	// impersonation store and is not persisted on the session row itself.
+	Impersonation *Impersonation `json:"impersonation,omitempty"`
+}
+
+// Impersonation describes an administrative impersonation session. The
+// session's UserID is the impersonated user; ActorUserID is the administrator
+// who created it. OrganizationID limits the session to one organization.
+type Impersonation struct {
+	SessionID      string    `json:"sessionId"`
+	ActorUserID    string    `json:"actorUserId"`
+	OrganizationID string    `json:"organizationId"`
+	CreatedAt      time.Time `json:"createdAt"`
+	ExpiresAt      time.Time `json:"expiresAt"`
 }
 
 // GetID returns the session's unique identifier.

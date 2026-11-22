@@ -35,6 +35,16 @@ type AuthConfig struct {
 	// valid. Zero uses DefaultEmailChangeExpiry (1 hour).
 	EmailChangeExpiry time.Duration
 
+	// ImpersonationEnabled allows platform administrators to create a
+	// short-lived, organization-scoped session as another user. Disabled by
+	// default because the session can read anything the target can read.
+	ImpersonationEnabled bool
+
+	// ImpersonationMaxDuration caps an impersonation session's lifetime.
+	// Zero uses DefaultImpersonationMaxDuration (15 minutes). The admin route
+	// may request a shorter duration but never a longer one.
+	ImpersonationMaxDuration time.Duration
+
 	// UserFields controls which plugin extension fields are included in user
 	// API responses. If nil, all extension fields are included.
 	// Use this to limit what data is exposed in user objects.
@@ -144,6 +154,10 @@ type SessionConfig struct {
 	// Redis connection for session caching (optional).
 	// If nil, sessions are always loaded from database (slower but simpler).
 	Redis *RedisConfig
+
+	// ImpersonationMaxDuration caps the lifetime of an impersonation session.
+	// Zero uses DefaultImpersonationMaxDuration.
+	ImpersonationMaxDuration time.Duration
 }
 
 // RedisConfig defines Redis connection parameters.
@@ -203,6 +217,7 @@ func DefaultAuthConfig() *AuthConfig {
 		UserFields:                         nil,  // Include all extension fields by default
 		PasswordResetExpiry:                DefaultPasswordResetExpiry,
 		EmailChangeExpiry:                  DefaultEmailChangeExpiry,
+		ImpersonationMaxDuration:           DefaultImpersonationMaxDuration,
 	}
 }
 
@@ -239,8 +254,9 @@ func defaultPasswordPolicyConfig() *PasswordPolicyConfig {
 // DefaultSessionConfig returns default session configuration
 func DefaultSessionConfig() *SessionConfig {
 	return &SessionConfig{
-		SessionExpiry: DefaultSessionExpiry,
-		RefreshExpiry: DefaultRefreshExpiry,
+		SessionExpiry:            DefaultSessionExpiry,
+		RefreshExpiry:            DefaultRefreshExpiry,
+		ImpersonationMaxDuration: DefaultImpersonationMaxDuration,
 		CookieSettings: CookieSettings{
 			Name:     DefaultCookieName,
 			Secure:   true,

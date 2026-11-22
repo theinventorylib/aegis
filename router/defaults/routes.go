@@ -120,7 +120,7 @@ func MountRoutes(r router.Router, authService *core.AuthService, config *core.Au
 	})
 
 	// List sessions
-	sessionGroup.GET("/sessions", requireAuth(http.HandlerFunc(handlers.listSessionsHandler)).ServeHTTP)
+	sessionGroup.GET("/sessions", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.listSessionsHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "GET",
 		Path:        prefix + "/sessions",
@@ -135,7 +135,7 @@ func MountRoutes(r router.Router, authService *core.AuthService, config *core.Au
 	})
 
 	// Revoke session
-	sessionGroup.DELETE("/sessions/:id", requireAuth(http.HandlerFunc(handlers.revokeSessionHandler)).ServeHTTP)
+	sessionGroup.DELETE("/sessions/:id", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.revokeSessionHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "DELETE",
 		Path:        prefix + "/sessions/{id}",
@@ -154,7 +154,7 @@ func MountRoutes(r router.Router, authService *core.AuthService, config *core.Au
 	})
 
 	// Revoke all sessions
-	sessionGroup.DELETE("/sessions", requireAuth(http.HandlerFunc(handlers.revokeAllSessionsHandler)).ServeHTTP)
+	sessionGroup.DELETE("/sessions", requireAuth(core.DenyImpersonated(http.HandlerFunc(handlers.revokeAllSessionsHandler))).ServeHTTP)
 	openapi.Doc(openapi.Route{
 		Method:      "DELETE",
 		Path:        prefix + "/sessions",

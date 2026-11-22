@@ -215,6 +215,20 @@ func RequireAuthMiddleware(_ *SessionService) func(http.Handler) http.Handler {
 	}
 }
 
+// DenyImpersonated rejects requests made through an impersonation session.
+// Apply it to account-security routes (password, email, MFA, session
+// management, administration) that an impersonated user must never change even
+// when the target has the underlying role.
+func DenyImpersonated(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if IsImpersonated(r.Context()) {
+			WriteJSONError(w, http.StatusForbidden, "Not available during impersonation")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // bearerToken extracts the token from an Authorization header, trimming the
 // "Bearer " prefix case-insensitively. Returns "" when absent or not a
 // bearer token. Single owner of the parsing shared with CSRF middleware.

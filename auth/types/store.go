@@ -174,6 +174,30 @@ type SessionStore interface {
 	CleanupExpired(ctx context.Context) error
 }
 
+// ImpersonationStore is an optional capability implemented by session stores
+// that support administrative impersonation sessions. SessionService detects
+// it with a type assertion, so custom SessionStore implementations remain
+// source-compatible; impersonation reports "not supported" when absent.
+type ImpersonationStore interface {
+	// CreateImpersonation persists the impersonation record for a session.
+	CreateImpersonation(ctx context.Context, imp Impersonation) error
+
+	// GetImpersonation returns the record for a session. Returns sql.ErrNoRows
+	// or an equivalent "not found" error for ordinary sessions.
+	GetImpersonation(ctx context.Context, sessionID string) (Impersonation, error)
+
+	// DeleteImpersonation removes the record without touching the session.
+	DeleteImpersonation(ctx context.Context, sessionID string) error
+
+	// ListImpersonationsByActor returns every impersonation record created by
+	// an administrator, used to revoke their sessions when they are disabled
+	// or demoted.
+	ListImpersonationsByActor(ctx context.Context, actorUserID string) ([]Impersonation, error)
+
+	// CleanupExpiredImpersonations removes records whose expiry has passed.
+	CleanupExpiredImpersonations(ctx context.Context) error
+}
+
 // Transactor is an optional capability that store implementations may
 // expose to allow callers to compose multiple store operations in a single
 // database transaction. Custom store implementations that do not back onto

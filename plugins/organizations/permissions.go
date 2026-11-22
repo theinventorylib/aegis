@@ -171,6 +171,11 @@ func cloneRoles(in map[string]RoleDefinition) map[string]RoleDefinition {
 // Scoped role assignments do NOT count here: this is the organization-wide
 // check. Use HasOrgPermissionOn for scoped resources.
 func (p *Plugin) HasOrgPermission(ctx context.Context, userID, orgID string, perm Permission) (bool, error) {
+	if imp := core.ImpersonationFromContext(ctx); imp != nil {
+		if imp.OrganizationID != orgID || p.impersonationDenied(perm) {
+			return false, nil
+		}
+	}
 	m, err := p.store.GetMember(ctx, userID, orgID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -194,6 +199,11 @@ func (p *Plugin) HasOrgPermission(ctx context.Context, userID, orgID string, per
 //
 // An empty scopeType or scopeID degrades to the organization-wide check.
 func (p *Plugin) HasOrgPermissionOn(ctx context.Context, userID, orgID string, perm Permission, scopeType, scopeID string) (bool, error) {
+	if imp := core.ImpersonationFromContext(ctx); imp != nil {
+		if imp.OrganizationID != orgID || p.impersonationDenied(perm) {
+			return false, nil
+		}
+	}
 	m, err := p.store.GetMember(ctx, userID, orgID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -380,6 +390,105 @@ func (p *Plugin) PermissionCatalog() []PermissionInfo {
 	return out
 }
 
+// IsSensitivePermission reports whether an app-defined permission is marked
+// Sensitive in the permission catalog. Framework permissions are not sensitive
+// for impersonation purposes; they are capped at grant time separately.
+func (p *Plugin) IsSensitivePermission(perm Permission) bool {
+	def, ok := p.permissions[perm]
+	return ok && def.Sensitive
+}
+
+// SensitivePermissions returns the app-defined permissions marked Sensitive
+// plus any explicitly denied during impersonation, sorted for stable output.
+// Apps can use it to build a "sensitive settings" screen or documentation.
+func (p *Plugin) SensitivePermissions() []Permission {
+	set := make(map[Permission]bool, len(p.permissions)+len(p.config.ImpersonationDeniedPermissions))
+	for perm, def := range p.permissions {
+		if def.Sensitive {
+			set[perm] = true
+		}
+	}
+	for _, perm := range p.config.ImpersonationDeniedPermissions {
+		set[perm] = true
+	}
+	out := make([]Permission, 0, len(set))
+	for perm := range set {
+		out = append(out, perm)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// isSensitiveForEditing reports whether perm is an app-sensitive permission
+// whose grants only the organization owner may change. It intentionally does
+// not include framework permissions: those are capped by the authority check,
+// not by the sensitive-settings workflow.
+func (p *Plugin) isSensitiveForEditing(perm Permission) bool {
+	if p.IsSensitivePermission(perm) {
+		return true
+	}
+	return slices.Contains(p.config.ImpersonationDeniedPermissions, perm)
+}
+
+// impersonationDenied reports whether perm is unavailable to an impersonation
+// session: app-sensitive permissions, the explicit deny list, and destructive
+// organization deletion (a support session must not remove the tenant).
+func (p *Plugin) impersonationDenied(perm Permission) bool {
+	if perm == PermOrgDelete {
+		return true
+	}
+	return p.isSensitiveForEditing(perm)
+}
+
+// containsSensitivePermission reports whether any permission is app-sensitive
+// for edit purposes.
+func (p *Plugin) containsSensitivePermission(perms []Permission) bool {
+	for _, perm := range perms {
+		if p.isSensitiveForEditing(perm) {
+			return true
+		}
+	}
+	return false
+}
+
+// roleHasSensitivePermission reports whether an org or team role grants a
+// sensitive permission. The role name must already be validated by the caller.
+func (p *Plugin) roleHasSensitivePermission(ctx context.Context, orgID, role string, team bool) (bool, error) {
+	if team {
+		return p.containsSensitivePermission(p.teamRoles[role].Permissions), nil
+	}
+	perms, err := p.rolePermissions(ctx, orgID, role)
+	if err != nil {
+		return false, err
+	}
+	return p.containsSensitivePermission(perms), nil
+}
+
+// CanManageSensitivePermissions reports whether the actor may edit sensitive
+// permission assignments (billing, for example): only an organization owner,
+// and never from an impersonation session.
+func (p *Plugin) CanManageSensitivePermissions(ctx context.Context, userID, orgID string) (bool, error) {
+	if core.IsImpersonated(ctx) {
+		return false, nil
+	}
+	return p.IsOwner(ctx, userID, orgID), nil
+}
+
+// HasOrgSensitivePermission reports whether a non-impersonated user holds a
+// sensitive permission in the organization. Apps should use it (or
+// RequireOrgSensitivePermission) for billing and other sensitive features so
+// an impersonation session can never reach them, even if its target role
+// carries the permission.
+func (p *Plugin) HasOrgSensitivePermission(ctx context.Context, userID, orgID string, perm Permission) (bool, error) {
+	if !p.isSensitiveForEditing(perm) {
+		return false, nil
+	}
+	if core.IsImpersonated(ctx) {
+		return false, nil
+	}
+	return p.HasOrgPermission(ctx, userID, orgID, perm)
+}
+
 // ungrantableOrgRole returns the first permission the org role carries that
 // actorID may not grant, or "" when the role is assignable. It applies the
 // same authority cap as permission edits to role *assignment*: whoever can
@@ -491,6 +600,26 @@ func (p *Plugin) GetMemberPermissions(ctx context.Context, userID, orgID string)
 	}
 	slices.Sort(perms)
 
+	if imp := core.ImpersonationFromContext(ctx); imp != nil {
+		if imp.OrganizationID != orgID {
+			return MemberPermissions{}, nil
+		}
+		filtered := make([]Permission, 0, len(perms))
+		for _, perm := range perms {
+			if !p.impersonationDenied(perm) {
+				filtered = append(filtered, perm)
+			}
+		}
+		perms = filtered
+		filteredOverrides := make([]orgtypes.MemberPermissionOverride, 0, len(overrides))
+		for _, o := range overrides {
+			if !p.impersonationDenied(Permission(o.Permission)) {
+				filteredOverrides = append(filteredOverrides, o)
+			}
+		}
+		overrides = filteredOverrides
+	}
+
 	return MemberPermissions{Role: m.Role, Overrides: overrides, Permissions: perms}, nil
 }
 
@@ -498,6 +627,18 @@ func (p *Plugin) GetMemberPermissions(ctx context.Context, userID, orgID string)
 // Users who are not team members, or whose role is unknown, have no
 // permissions. A store lookup error other than "member not found" is returned.
 func (p *Plugin) HasTeamPermission(ctx context.Context, userID, teamID string, perm Permission) (bool, error) {
+	if imp := core.ImpersonationFromContext(ctx); imp != nil {
+		team, err := p.store.GetTeam(ctx, teamID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return false, nil
+			}
+			return false, err
+		}
+		if team.OrganizationID != imp.OrganizationID || p.impersonationDenied(perm) {
+			return false, nil
+		}
+	}
 	m, err := p.store.GetTeamMember(ctx, teamID, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

@@ -29,6 +29,18 @@ const (
 	// AuditEventSessionExpired indicates a session expired due to timeout
 	AuditEventSessionExpired AuditEventType = "session_expired"
 
+	// AuditEventImpersonationStarted indicates an administrator created an
+	// organization-scoped impersonation session
+	AuditEventImpersonationStarted AuditEventType = "impersonation_started"
+
+	// AuditEventImpersonationEnded indicates an impersonation session was
+	// stopped or revoked
+	AuditEventImpersonationEnded AuditEventType = "impersonation_ended"
+
+	// AuditEventImpersonationDenied indicates an impersonation attempt was
+	// refused by policy or permission checks
+	AuditEventImpersonationDenied AuditEventType = "impersonation_denied"
+
 	// User management events track account lifecycle
 
 	// AuditEventUserCreated indicates a new user account was created
