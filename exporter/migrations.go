@@ -542,7 +542,7 @@ The original migrations are available at:
 `)
 
 	readmePath := filepath.Join(e.outputDir, "README.md")
-	if data, err := os.ReadFile(readmePath); err == nil {
+	if data, err := os.ReadFile(readmePath); err == nil { // #nosec G304 -- caller-selected output directory
 		// Never replace a README the user wrote. Older Aegis exports used the
 		// same filename, so refresh those (and only those).
 		if !strings.HasPrefix(string(data), "# Aegis Migrations") {
