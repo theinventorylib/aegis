@@ -541,5 +541,16 @@ The original migrations are available at:
 - Plugins: github.com/theinventorylib/aegis/v2/plugins/[name]/migrations/[dialect]/
 `)
 
-	return os.WriteFile(filepath.Join(e.outputDir, "README.md"), []byte(content.String()), 0600)
+	readmePath := filepath.Join(e.outputDir, "README.md")
+	if data, err := os.ReadFile(readmePath); err == nil {
+		// Never replace a README the user wrote. Older Aegis exports used the
+		// same filename, so refresh those (and only those).
+		if !strings.HasPrefix(string(data), "# Aegis Migrations") {
+			return nil
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	return os.WriteFile(readmePath, []byte(content.String()), 0600)
 }

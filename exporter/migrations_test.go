@@ -300,3 +300,24 @@ func itoa(n int) string {
 	}
 	return string(b[i:])
 }
+
+func TestExportDoesNotOverwriteCustomReadme(t *testing.T) {
+	dir := t.TempDir()
+	const custom = "# My project migrations\n\nKeep this.\n"
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(custom), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	exp := NewExporter(Config{Format: FormatSQL, Dialect: plugins.DialectPostgres, OutputDir: dir, AuthOnly: true})
+	if err := exp.Export(); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != custom {
+		t.Fatalf("custom README was overwritten:\n%s", data)
+	}
+}
